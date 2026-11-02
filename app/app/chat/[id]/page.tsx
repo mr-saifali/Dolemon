@@ -1,48 +1,85 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, Lock, MoreHorizontal, RotateCcw, Settings2 } from "lucide-react";
+import {
+  ChevronLeft,
+  Lock,
+  MoreHorizontal,
+  Phone,
+  PhoneIncoming,
+  RotateCcw,
+  Sparkles,
+  Video,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { Avatar } from "@/components/avatar";
+import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { Composer } from "@/components/chat/composer";
-import { PulseOverlay } from "@/components/chat/pulse-overlay";
-import { MessageBubble } from "@/components/chat/message-bubble";
+import { MessageActions } from "@/components/chat/message-actions";
+import { CallMoment, MessageBubble } from "@/components/chat/message-bubble";
 import { PresenceMoment } from "@/components/chat/presence-moment";
+import { PulseOverlay } from "@/components/chat/pulse-overlay";
 import { TypingBubble } from "@/components/chat/typing-bubble";
 import { authMode } from "@/lib/auth";
 import { demoConversations } from "@/lib/chat";
+import { markRead, useChatMeta } from "@/lib/conversation-meta";
 import { formatAgo, formatDuration, usePresence } from "@/lib/presence";
+import { buzz, usePrefs } from "@/lib/prefs";
 import { usePulses } from "@/lib/pulses";
-import { usePrefs } from "@/lib/prefs";
-import { groupByDay, isGrouped, useThread } from "@/lib/thread";
+import {
+  groupByDay,
+  isGrouped,
+  previewFor,
+  useThread,
+  type ChatMessage,
+  type QuotedMessage,
+} from "@/lib/thread";
 import { cn } from "@/lib/utils";
 
 function ThreadScreen() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const conversationId = params.id;
   const [conversation] = useState(
     () => demoConversations().find((c) => c.id === conversationId) ?? null
   );
 
   const partnerName = conversation?.name ?? "Them";
-  const { messages, send, addMoment, resetDemo } = useThread(conversationId);
   const prefs = usePrefs();
+  const { messages, send, react, remove, addMoment, resetDemo, ready } = useThread(conversationId);
   const { together, partner, togetherSince, lastSeenAt, iAmHere, setPresence } = usePresence({
     demo: authMode === "local",
     logKey: conversationId,
   });
+  const meta = useChatMeta();
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
+  const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [dividerId, setDividerId] = useState<string | null>(null);
+  const [, forceTick] = useState(0);
+  const bottom = useRef<HTMLDivElement | null>(null);
+  const lastCount = useRef(0);
+  const marked = useRef(false);
 
   const pulses = usePulses({
     demo: authMode === "local",
     onIncoming: () => {
-      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(12);
+      if (prefs.haptics) buzz(14);
     },
     onMutual: () => {
-      const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const time = new Date().toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
       addMoment(`You both reached for each other at ${time} — pulses crossing in the same minute`);
       toast.success("You both reached for each other", { description: "Saved to your presence moments." });
     },
@@ -52,15 +89,11 @@ function ThreadScreen() {
     const result = pulses.send();
     if (result === "disabled") {
       toast.error("Pulses are off", { description: "Turn them on in Settings → Presence." });
+    } else if (result === "sent" && prefs.haptics) {
+      buzz(8);
     }
   };
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [, forceTick] = useState(0);
-  const bottom = useRef<HTMLDivElement | null>(null);
-  const lastCount = useRef(0);
-
-  // Keep the co-presence clock honest without re-rendering the world every frame.
   useEffect(() => {
     const t = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -74,19 +107,38 @@ function ThreadScreen() {
     return () => clearTimeout(t);
   }, [messages.length, setPresence]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Work out where "new messages" begins, then clear the badge for this chat.
+  useEffect(() => {
+    if (!ready || marked.current) return;
+    marked.current = true;
+    const lastRead = meta[conversationId]?.lastReadAt ?? 0;
+    const firstUnread = messages.find((m) => m.at > lastRead && m.author !== "me");
+    if (firstUnread && messages.indexOf(firstUnread) > 0) setDividerId(firstUnread.id);
+    markRead(conversationId);
+  }, [ready, conversationId, messages, meta]);
+
   useEffect(() => {
     const first = lastCount.current === 0;
     lastCount.current = messages.length;
     bottom.current?.scrollIntoView({ behavior: first ? "auto" : "smooth", block: "end" });
   }, [messages.length]);
 
-  const groups = groupByDay(messages);
+  const groups = useMemo(() => groupByDay(messages), [messages]);
+  const indexById = useMemo(
+    () => new Map(messages.map((m, i) => [m.id, i] as const)),
+    [messages]
+  );
+
   const awayLabel =
     !together && partner === "away"
       ? lastSeenAt
         ? `${partnerName} left ${formatAgo(lastSeenAt)} — your message will be waiting.`
         : `${partnerName} is away — your message will be waiting.`
       : undefined;
+
+  const startCall = (kind: "voice" | "video") => {
+    router.push(`/app/call/${conversationId}?kind=${kind}&direction=outgoing`);
+  };
 
   return (
     <main className="relative isolate flex h-dvh flex-col overflow-hidden bg-ink">
@@ -95,7 +147,7 @@ function ThreadScreen() {
         incoming={Boolean(pulses.incoming)}
         incomingText={pulses.incoming ? `${partnerName} is thinking of you` : null}
       />
-      {/* The room warms up when you're both in it. */}
+
       <motion.div
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0"
@@ -107,7 +159,7 @@ function ThreadScreen() {
       </motion.div>
 
       <header className="relative z-20 border-b border-white/[0.05] bg-ink/70 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-md items-center gap-1.5 px-3 pb-2.5 pt-4 safe-t">
+        <div className="mx-auto flex w-full max-w-md items-center gap-1 px-3 pb-2.5 pt-4 safe-t">
           <Link
             href="/app"
             aria-label="Back to chats"
@@ -116,7 +168,10 @@ function ThreadScreen() {
             <ChevronLeft className="h-5 w-5" />
           </Link>
 
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Link
+            href={`/app/room/${conversationId}`}
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-0.5 transition-colors hover:bg-white/[0.03]"
+          >
             <Avatar
               avatarId={conversation?.avatarId ?? null}
               name={partnerName}
@@ -127,7 +182,7 @@ function ThreadScreen() {
               <p className="truncate text-[15px] font-medium">{partnerName}</p>
               <PresenceLine
                 together={together}
-                typing={partner === "typing"}
+                typing={partner === "typing" && prefs.typingIndicator}
                 iAmHere={iAmHere}
                 visible={prefs.showPresence}
                 togetherSince={togetherSince}
@@ -135,64 +190,91 @@ function ThreadScreen() {
                 name={partnerName}
               />
             </div>
-          </div>
+          </Link>
 
-          <div className="relative shrink-0">
+          <div className="flex shrink-0 items-center">
             <button
               type="button"
-              onClick={() => setMenuOpen((o) => !o)}
-              aria-label="Chat options"
-              aria-expanded={menuOpen}
+              onClick={() => startCall("voice")}
+              aria-label="Voice call"
               className="flex h-10 w-10 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-white/[0.05] hover:text-text"
             >
-              <MoreHorizontal className="h-5 w-5" />
+              <Phone className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => startCall("video")}
+              aria-label="Video call"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-white/[0.05] hover:text-text"
+            >
+              <Video className="h-[18px] w-[18px]" />
             </button>
 
-            <AnimatePresence>
-              {menuOpen && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Close menu"
-                    onClick={() => setMenuOpen(false)}
-                    className="fixed inset-0 z-30 cursor-default"
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                    transition={{ duration: 0.16 }}
-                    className="absolute right-0 top-12 z-40 w-52 overflow-hidden rounded-xl2 border border-ink-line bg-[#16161B] shadow-card"
-                  >
-                    <Link
-                      href={`/app/room/${conversationId}`}
-                      className="flex items-center gap-2.5 px-4 py-3 text-[13.5px] text-text hover:bg-white/[0.04]"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-label="Chat options"
+                aria-expanded={menuOpen}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-white/[0.05] hover:text-text"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+
+              <AnimatePresence>
+                {menuOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close menu"
+                      onClick={() => setMenuOpen(false)}
+                      className="fixed inset-0 z-30 cursor-default"
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                      transition={{ duration: 0.16 }}
+                      className="absolute right-0 top-12 z-40 w-56 overflow-hidden rounded-xl2 border border-ink-line bg-[#16161B] shadow-card"
                     >
-                      <Settings2 className="h-4 w-4 text-text-muted" />
-                      Open your room
-                    </Link>
-                    {authMode === "local" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          resetDemo();
-                          setMenuOpen(false);
-                          toast.success("Demo thread reset");
-                        }}
-                        className="flex w-full items-center gap-2.5 border-t border-ink-line px-4 py-3 text-left text-[13.5px] text-text hover:bg-white/[0.04]"
-                      >
-                        <RotateCcw className="h-4 w-4 text-text-muted" />
-                        Reset demo thread
-                      </button>
-                    )}
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
+                      <MenuLink href={`/app/room/${conversationId}`} icon={<Sparkles className="h-4 w-4" />}>
+                        Your room
+                      </MenuLink>
+                      {authMode === "local" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              router.push(`/app/call/${conversationId}?kind=voice&direction=incoming`);
+                            }}
+                            className="flex w-full items-center gap-2.5 border-t border-ink-line px-4 py-3 text-left text-[13.5px] text-text hover:bg-white/[0.04]"
+                          >
+                            <PhoneIncoming className="h-4 w-4 text-text-muted" />
+                            Simulate incoming call
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetDemo();
+                              setMenuOpen(false);
+                              toast.success("Demo thread reset");
+                            }}
+                            className="flex w-full items-center gap-2.5 border-t border-ink-line px-4 py-3 text-left text-[13.5px] text-text hover:bg-white/[0.04]"
+                          >
+                            <RotateCcw className="h-4 w-4 text-text-muted" />
+                            Reset demo thread
+                          </button>
+                        </>
+                      )}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
-        {/* presence ribbon: only alive while you're both here */}
         <div className="relative mx-auto h-px w-full max-w-md overflow-hidden">
           <motion.div
             className="h-px w-full bg-gradient-to-r from-transparent via-rose to-transparent"
@@ -217,23 +299,44 @@ function ThreadScreen() {
               {group.items.map((message, i) => {
                 const prev = group.items[i - 1];
                 const next = group.items[i + 1];
+                const showDivider = dividerId === message.id;
+
                 if (message.kind === "presence") {
-                  return <PresenceMoment key={message.id} text={message.text} />;
+                  return (
+                    <div key={message.id}>
+                      {showDivider && <UnreadDivider />}
+                      <PresenceMoment text={message.text} />
+                    </div>
+                  );
+                }
+                if (message.kind === "call") {
+                  return (
+                    <div key={message.id}>
+                      {showDivider && <UnreadDivider />}
+                      <CallMoment message={message} />
+                    </div>
+                  );
                 }
                 return (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    grouped={isGrouped(prev, message)}
-                    tail={!next || !isGrouped(message, next)}
-                  />
+                  <div key={message.id}>
+                    {showDivider && <UnreadDivider />}
+                    <MessageBubble
+                      message={message}
+                      grouped={isGrouped(prev, message)}
+                      tail={!next || !isGrouped(message, next)}
+                      onLongPress={setActiveMessage}
+                      onReact={(m, emoji) => react(m.id, emoji, "me")}
+                      showReceipts={prefs.readReceipts}
+                      onOpenImage={setViewerUrl}
+                    />
+                  </div>
                 );
               })}
             </section>
           ))}
 
           <AnimatePresence>
-            {partner === "typing" && <TypingBubble name={partnerName} />}
+            {partner === "typing" && prefs.typingIndicator && <TypingBubble name={partnerName} />}
           </AnimatePresence>
 
           <div ref={bottom} className="h-1" />
@@ -242,11 +345,21 @@ function ThreadScreen() {
 
       <div className="relative z-10 mx-auto w-full max-w-md">
         <Composer
-          onSend={send}
+          onSend={(text) => {
+            send(text, replyTo ? { replyTo } : {});
+            setReplyTo(null);
+          }}
           onPulse={handlePulse}
+          onAttach={() => setAttachOpen(true)}
           pulseCoolingUntil={pulses.coolingUntil}
           pulseDisabled={!prefs.allowPulses}
           placeholder={`Message ${partnerName}`}
+          replyTo={
+            replyTo
+              ? { author: replyTo.author === "me" ? "You" : partnerName, text: replyTo.text }
+              : null
+          }
+          onCancelReply={() => setReplyTo(null)}
           hint={
             awayLabel ? (
               <span className="flex items-center gap-1.5">
@@ -257,7 +370,83 @@ function ThreadScreen() {
           }
         />
       </div>
+
+      <MessageActions
+        message={activeMessage}
+        onClose={() => setActiveMessage(null)}
+        onReply={(m) => setReplyTo({ id: m.id, author: m.author, text: previewFor(m) })}
+        onReact={(m, emoji) => react(m.id, emoji, "me")}
+        onDelete={(m) => remove(m.id)}
+      />
+
+      <AttachmentSheet
+        open={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        onPhoto={(image) =>
+          send(`Photo · ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false })}`, {
+            kind: "image",
+            media: { url: image.dataUrl, width: image.width, height: image.height },
+          })
+        }
+        onVoice={(audio) =>
+          send("Voice note", { kind: "audio", media: { url: audio.dataUrl, durationMs: audio.durationMs } })
+        }
+      />
+
+      <AnimatePresence>
+        {viewerUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 p-4"
+          >
+            <button
+              type="button"
+              onClick={() => setViewerUrl(null)}
+              aria-label="Close photo"
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={viewerUrl} alt="Shared photo" className="max-h-full max-w-full rounded-xl object-contain" />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
+  );
+}
+
+function MenuLink({
+  href,
+  icon,
+  children,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-2.5 px-4 py-3 text-[13.5px] text-text hover:bg-white/[0.04]"
+    >
+      <span className="text-text-muted">{icon}</span>
+      {children}
+    </Link>
+  );
+}
+
+function UnreadDivider() {
+  return (
+    <div className="my-3 flex items-center gap-3" role="separator" aria-label="New messages">
+      <span className="h-px flex-1 bg-rose/25" />
+      <span className="rounded-full bg-rose/12 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-rose">
+        New
+      </span>
+      <span className="h-px flex-1 bg-rose/25" />
+    </div>
   );
 }
 

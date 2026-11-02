@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, ChevronLeft, Lock, LogOut, ShieldCheck, Users } from "lucide-react";
+import { Check, ChevronLeft, Lock, LogOut, MessageSquare as ChatBubble, ShieldCheck, Users } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { BrandBlob } from "@/components/brand-blob";
@@ -224,6 +224,41 @@ function SettingsContent() {
               description="The little “thinking of you” that isn't a message. Turn off to stop them entirely."
               checked={prefs.allowPulses}
               onChange={(v) => setPref("allowPulses", v)}
+            />
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-xl2 border border-ink-line bg-ink-surface/70 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose/15 text-rose">
+              <ChatBubble className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-[13.5px] font-medium">Chats &amp; privacy</p>
+              <p className="text-[11.5px] text-text-muted">What the other person gets to see.</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Switch
+              label="Read receipts"
+              description="Turn off and you won't see theirs either — it works both ways."
+              checked={prefs.readReceipts}
+              onChange={(v) => setPref("readReceipts", v)}
+            />
+            <div className="h-px bg-white/[0.05]" />
+            <Switch
+              label="Typing indicator"
+              description="Show “typing…” while you write. Off means off for both of you."
+              checked={prefs.typingIndicator}
+              onChange={(v) => setPref("typingIndicator", v)}
+            />
+            <div className="h-px bg-white/[0.05]" />
+            <Switch
+              label="Haptics"
+              description="A small buzz when a pulse or call arrives."
+              checked={prefs.haptics}
+              onChange={(v) => setPref("haptics", v)}
             />
           </div>
         </section>

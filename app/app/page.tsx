@@ -7,11 +7,13 @@ import { Lock, Search, SquarePen, X } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { BrandBlob } from "@/components/brand-blob";
 import { Avatar } from "@/components/avatar";
+import { ChatActions } from "@/components/home/chat-actions";
 import { ConversationRow } from "@/components/home/conversation-row";
 import { NewChatSheet } from "@/components/home/new-chat-sheet";
 import { RoomCard } from "@/components/home/room-card";
 import { Button } from "@/components/ui/button";
 import { authMode } from "@/lib/auth";
+import { useChatMeta } from "@/lib/conversation-meta";
 import { demoConversations, greetingFor, type Conversation } from "@/lib/chat";
 import { useSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -26,15 +28,28 @@ function HomeScreen() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [actionsFor, setActionsFor] = useState<Conversation | null>(null);
+  const metaMap = useChatMeta();
 
-  const unreadCount = useMemo(
-    () => conversations.reduce((sum, c) => sum + c.unread, 0),
-    [conversations]
+  // Chat-level state (pin / mute / read / deleted) is layered over the seed data.
+  const chats = useMemo(
+    () =>
+      conversations
+        .filter((c) => !metaMap[c.id]?.deleted)
+        .map((c) => ({
+          ...c,
+          pinned: metaMap[c.id]?.pinned ?? c.pinned,
+          muted: metaMap[c.id]?.muted ?? c.muted,
+          unread: metaMap[c.id]?.unread ?? c.unread,
+        })),
+    [conversations, metaMap]
   );
+
+  const unreadCount = useMemo(() => chats.reduce((sum, c) => sum + c.unread, 0), [chats]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return conversations
+    return chats
       .filter((c) => (filter === "unread" ? c.unread > 0 : true))
       .filter(
         (c) =>
@@ -44,7 +59,7 @@ function HomeScreen() {
           c.lastMessage.toLowerCase().includes(q)
       )
       .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.lastAt - a.lastAt);
-  }, [conversations, filter, query]);
+  }, [chats, filter, query]);
 
   return (
     <main className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink">
@@ -82,7 +97,7 @@ function HomeScreen() {
           </Link>
         </header>
 
-        {conversations[0] && <RoomCard conversation={conversations[0]} />}
+        {chats[0] && <RoomCard conversation={chats[0]} />}
 
         {/* Search */}
         <div className="relative">
@@ -115,7 +130,7 @@ function HomeScreen() {
         <div className="mt-4 flex items-center gap-2">
           {(
             [
-              { id: "all", label: "All", count: conversations.length },
+              { id: "all", label: "All", count: chats.length },
               { id: "unread", label: "Unread", count: unreadCount },
             ] as const
           ).map((tab) => {
@@ -169,7 +184,11 @@ function HomeScreen() {
                     show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: EASE } },
                   }}
                 >
-                  <ConversationRow conversation={conversation} />
+                  <ConversationRow
+                    conversation={conversation}
+                    meta={metaMap[conversation.id]}
+                    onLongPress={setActionsFor}
+                  />
                 </motion.li>
               ))}
             </motion.ul>
@@ -215,6 +234,12 @@ function HomeScreen() {
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         username={account?.username}
+      />
+
+      <ChatActions
+        conversation={actionsFor}
+        meta={actionsFor ? metaMap[actionsFor.id] : undefined}
+        onClose={() => setActionsFor(null)}
       />
     </main>
   );

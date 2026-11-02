@@ -9,10 +9,23 @@ export type Prefs = {
   allowPulses: boolean;
   /** leave a warm glow in the room while you're away */
   lampOn: boolean;
+  /** share the blue ticks — turn off and you also stop seeing theirs */
+  readReceipts: boolean;
+  /** show "typing…" in both directions */
+  typingIndicator: boolean;
+  /** vibration/haptic feedback on incoming pulses and calls */
+  haptics: boolean;
 };
 
 const KEY = "dolemon:prefs";
-const DEFAULT: Prefs = { showPresence: true, allowPulses: true, lampOn: false };
+const DEFAULT: Prefs = {
+  showPresence: true,
+  allowPulses: true,
+  lampOn: false,
+  readReceipts: true,
+  typingIndicator: true,
+  haptics: true,
+};
 
 let cache: Prefs = DEFAULT;
 let loaded = false;
@@ -38,7 +51,9 @@ function snapshot(): Prefs {
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
@@ -53,4 +68,13 @@ export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
 
 export function usePrefs(): Prefs {
   return useSyncExternalStore(subscribe, snapshot, () => DEFAULT);
+}
+
+export function buzz(ms = 12) {
+  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    /* ignore */
+  }
 }

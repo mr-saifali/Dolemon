@@ -75,6 +75,39 @@ within a minute, that *does* get remembered as a presence moment.
 `/settings` → Presence: *Show when I'm here* (invisible mode) and *Allow pulses*. Both are
 respected everywhere — the header reads "You're invisible" when you switch yourself off.
 
+## Calls (`/app/call/[id]`)
+
+Voice and video call UI with the full state machine: `dialing → ringing → connected → ended`,
+plus an incoming variant with accept/decline, missed-call handling, a live timer, mute,
+speaker, camera on/off, camera flip, wake-lock, and a call entry written back into the thread
+(`Voice call · 4m 12s` / `Missed voice call`). Demo mode simulates the media; the WebRTC
+wiring checklist is in `docs/supabase.md` §6.
+
+Start one from the phone/video icons in a chat header, or from the chat menu →
+*Simulate incoming call*.
+
+## Everything else a messenger needs
+
+- **Message actions** — long-press any bubble: react (❤️ 😌 😂 🥺 🔥 👍), reply with quote,
+  copy, delete for me.
+- **Attachments** — photos (downscaled to fit device storage) with a full-screen viewer, and
+  voice notes recorded with MediaRecorder up to 60s with a live waveform.
+- **Unread divider** — a "New" line marks where you left off, backed by per-chat read state.
+- **Chat management** — long-press a row on home to pin, mute, mark read, or delete a chat.
+- **Privacy controls** — read receipts, typing indicator and haptics, each working in both
+  directions (Settings → Chats & privacy).
+
+## Not built yet (deliberately)
+
+| Gap | Why |
+| --- | --- |
+| End-to-end encryption | Needs a server-side key exchange; the app-lock is a UI gate, not encryption |
+| Push notifications | Requires Web Push + service worker + a backend sender |
+| Real media storage | Photos/voice notes live on-device until Supabase Storage is wired |
+| Multi-device sync | Single-device local state today |
+| Block / report, backups | Server-authoritative features that follow the backend |
+| Message editing, in-chat search | Next polish pass once data is real |
+
 ## Stack
 
 Next.js 14 App Router · TypeScript · Tailwind · shadcn-style components (Radix + cva) ·

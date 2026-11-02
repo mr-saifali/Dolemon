@@ -2,24 +2,30 @@
 
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Paperclip, X } from "lucide-react";
 import { PulseButton } from "./pulse-button";
 import { cn } from "@/lib/utils";
 
 export function Composer({
   onSend,
   onPulse,
+  onAttach,
   pulseCoolingUntil = 0,
   pulseDisabled,
   placeholder = "Message",
   hint,
+  replyTo,
+  onCancelReply,
 }: {
   onSend: (text: string) => void;
   onPulse: () => void;
+  onAttach?: () => void;
   pulseCoolingUntil?: number;
   pulseDisabled?: boolean;
   placeholder?: string;
   hint?: React.ReactNode;
+  replyTo?: { author: string; text: string } | null;
+  onCancelReply?: () => void;
 }) {
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
@@ -49,13 +55,41 @@ export function Composer({
     <div className="border-t border-white/[0.05] bg-ink/85 px-4 pb-3 pt-2.5 backdrop-blur-xl safe-b">
       {hint && <div className="mb-2 px-1 text-[11.5px] text-text-muted/70">{hint}</div>}
 
+      {replyTo && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-ink-line bg-ink-surface/80 px-3 py-2">
+          <div className="h-6 w-0.5 rounded-full bg-rose" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] uppercase tracking-[0.12em] text-rose/80">Replying to {replyTo.author}</p>
+            <p className="truncate text-[12px] text-text-muted">{replyTo.text || "attachment"}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            aria-label="Cancel reply"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-text-muted hover:bg-white/[0.06] hover:text-text"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       <div
         className={cn(
-          "flex items-end gap-2 rounded-[26px] border bg-ink-surface/90 p-1.5 pl-4 transition-all duration-200",
+          "flex items-end gap-1.5 rounded-[26px] border bg-ink-surface/90 p-1.5 pl-2 transition-all duration-200",
           focused ? "border-rose/40 shadow-[0_0_0_4px_rgba(255,92,122,0.07)]" : "border-ink-line"
         )}
       >
-        <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
+        {onAttach && (
+          <motion.button
+            type="button"
+            onClick={onAttach}
+            aria-label="Attach"
+            whileTap={{ scale: 0.9 }}
+            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-white/[0.05] hover:text-text"
+          >
+            <Paperclip className="h-[18px] w-[18px]" />
+          </motion.button>
+        )}
 
         <textarea
           ref={area}
@@ -76,6 +110,8 @@ export function Composer({
           }}
           className="max-h-[120px] min-h-[36px] flex-1 resize-none bg-transparent py-2 text-[15px] leading-snug text-text placeholder:text-text-muted/70"
         />
+
+        <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
 
         <motion.button
           type="button"

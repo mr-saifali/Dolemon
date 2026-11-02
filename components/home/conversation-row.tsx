@@ -1,19 +1,51 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { BellOff, Pin } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { formatChatTime } from "@/lib/chat";
 import type { Conversation } from "@/lib/chat";
+import type { ChatMeta } from "@/lib/conversation-meta";
 import { cn } from "@/lib/utils";
 
-export function ConversationRow({ conversation }: { conversation: Conversation }) {
-  const { unread, typing, muted, outgoing, pinned } = conversation;
+export function ConversationRow({
+  conversation,
+  meta,
+  onLongPress,
+}: {
+  conversation: Conversation;
+  meta?: ChatMeta;
+  onLongPress?: (conversation: Conversation) => void;
+}) {
+  const unread = meta?.unread ?? conversation.unread;
+  const pinned = meta?.pinned ?? conversation.pinned;
+  const muted = meta?.muted ?? conversation.muted;
+  const typing = conversation.typing;
+  const outgoing = conversation.outgoing;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unreadLabel = unread > 9 ? "9+" : String(unread);
+
+  const cancel = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => cancel, []);
 
   return (
     <Link
       href={`/app/chat/${conversation.id}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onLongPress?.(conversation);
+      }}
+      onPointerDown={() => {
+        cancel();
+        timer.current = setTimeout(() => onLongPress?.(conversation), 420);
+      }}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
       className="group relative flex items-center gap-3 rounded-2xl px-2.5 py-3 transition-colors duration-150 hover:bg-white/[0.035] active:bg-white/[0.06]"
     >
       <Avatar
@@ -32,12 +64,8 @@ export function ConversationRow({ conversation }: { conversation: Conversation }
           >
             {conversation.name}
           </p>
-          {pinned && (
-            <Pin className="h-3 w-3 shrink-0 rotate-45 text-text-muted/60" aria-label="Pinned" />
-          )}
-          {muted && (
-            <BellOff className="h-3 w-3 shrink-0 text-text-muted/60" aria-label="Muted" />
-          )}
+          {pinned && <Pin className="h-3 w-3 shrink-0 rotate-45 text-text-muted/60" aria-label="Pinned" />}
+          {muted && <BellOff className="h-3 w-3 shrink-0 text-text-muted/60" aria-label="Muted" />}
           <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-text-muted/80">
             {formatChatTime(conversation.lastAt)}
           </span>
@@ -47,9 +75,7 @@ export function ConversationRow({ conversation }: { conversation: Conversation }
           <p
             className={cn(
               "truncate text-[13px] leading-tight",
-              typing
-                ? "font-medium italic text-rose/90"
-                : "text-text-muted",
+              typing ? "font-medium italic text-rose/90" : "text-text-muted",
               unread > 0 && !typing && "text-text/70"
             )}
           >
@@ -64,7 +90,12 @@ export function ConversationRow({ conversation }: { conversation: Conversation }
           </p>
 
           {unread > 0 && (
-            <span className="ml-auto flex h-[19px] min-w-[19px] shrink-0 items-center justify-center rounded-full bg-rose px-1.5 text-[11px] font-semibold leading-none text-[#1A0A0F]">
+            <span
+              className={cn(
+                "ml-auto flex h-[19px] min-w-[19px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none",
+                muted ? "bg-white/15 text-text" : "bg-rose text-[#1A0A0F]"
+              )}
+            >
               {unreadLabel}
             </span>
           )}

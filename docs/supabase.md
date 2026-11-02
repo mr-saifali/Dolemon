@@ -150,3 +150,49 @@ create policy "own presence settings" on public.presence_settings
 
 The client already reads these through one hook (`usePrefs`), so swapping localStorage for
 a row is a single-file change.
+
+## 6. Voice & video calls
+
+The call UI is finished; the media layer is the only part that needs a backend. `lib/calls.ts`
+already models the phases a real session goes through, so wiring WebRTC means replacing two
+functions:
+
+1. **`dial()`** → create an `RTCPeerConnection`, add local tracks, send an **offer** over a
+   Supabase Realtime broadcast channel, and apply the **answer** when it arrives.
+2. **`end()`** → close the peer connection, stop every local track, and write the call event
+   (already done via `appendCallEvent`).
+
+```ts
+const channel = supabase.channel(`call:${conversationId}`, { config: { broadcast: { self: false } } });
+
+channel
+  .on("broadcast", { event: "offer" },  async ({ payload }) => {
+    await pc.setRemoteDescription(payload.sdp);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    channel.send({ type: "broadcast", event: "answer", payload: { sdp: answer } });
+  })
+  .on("broadcast", { event: "answer" }, ({ payload }) => pc.setRemoteDescription(payload.sdp))
+  .on("broadcast", { event: "ice" },    ({ payload }) => pc.addIceCandidate(payload.candidate))
+  .subscribe();
+
+pc.onicecandidate = ({ candidate }) =>
+  candidate && channel.send({ type: "broadcast", event: "ice", payload: { candidate } });
+```
+
+Wiring checklist:
+
+- [ ] **TURN server.** STUN alone fails on Indian mobile carriers behind symmetric NAT.
+      Budget for a TURN service (Twilio, Metered, or self-hosted coturn) or calls will connect
+      on Wi-Fi and silently fail on 4G.
+- [ ] **Incoming calls while the app is closed** need Web Push + a service worker, then
+      `ringing` state on open. Realtime channels only reach open tabs.
+- [ ] **Permissions**: microphone for voice, camera + microphone for video, with the explicit
+      "they can see me" confirmation the current UI already implies.
+- [ ] **Call rows** in `presence_moments`-style storage: `calls(id, conversation_id, type,
+      started_at, ended_at, ended_by)` so missed calls survive a refresh.
+- [ ] **Ring timeout**: 30s, then write a missed-call event — matches the current demo timing.
+
+Until that's connected the call screen runs a simulated session (labelled "Simulated call ·
+media not connected") so the whole flow — ring, accept, mute, camera flip, timer, end, timeline
+entry, missed call — can be reviewed and edited.

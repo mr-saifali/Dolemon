@@ -99,7 +99,7 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18 }}
-            className="absolute inset-x-0 top-full mt-2 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0D0D10]/95 backdrop-blur-xl"
+            className="absolute inset-x-0 top-full mt-2 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0D0D10] shadow-[0_24px_60px_-30px_rgba(0,0,0,0.95)]"
           >
             {loading && people.length === 0 && (
               <p className="px-4 py-4 text-[12.5px] text-zinc-500">Looking…</p>
@@ -125,7 +125,7 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
                 }}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04] active:bg-white/[0.06]"
               >
-                <ChatAvatar avatarId={person.avatarId} name={person.username} size={38} />
+                <ChatAvatar avatarId={person.avatarId} avatarUrl={person.avatarUrl} name={person.username} size={38} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14.5px] font-medium text-zinc-100">
                     @{person.username}

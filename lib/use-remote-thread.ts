@@ -253,6 +253,7 @@ export function useRemoteThread(conversationId: string, enabled = true) {
     online,
     partnerName: partner?.partnerUsername ?? null,
     partnerAvatar: partner?.partnerAvatar ?? null,
+    partnerAvatarUrl: partner?.partnerAvatarUrl ?? null,
     partnerLastAt: partner?.lastAt ?? null,
     partnerLastSeenAt: partner?.partnerLastSeen ?? null,
     send,

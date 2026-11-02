@@ -22,6 +22,7 @@ type StoredUser = {
   salt: string;
   username: string | null;
   avatarId: string | null;
+  avatarUrl?: string | null;
   appLock?: { hash: string; salt: string } | null;
   createdAt: number;
 };
@@ -77,6 +78,7 @@ function toAccount(u: StoredUser): Account {
     email: u.email,
     username: u.username,
     avatarId: u.avatarId,
+    avatarUrl: u.avatarUrl ?? null,
     profileComplete: Boolean(u.username),
     hasAppLock: Boolean(u.appLock),
   };
@@ -230,6 +232,15 @@ export const localProvider: AuthProvider = {
     if (taken) throw new AuthFailure("USERNAME_TAKEN");
 
     all[me.email] = { ...me, username: value, avatarId };
+    saveUsers(all);
+    return toAccount(all[me.email]);
+  },
+
+  async setAvatar(url) {
+    await sleep(180);
+    const me = requireUser();
+    const all = users();
+    all[me.email] = { ...me, avatarUrl: url };
     saveUsers(all);
     return toAccount(all[me.email]);
   },

@@ -75,7 +75,7 @@ function RoomScreen() {
         animate={{ opacity: together ? 1 : 0.25 }}
         transition={{ duration: 0.9 }}
       >
-        <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.28),transparent_66%)] blur-2xl" />
+        <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.28),transparent_66%)]" />
       </motion.div>
 
       <div className="relative z-10 mx-auto w-full max-w-md px-6 pb-16 safe-t">

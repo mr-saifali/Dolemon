@@ -12,6 +12,7 @@ import { ChatAvatar } from "@/components/home/chat-row";
 export function ChatHeader({
   name,
   avatarId,
+  avatarUrl,
   online,
   status,
   typing,
@@ -21,6 +22,7 @@ export function ChatHeader({
 }: {
   name: string;
   avatarId: string | null;
+  avatarUrl?: string | null;
   online: boolean;
   /** e.g. "last seen 2m ago" */
   status: string;
@@ -34,7 +36,7 @@ export function ChatHeader({
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
   return (
-    <header className="sticky top-0 z-30 bg-black/50 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-white/[0.05] bg-[#09090B]/95 shadow-[0_1px_0_rgba(255,92,122,0.06)]">
       <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-1 px-2">
         <Link
           href="/app"
@@ -45,7 +47,7 @@ export function ChatHeader({
         </Link>
 
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <ChatAvatar avatarId={avatarId} name={name} size={40} online={online} />
+          <ChatAvatar avatarId={avatarId} avatarUrl={avatarUrl} name={name} size={40} online={online} />
           <div className="min-w-0 leading-tight">
             <h1 className="truncate text-[15px] font-medium tracking-[-0.01em] text-zinc-100">{name}</h1>
             <p
@@ -58,31 +60,31 @@ export function ChatHeader({
         </div>
 
         {onCall && (
-          <>
+          <div className="ml-0.5 flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => onCall("voice")}
               aria-label="Voice call"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+              className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#FF5C7A]/22 bg-[#FF5C7A]/[0.12] text-[#FF8FA3]"
             >
-              <Phone className="h-[18px] w-[18px]" strokeWidth={1.8} />
+              <Phone className="h-[17px] w-[17px]" strokeWidth={1.9} />
             </button>
             <button
               type="button"
               onClick={() => onCall("video")}
               aria-label="Video call"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+              className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#A78BFA]/25 bg-[#A78BFA]/[0.12] text-[#C4B5FD]"
             >
-              <Video className="h-[18px] w-[18px]" strokeWidth={1.8} />
+              <Video className="h-[17px] w-[17px]" strokeWidth={1.9} />
             </button>
-          </>
+          </div>
         )}
 
         <button
           type="button"
           onClick={onMenu}
           aria-label="Chat options"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+          className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
         >
           <MoreHorizontal className="h-5 w-5" />
         </button>
@@ -124,7 +126,7 @@ export function ChatMenuSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/60"
           />
           <motion.div
             role="dialog"

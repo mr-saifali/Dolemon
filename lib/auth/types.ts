@@ -3,6 +3,8 @@ export type Account = {
   email: string;
   username: string | null;
   avatarId: string | null;
+  /** uploaded photo (Supabase Storage URL), when the person has one */
+  avatarUrl: string | null;
   /** true once the user has a username — mid-onboarding otherwise. */
   profileComplete: boolean;
   /** true when an app-lock password exists for this account. */
@@ -72,6 +74,8 @@ export interface AuthProvider {
   signOut(): Promise<void>;
   isUsernameAvailable(username: string): Promise<boolean>;
   saveProfile(input: { username: string; avatarId: string | null }): Promise<Account>;
+  /** uploaded profile photo — null removes it */
+  setAvatar(url: string | null): Promise<Account>;
   updateUsername(username: string): Promise<Account>;
   setAppLock(password: string | null): Promise<void>;
   verifyAppLock(password: string): Promise<boolean>;

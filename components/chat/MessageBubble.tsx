@@ -24,6 +24,8 @@ export function MessageBubble({
   onRemoveMyReaction,
   onRetry,
   onOpenImage,
+  onSwipeReply,
+  animateIn = true,
 }: {
   message: ChatMessage;
   /** same sender, inside the burst window → tighter gap */
@@ -37,6 +39,10 @@ export function MessageBubble({
   onRemoveMyReaction: (message: ChatMessage) => void;
   onRetry: (message: ChatMessage) => void;
   onOpenImage?: (url: string) => void;
+  /** swiping a bubble to the right quotes it */
+  onSwipeReply?: (message: ChatMessage) => void;
+  /** false for messages that were already on screen at mount — they must not animate in */
+  animateIn?: boolean;
 }) {
   const mine = message.author === "me";
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -45,6 +51,7 @@ export function MessageBubble({
   const lastTap = useRef(0);
 
   const [burst, setBurst] = useState(0);
+  const [swipe, setSwipe] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [tooltip, setTooltip] = useState<string | null>(null);
 
@@ -97,10 +104,12 @@ export function MessageBubble({
 
   // A sticker is a message with no words at all.
   if (message.kind === "sticker" && message.sticker) {
+    const enter = animateIn === false ? false : { opacity: 0, y: 10, x: mine ? 10 : -10, scale: 0.9 };
+
     return (
       <motion.div
-        initial={{ opacity: 0, y: 8, scale: 0.9 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
+        initial={enter}
+        animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
         transition={SPRING}
         className={cn("flex w-full", mine ? "justify-end" : "justify-start", grouped ? "mt-1.5" : "mt-3.5")}
       >
@@ -114,9 +123,9 @@ export function MessageBubble({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.99 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      initial={animateIn === false ? false : { opacity: 0, y: 10, x: mine ? 10 : -10, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.7 }}
       className={cn(
         "flex w-full select-none",
         mine ? "justify-end" : "justify-start",
@@ -127,7 +136,39 @@ export function MessageBubble({
         className={cn("relative flex max-w-[78%] flex-col", mine ? "items-end" : "items-start")}
         style={{ marginBottom: chips.length > 0 ? 8 : 0 }}
       >
-        <div ref={wrap} className="relative">
+        {onSwipeReply && (
+          <motion.span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute top-1/2 -translate-y-1/2 text-zinc-500",
+              mine ? "right-full mr-2" : "left-full ml-2"
+            )}
+            animate={{ opacity: Math.min(1, swipe / 50), scale: 0.8 + Math.min(0.2, swipe / 300) }}
+            transition={{ duration: 0.1 }}
+          >
+            <CornerUpLeft className="h-4 w-4" />
+          </motion.span>
+        )}
+
+        <motion.div
+          ref={wrap}
+          drag={onSwipeReply ? "x" : false}
+          dragDirectionLock
+          dragConstraints={{ left: 0, right: 92 }}
+          dragElastic={0.14}
+          dragSnapToOrigin
+          onDragStart={() => clearTimer()}
+          onDrag={(_, info) => setSwipe(Math.max(0, info.offset.x))}
+          onDragEnd={(_, info) => {
+            setSwipe(0);
+            if (info.offset.x > 54) {
+              buzz(12);
+              onSwipeReply?.(message);
+            }
+          }}
+          style={{ touchAction: "pan-y" }}
+          className="relative"
+        >
           <div
             role="button"
             tabIndex={0}
@@ -153,8 +194,8 @@ export function MessageBubble({
               message.kind === "image" || message.kind === "audio" ? "p-1.5" : "px-4 py-2.5",
               "rounded-[24px]",
               mine
-                ? "rounded-br-[4px] bg-[linear-gradient(135deg,#FF5C7A,#FF8FA3)] text-white shadow-[0_4px_12px_rgba(255,92,122,0.2)]"
-                : "rounded-bl-[4px] bg-[#1C1C1E] text-zinc-100"
+                ? "rounded-br-[4px] bg-[linear-gradient(135deg,#FF5C7A_0%,#FF7E8F_52%,#FF9D7E_100%)] text-white shadow-[0_6px_20px_-8px_rgba(255,92,122,0.65)]"
+                : "rounded-bl-[4px] border border-white/[0.055] bg-[#1C1C1E] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
             )}
           >
             {message.replyTo && (
@@ -238,7 +279,7 @@ export function MessageBubble({
               <RotateCw className="h-3.5 w-3.5" />
             </button>
           )}
-        </div>
+        </motion.div>
 
         {chips.length > 0 && (
           <div

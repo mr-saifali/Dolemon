@@ -1,6 +1,10 @@
-# Dolemon
+# Dolemon · v0.1
 
 A private, invite-only space for **one-to-one** conversations. No groups, no noise.
+
+Installable: open [dolemon.vercel.app/download](https://dolemon.vercel.app/download) →
+**Install the app**. It lands on the home screen and runs full screen, no app store
+involved. Release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
 Mobile-first (designed at 390px) and centred `max-w-md` on desktop.
 

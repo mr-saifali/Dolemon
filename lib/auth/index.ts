@@ -68,6 +68,7 @@ export const auth: AuthProvider = {
   isUsernameAvailable: (username) => active().isUsernameAvailable(username),
   saveProfile: (input) => active().saveProfile(input),
   updateUsername: (username) => active().updateUsername(username),
+  setAvatar: (url) => active().setAvatar(url),
   setAppLock: (password) => active().setAppLock(password),
   verifyAppLock: (password) => active().verifyAppLock(password),
   hasAppLock: () => active().hasAppLock(),

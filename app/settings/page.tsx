@@ -2,9 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, ChevronLeft, Lock } from "lucide-react";
+import {
+  Camera,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  Download,
+  Eye,
+  Loader2,
+  Lock,
+  MessageSquareDashed,
+  Radio,
+  Sparkles,
+  Vibrate,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { Button } from "@/components/ui/button";
@@ -14,18 +27,49 @@ import { FieldError } from "@/components/ui/field-error";
 import { auth } from "@/lib/auth";
 import { markUnlocked } from "@/lib/app-lock";
 import { AVATAR_PRESETS, avatarById } from "@/lib/avatars";
+import { uploadAvatarImage } from "@/lib/db";
+import { compressImage } from "@/lib/media";
 import { passwordStrength } from "@/lib/password";
 import { useSession } from "@/lib/session";
 import { setPref, usePrefs } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
+
+const TILES: Record<string, string> = {
+  rose: "linear-gradient(150deg,#FF5C7A,#FF8FA3)",
+  peach: "linear-gradient(150deg,#FF9E6B,#FFC08A)",
+  violet: "linear-gradient(150deg,#8B7BFF,#B9A7FF)",
+  mint: "linear-gradient(150deg,#2FD3B4,#7FF0D6)",
+  sky: "linear-gradient(150deg,#4AA8F0,#8FD3FF)",
+  amber: "linear-gradient(150deg,#F5B94C,#FFE08A)",
+};
+
+function Tile({
+  children,
+  tone = "rose",
+}: {
+  children: React.ReactNode;
+  tone?: keyof typeof TILES;
+}) {
+  return (
+    <span
+      className="mt-[1px] flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] text-white shadow-[0_5px_14px_-6px_rgba(0,0,0,0.9)]"
+      style={{ backgroundImage: TILES[tone] }}
+      aria-hidden
+    >
+      {children}
+    </span>
+  );
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-7">
-      <h2 className="mb-1 px-1 text-[10.5px] font-medium uppercase tracking-[0.16em] text-zinc-600">
+      <h2 className="mb-1 flex items-center gap-2 px-1 text-[10.5px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+        <span className="h-1 w-1 rounded-full bg-[linear-gradient(135deg,#FF5C7A,#A78BFA)]" />
         {title}
       </h2>
-      <div className="divide-y divide-white/[0.05]">{children}</div>
+      <div className="divide-y divide-white/[0.055]">{children}</div>
     </section>
   );
 }
@@ -38,6 +82,8 @@ function SettingsContent() {
   const [lockError, setLockError] = useState<string | null>(null);
   const [savingLock, setSavingLock] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInput = useRef<HTMLInputElement | null>(null);
   const prefs = usePrefs();
 
   const avatar = avatarById(account?.avatarId);
@@ -53,6 +99,37 @@ function SettingsContent() {
       toast.error("Couldn't update your avatar.");
     } finally {
       setSavingAvatar(false);
+    }
+  };
+
+  const pickPhoto = () => photoInput.current?.click();
+
+  const uploadPhoto = async (file: File) => {
+    setUploadingPhoto(true);
+    try {
+      const { dataUrl } = await compressImage(file, 720, 0.82);
+      const url = await uploadAvatarImage(dataUrl);
+      await auth.setAvatar(url);
+      await refresh();
+      toast.success("Photo updated");
+    } catch {
+      toast.error("Couldn't upload that photo. Try a smaller one?");
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInput.current) photoInput.current.value = "";
+    }
+  };
+
+  const removePhoto = async () => {
+    setUploadingPhoto(true);
+    try {
+      await auth.setAvatar(null);
+      await refresh();
+      toast.success("Photo removed");
+    } catch {
+      toast.error("Couldn't remove that.");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -95,7 +172,7 @@ function SettingsContent() {
     <main className="relative isolate min-h-dvh overflow-hidden bg-[#09090B]">
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-28 -top-32 h-[360px] w-[360px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.12),transparent_70%)] blur-3xl"
+        className="pointer-events-none absolute -right-28 -top-32 h-[360px] w-[360px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.12),transparent_70%)]"
       />
 
       <div className="relative z-10 mx-auto w-full max-w-md px-6 pb-20 safe-t">
@@ -112,26 +189,86 @@ function SettingsContent() {
 
         {/* profile */}
         <div className="mt-3 flex items-center gap-4">
-          <span
-            className="flex h-14 w-14 items-center justify-center rounded-2xl text-2xl"
+          <button
+            type="button"
+            onClick={pickPhoto}
+            aria-label="Change profile photo"
+            className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[24px] transition-transform active:scale-95"
             style={{
               background: avatar
                 ? `radial-gradient(120% 120% at 20% 0%, ${avatar.bg} 0%, rgba(24,24,27,1) 100%)`
-                : "rgba(255,92,122,0.12)",
-              boxShadow: `inset 0 0 0 1px ${(avatar?.ring ?? "#FF5C7A")}22`,
+                : "radial-gradient(120% 120% at 20% 0%, rgba(255,92,122,0.22) 0%, rgba(24,24,27,1) 100%)",
+              boxShadow: `inset 0 0 0 1px ${(avatar?.ring ?? "#FF5C7A")}2a`,
             }}
           >
-            {avatar?.emoji ?? "🌙"}
-          </span>
-          <div className="min-w-0">
+            {account?.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={account.avatarUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <span className="text-[30px]">{avatar?.emoji ?? "🌙"}</span>
+            )}
+
+            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/55 py-1 text-[9.5px] font-medium tracking-wide text-white/90 backdrop-blur-sm">
+              <Camera className="h-2.5 w-2.5" /> photo
+            </span>
+
+            {uploadingPhoto && (
+              <span className="absolute inset-0 flex items-center justify-center bg-black/60">
+                <Loader2 className="h-5 w-5 animate-spin text-white" />
+              </span>
+            )}
+          </button>
+
+          <div className="min-w-0 flex-1">
             <p className="truncate text-[19px] font-light tracking-[-0.01em] text-zinc-100">
               @{account?.username ?? "you"}
             </p>
             <p className="truncate text-[12px] text-zinc-500">{account?.email}</p>
+            <div className="mt-1.5 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={pickPhoto}
+                disabled={uploadingPhoto}
+                className="text-[11.5px] text-[#FF8FA3] transition-opacity disabled:opacity-50"
+              >
+                {account?.avatarUrl ? "Change photo" : "Upload photo"}
+              </button>
+              {account?.avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => void removePhoto()}
+                  disabled={uploadingPhoto}
+                  className="text-[11.5px] text-zinc-500 transition-colors hover:text-zinc-300 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-8 gap-1.5">
+        <input
+          ref={photoInput}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void uploadPhoto(file);
+          }}
+        />
+
+        <p className="mt-7 px-1 text-[10.5px] font-medium uppercase tracking-[0.16em] text-zinc-600">
+          Or pick a mood
+        </p>
+
+        <div className="mt-2 grid grid-cols-8 gap-1.5">
           {AVATAR_PRESETS.map((preset) => {
             const selected = account?.avatarId === preset.id;
             return (
@@ -143,10 +280,15 @@ function SettingsContent() {
                 aria-pressed={selected}
                 aria-label={`Avatar ${preset.id}`}
                 className={cn(
-                  "relative flex h-9 items-center justify-center rounded-xl text-base transition-all active:scale-95",
-                  selected ? "ring-1 ring-rose/70" : "hover:bg-white/[0.04]"
+                  "press relative flex h-10 items-center justify-center rounded-[12px] text-[19px] active:scale-95",
+                  selected && "ring-[1.5px] ring-[#FF8FA3]/80"
                 )}
-                style={{ backgroundColor: selected ? preset.bg : "rgba(255,255,255,0.03)" }}
+                style={{
+                  backgroundColor: selected ? preset.bg : "rgba(255,255,255,0.035)",
+                  boxShadow: selected
+                    ? `0 6px 18px -8px ${preset.ring}`
+                    : `inset 0 0 0 1px ${preset.ring}1f`,
+                }}
               >
                 {preset.emoji}
                 {selected && (
@@ -167,11 +309,16 @@ function SettingsContent() {
               aria-expanded={lockOpen}
               className="flex w-full items-center justify-between gap-4 text-left"
             >
-              <div>
+              <div className="flex items-start gap-3">
+                <Tile tone="rose">
+                  <Lock className="h-[15px] w-[15px]" />
+                </Tile>
+                <div>
                 <p className="text-[14.5px] text-zinc-200">App lock</p>
                 <p className="mt-0.5 text-[12.5px] text-zinc-500">
                   {account?.hasAppLock ? "On — asked every time Dolemon opens." : "A second lock for your phone."}
                 </p>
+                </div>
               </div>
               <ChevronDown
                 className={cn(
@@ -236,6 +383,7 @@ function SettingsContent() {
 
           <div className="py-3.5">
             <Switch
+              icon={<Tile tone="sky"><Eye className="h-[15px] w-[15px]" /></Tile>}
               label="Read receipts"
               description="Let them know you've seen it."
               checked={prefs.readReceipts}
@@ -245,6 +393,7 @@ function SettingsContent() {
 
           <div className="py-3.5">
             <Switch
+              icon={<Tile tone="violet"><MessageSquareDashed className="h-[15px] w-[15px]" /></Tile>}
               label="Typing"
               description="Show the dots while you write."
               checked={prefs.typingIndicator}
@@ -256,6 +405,7 @@ function SettingsContent() {
         <Section title="Presence">
           <div className="py-3.5">
             <Switch
+              icon={<Tile tone="mint"><Radio className="h-[15px] w-[15px]" /></Tile>}
               label="Share presence"
               description="Off and the room reads you as away."
               checked={prefs.showPresence}
@@ -264,6 +414,7 @@ function SettingsContent() {
           </div>
           <div className="py-3.5">
             <Switch
+              icon={<Tile tone="rose"><Sparkles className="h-[15px] w-[15px]" /></Tile>}
               label="Pulses"
               description="Thinking of you, without a message."
               checked={prefs.allowPulses}
@@ -272,6 +423,7 @@ function SettingsContent() {
           </div>
           <div className="py-3.5">
             <Switch
+              icon={<Tile tone="amber"><Vibrate className="h-[15px] w-[15px]" /></Tile>}
               label="Haptics"
               description="A small buzz when they reach out."
               checked={prefs.haptics}
@@ -296,7 +448,21 @@ function SettingsContent() {
           Sign out
         </button>
 
-        <p className="mt-2 text-center text-[10.5px] text-zinc-700">Dolemon · v0.2</p>
+        <Link
+          href="/download"
+          className="press hairline mt-6 flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3.5 active:bg-white/[0.06]"
+        >
+          <span className="flex items-center gap-2.5">
+            <Download className="h-4 w-4 text-[#FF8FA3]" />
+            <span className="text-[13.5px] text-zinc-200">Install the app</span>
+          </span>
+          <span className="flex items-center gap-1 text-[11.5px] text-zinc-500">
+            v{APP_VERSION}
+            <ChevronLeft className="h-3.5 w-3.5 rotate-180" />
+          </span>
+        </Link>
+
+        <p className="mt-4 text-center text-[10.5px] text-zinc-700">Dolemon · v{APP_VERSION}</p>
       </div>
     </main>
   );

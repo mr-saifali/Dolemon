@@ -21,6 +21,7 @@ type ProfileRow = {
   id: string;
   username: string | null;
   avatar_id: string | null;
+  avatar_url?: string | null;
   app_lock_hash?: string | null;
   app_lock_salt?: string | null;
 };
@@ -45,7 +46,7 @@ function mapError(message: string): AuthFailure {
 async function loadProfile(userId: string, email: string): Promise<Account> {
   const { data, error } = await client()
     .from("profiles")
-    .select("id, username, avatar_id, app_lock_hash")
+    .select("id, username, avatar_id, avatar_url, app_lock_hash")
     .eq("id", userId)
     .maybeSingle<ProfileRow>();
 
@@ -64,6 +65,7 @@ async function loadProfile(userId: string, email: string): Promise<Account> {
     email,
     username: data?.username ?? null,
     avatarId: data?.avatar_id ?? null,
+    avatarUrl: data?.avatar_url ?? null,
     profileComplete: Boolean(data?.username),
     hasAppLock: Boolean(data?.app_lock_hash),
   };
@@ -185,6 +187,19 @@ export const supabaseProvider: AuthProvider = {
       if (error.code === "23505") throw new AuthFailure("USERNAME_TAKEN");
       throw mapError(error.message);
     }
+    return loadProfile(auth.user.id, auth.user.email);
+  },
+
+  async setAvatar(url) {
+    const { data: auth } = await client().auth.getUser();
+    if (!auth.user?.email) throw new AuthFailure("ACCOUNT_NOT_FOUND");
+
+    const { error } = await client()
+      .from("profiles")
+      .update({ avatar_url: url })
+      .eq("id", auth.user.id);
+    if (error) throw mapError(error.message);
+
     return loadProfile(auth.user.id, auth.user.email);
   },
 

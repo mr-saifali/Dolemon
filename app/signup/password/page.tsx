@@ -66,7 +66,7 @@ export default function PasswordScreen() {
   return (
     <ScreenShell
       backHref={auth.mode === "supabase" ? "/signup/email" : "/signup/verify"}
-      footer={<StepDots current={3} />}
+      footer={<StepDots current={auth.mode === "supabase" ? 2 : 3} total={auth.mode === "supabase" ? 3 : 4} />}
     >
       <form onSubmit={submit} className="flex flex-1 flex-col justify-center pt-4" noValidate>
         <Motif icon={<KeyRound className="h-6 w-6" strokeWidth={1.75} />} />

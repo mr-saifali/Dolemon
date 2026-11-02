@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowDown, Phone, PhoneMissed, Video } from "lucide-react";
+import { SystemPill } from "./SystemPill";
 import { MessageBubble } from "./MessageBubble";
 import { TypingIndicator } from "./TypingIndicator";
 import { PresenceMoment } from "./presence-moment";
@@ -78,15 +79,15 @@ export function MessageList({
         className="h-full overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]"
       >
         <div className="mx-auto w-full max-w-2xl px-4 pb-4 pt-4">
-          <div className="mb-2 flex justify-center">
-            <span className="rounded-full bg-[#1A1A1F] px-2.5 py-1 text-[10.5px] text-[#8E8E93]">
+          <div className="mb-1 flex justify-center">
+            <span className="rounded-full bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
               Sirf tum dono ke liye
             </span>
           </div>
 
           {groups.map((group) => (
             <section key={group.key}>
-              <DaySeparator label={group.label} />
+              <SystemPill>{group.label}</SystemPill>
               {group.items.map((message, i) => {
                 const prev = group.items[i - 1];
                 const next = group.items[i + 1];
@@ -157,22 +158,14 @@ export function MessageList({
   );
 }
 
-function DaySeparator({ label }: { label: string }) {
-  return (
-    <div className="my-4 flex justify-center" role="separator" aria-label={label}>
-      <span className="rounded-full bg-[#1A1A1F] px-[10px] py-1 text-[11px] text-[#8E8E93]">{label}</span>
-    </div>
-  );
-}
-
 function UnreadDivider() {
   return (
     <div className="my-4 flex items-center gap-3" role="separator" aria-label="New messages">
-      <span className="h-px flex-1 bg-rose/25" />
+      <span className="h-px flex-1 bg-rose/20" />
       <span className="rounded-full bg-rose/[0.12] px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-rose">
         New
       </span>
-      <span className="h-px flex-1 bg-rose/25" />
+      <span className="h-px flex-1 bg-rose/20" />
     </div>
   );
 }
@@ -180,21 +173,13 @@ function UnreadDivider() {
 export function CallMoment({ message }: { message: ChatMessage }) {
   const missed = Boolean(message.call?.missed);
   const Icon = message.call?.type === "video" ? Video : missed ? PhoneMissed : Phone;
+  const label = message.text.replace(" · ", " - ");
 
   return (
-    <div className="mt-3.5 flex justify-center">
-      <div
-        className={cn(
-          "flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[12px]",
-          missed
-            ? "border-danger/25 bg-danger/[0.07] text-danger/90"
-            : "border-white/[0.06] bg-[#1A1A1F] text-[#8E8E93]"
-        )}
-      >
-        <Icon className="h-3.5 w-3.5" />
-        <span>{message.text}</span>
-        <span className="text-[10px] text-[#8E8E93]/60">{clockTime(message.at)}</span>
-      </div>
+    <div className={missed ? "text-[#FF6B6B]/80" : undefined}>
+      <SystemPill icon={<Icon className="h-3 w-3" strokeWidth={2} />}>
+        {label} · {clockTime(message.at)}
+      </SystemPill>
     </div>
   );
 }

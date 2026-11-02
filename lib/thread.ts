@@ -119,7 +119,7 @@ type SendOptions = {
   sticker?: ReactionType;
 };
 
-export function useThread(conversationId: string) {
+export function useThread(conversationId: string, { enabled = true }: { enabled?: boolean } = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [ready, setReady] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -127,10 +127,14 @@ export function useThread(conversationId: string) {
   const fromRemote = useRef(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setReady(true);
+      return;
+    }
     const stored = read(conversationId);
     setMessages(stored ?? seedMessages(conversationId));
     setReady(true);
-  }, [conversationId]);
+  }, [conversationId, enabled]);
 
   /**
    * Live across tabs — open the same thread twice and messages, reactions and ticks
@@ -152,14 +156,14 @@ export function useThread(conversationId: string) {
   }, [conversationId]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !enabled) return;
     write(conversationId, messages);
     if (fromRemote.current) {
       fromRemote.current = false;
       return;
     }
     channel.current?.postMessage(messages);
-  }, [conversationId, messages, ready]);
+  }, [conversationId, messages, ready, enabled]);
 
   useEffect(() => {
     const t = timers.current;

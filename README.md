@@ -7,7 +7,11 @@ Mobile-first (designed at 390px) and centred `max-w-md` on desktop.
 ## Live
 
 **[dolemon.vercel.app](https://dolemon.vercel.app)** — production deploy of `main`,
-running the local provider (demo mode) so the whole flow is clickable without an inbox.
+running on Supabase: email + password accounts (no inbox needed) and real 1:1 threads
+synced over Realtime.
+
+Open the app → create an account → tap **+** → type your friend's handle. Both people need
+an account; then messages, reactions, typing dots and presence are live between them.
 
 Supabase project `dolemon` is provisioned (schema + RLS + presence tables) and its auth
 site URL points at the live domain. See [DEPLOY.md](./DEPLOY.md) for env vars, how the

@@ -17,6 +17,8 @@ export function ChatInput({
   onPulse,
   onAttach,
   onVoice,
+  onTyping,
+  showPulse = true,
   pulseCoolingUntil = 0,
   pulseDisabled,
   placeholder = "Message",
@@ -29,6 +31,9 @@ export function ChatInput({
   onPulse: () => void;
   onAttach: () => void;
   onVoice: () => void;
+  /** fired while the user types — drives the partner's "typing…" */
+  onTyping?: () => void;
+  showPulse?: boolean;
   pulseCoolingUntil?: number;
   pulseDisabled?: boolean;
   placeholder?: string;
@@ -59,9 +64,9 @@ export function ChatInput({
   };
 
   return (
-    <div className="relative z-20 border-t border-white/[0.05] bg-[#0E0E11]">
-      <div className="mx-auto w-full max-w-2xl px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-2">
-        {hint && <div className="mb-1.5 px-1 text-[11.5px] text-[#8E8E93]/75">{hint}</div>}
+    <div className="relative z-20">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-1.5">
+        {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
 
         <AnimatePresence>
           {replyTo && (
@@ -69,20 +74,20 @@ export function ChatInput({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="mb-2 flex items-center gap-2 rounded-2xl border border-white/[0.06] bg-[#1A1A1F] px-3 py-2"
+              className="mb-2 flex items-center gap-2 rounded-2xl border border-white/[0.06] bg-[#18181B] px-3 py-2"
             >
               <span className="h-6 w-0.5 rounded-full bg-rose" />
               <div className="min-w-0 flex-1">
                 <p className="text-[10.5px] uppercase tracking-[0.12em] text-rose/80">
                   Replying to {replyTo.author}
                 </p>
-                <p className="truncate text-[12px] text-[#8E8E93]">{replyTo.text || "attachment"}</p>
+                <p className="truncate text-[12px] text-zinc-500">{replyTo.text || "attachment"}</p>
               </div>
               <button
                 type="button"
                 onClick={onCancelReply}
                 aria-label="Cancel reply"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-[#8E8E93] hover:bg-white/[0.06] hover:text-text"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -97,9 +102,9 @@ export function ChatInput({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               transition={SPRING}
-              className="mb-2 rounded-[20px] border border-white/[0.07] bg-[#232329] p-2"
+              className="mb-2 rounded-[22px] border border-white/[0.06] bg-[#18181B] p-2"
             >
-              <p className="px-1.5 pb-1.5 text-[10.5px] uppercase tracking-[0.14em] text-[#8E8E93]/70">
+              <p className="px-1.5 pb-1.5 text-[10.5px] uppercase tracking-[0.14em] text-zinc-600">
                 Bina shabdon ke
               </p>
               <div className="flex items-center justify-between">
@@ -119,10 +124,12 @@ export function ChatInput({
                   </button>
                 ))}
               </div>
-              <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] pt-1.5">
-                <span className="pl-1.5 text-[11px] text-[#8E8E93]">Theek se kehna hai?</span>
-                <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
-              </div>
+              {showPulse && (
+                <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] pt-1.5">
+                  <span className="pl-1.5 text-[11px] text-zinc-500">Theek se kehna hai?</span>
+                  <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -133,15 +140,15 @@ export function ChatInput({
             onClick={onAttach}
             aria-label="Add attachment"
             whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-white/[0.05] hover:text-text"
+            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
           >
             <Plus className="h-5 w-5" />
           </motion.button>
 
           <div
             className={cn(
-              "flex flex-1 items-end rounded-[28px] bg-[#1A1A1F] px-4 py-3 transition-shadow",
-              focused && "shadow-[0_0_0_1px_rgba(255,92,122,0.35)]"
+              "flex flex-1 items-end rounded-full bg-[#1C1C1E] px-4 py-3 transition-all",
+              focused && "shadow-[0_0_0_1px_rgba(255,92,122,0.28)]"
             )}
           >
             <textarea
@@ -150,7 +157,10 @@ export function ChatInput({
               value={value}
               placeholder={placeholder}
               aria-label={placeholder}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                setValue(e.target.value);
+                if (e.target.value.trim()) onTyping?.();
+              }}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               onKeyDown={(e) => {
@@ -159,7 +169,7 @@ export function ChatInput({
                   submit();
                 }
               }}
-              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-text outline-none placeholder:text-[#8E8E93]/70"
+              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-zinc-200 outline-none placeholder:text-zinc-600"
             />
           </div>
 
@@ -171,7 +181,7 @@ export function ChatInput({
             whileTap={{ scale: 0.9 }}
             className={cn(
               "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
-              trayOpen ? "text-rose" : "text-[#8E8E93] hover:bg-white/[0.05] hover:text-text"
+              trayOpen ? "text-rose" : "text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
             )}
           >
             <Smile className="h-5 w-5" />
@@ -190,7 +200,7 @@ export function ChatInput({
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={SPRING}
                   whileTap={{ scale: 0.9 }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FF8FA3)] text-white shadow-[0_10px_24px_-8px_rgba(255,92,122,0.85)]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FF8FA3)] text-white shadow-[0_6px_18px_-6px_rgba(255,92,122,0.9)]"
                 >
                   <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
                 </motion.button>
@@ -205,7 +215,7 @@ export function ChatInput({
                   exit={{ scale: 0.85, opacity: 0 }}
                   transition={SPRING}
                   whileTap={{ scale: 0.9 }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-white/[0.05] hover:text-text"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
                 >
                   <Mic className="h-[19px] w-[19px]" />
                 </motion.button>

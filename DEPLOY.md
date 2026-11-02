@@ -11,7 +11,8 @@
 | Vercel project | ✅ `dolemon` · `prj_1O9Q0xc3AYVTMEfY05q3rje2xhzv` · team `fairtok` |
 | Framework preset | ✅ `nextjs` (this is what the first builds were missing) |
 | Vercel domains | `dolemon.vercel.app` (verified), `dolemon-fairtok.vercel.app`, `dolemon-git-main-fairtok.vercel.app` |
-| Auth mode on Vercel | **demo** — no env vars set, so the local provider runs (OTP printed on screen) |
+| Auth mode on Vercel | **supabase** — email + password, confirmation off (no inbox needed) |
+| Messaging | live: `conversations` / `messages` / `message_reactions` + Realtime |
 | Deployed commit | `a5f3bd1` on `main` |
 
 The app is fully clickable live: welcome → email → OTP → password → username → `/app`
@@ -31,11 +32,9 @@ Fixing the framework preset to `nextjs` made the deploy go green.
 
 ## Environment variables
 
-The project currently has **no env vars**, which is intentional: without
-`NEXT_PUBLIC_SUPABASE_URL` + anon key the app uses the local provider and nothing breaks.
-
-To point the live app at Supabase, add these four (they can be added through the
-Arena Vercel connector, or in the dashboard → Settings → Environment Variables → Production):
+These four are set on the Vercel project (Production + Preview). Without the Supabase pair
+the app silently falls back to the device-local provider, so nothing breaks — but real
+chat needs them:
 
 | Key | Value |
 | --- | --- |
@@ -48,19 +47,18 @@ Arena Vercel connector, or in the dashboard → Settings → Environment Variabl
 changing them. Any browser can also flip itself back to demo mode with the
 `dolemon:auth-override` key or the link on `/signin`.
 
-## Before switching `NEXT_PUBLIC_AUTH_MODE=supabase`
+## How signup works now
 
-Supabase email OTP needs three dashboard changes that the API connector can't make:
+Email delivery on a free Supabase project is capped (2/hour) and the default template has no
+`{{ .Token }}`, so email OTP could never work reliably. Instead:
 
-1. **Email template** — Authentication → Email Templates → *Confirm signup* / *Magic Link*
-   must include `{{ .Token }}` (the default only carries `{{ .ConfirmationURL }}`, so
-   there is no code to type).
-2. **SMTP** — the built-in sender is capped at **2 emails/hour**. Add Resend/Postmark/SES
-   before real use.
-3. **OTP length** — the project is set to **8** (`mailer_otp_length`); keep
-   `NEXT_PUBLIC_OTP_LENGTH` in sync or verification will fail.
+- **Confirm email is switched off** on the project (`mailer_autoconfirm = true`).
+- Signup is **email → password → handle**. `signUp()` returns a session immediately, so no
+  inbox, no code, no rate limit.
+- Sign-in is email + password.
 
-Until those are done the live app runs in demo mode — nobody gets stuck at a missing email.
+If the project is ever put back on confirmation, password signup surfaces the
+`EMAIL_CONFIRMATION` error instead of hanging.
 
 ## Deploying changes
 

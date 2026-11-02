@@ -155,6 +155,11 @@ export const localProvider: AuthProvider = {
     remove(K.otp);
   },
 
+  /** The demo flow still walks through OTP, so there's nothing to create here. */
+  async signUpWithPassword() {
+    return;
+  },
+
   async createPassword(password: string) {
     await sleep(500);
     const email = read<string | null>(K.verified, null);

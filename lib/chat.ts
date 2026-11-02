@@ -119,9 +119,8 @@ export function formatChatTime(ts: number, now = Date.now()) {
 
 export function greetingFor(date = new Date()) {
   const h = date.getHours();
-  if (h < 5) return "Still up";
+  if (h < 5 || h >= 21) return "Still up";
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
-  if (h < 21) return "Good evening";
-  return "Good night";
+  return "Good evening";
 }

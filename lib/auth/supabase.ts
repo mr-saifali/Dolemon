@@ -69,6 +69,30 @@ export const supabaseProvider: AuthProvider = {
     return loadProfile(data.user.id, data.user.email);
   },
 
+  /**
+   * Password signup. With "Confirm email" switched off on the project (which is how
+   * Dolemon is configured) this returns a session immediately, so no inbox is needed.
+   */
+  async signUpWithPassword(email, password) {
+    const clean = email.trim().toLowerCase();
+    const { data, error } = await client().auth.signUp({ email: clean, password });
+
+    if (error) {
+      if (error.message.toLowerCase().includes("already registered")) {
+        // They already have an account — let them in if the password matches.
+        const retry = await client().auth.signInWithPassword({ email: clean, password });
+        if (retry.error) throw new AuthFailure("ACCOUNT_EXISTS");
+        return;
+      }
+      throw mapError(error.message);
+    }
+
+    if (!data.session) {
+      const retry = await client().auth.signInWithPassword({ email: clean, password });
+      if (retry.error) throw new AuthFailure("EMAIL_CONFIRMATION");
+    }
+  },
+
   async sendOtp(email): Promise<SendOtpResult> {
     const { error } = await client().auth.signInWithOtp({
       email: email.trim().toLowerCase(),

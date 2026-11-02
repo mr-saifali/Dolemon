@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
-import { Avatar } from "@/components/avatar";
+import { ChatAvatar } from "@/components/home/chat-row";
 
 /**
  * 56px, blurred, and quiet: the name and one honest line about where the other person is.
@@ -31,29 +31,23 @@ export function ChatHeader({
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/[0.05] bg-[#0E0E11]/72 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-1.5 px-2">
+    <header className="sticky top-0 z-30 bg-black/50 backdrop-blur-md">
+      <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-1 px-2">
         <Link
           href="/app"
           aria-label="Back to chats"
-          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-white/[0.05] hover:text-text"
+          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
         >
           <ChevronLeft className="h-5 w-5" />
         </Link>
 
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <Avatar avatarId={avatarId} name={name} size="xs" online={online} />
+          <ChatAvatar avatarId={avatarId} name={name} size={40} online={online} />
           <div className="min-w-0 leading-tight">
-            <h1 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-text">{name}</h1>
+            <h1 className="truncate text-[15px] font-medium tracking-[-0.01em] text-zinc-100">{name}</h1>
             <p
               aria-live="polite"
-              className={
-                typing
-                  ? "truncate text-[12px] text-rose/90"
-                  : online
-                    ? "truncate text-[12px] text-[#8E8E93]"
-                    : "truncate text-[12px] text-[#8E8E93]"
-              }
+              className={typing ? "truncate text-[12px] text-rose/90" : "truncate text-[12px] text-zinc-500"}
             >
               {line}
             </p>
@@ -64,7 +58,7 @@ export function ChatHeader({
           type="button"
           onClick={onMenu}
           aria-label="Chat options"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-white/[0.05] hover:text-text"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
         >
           <MoreHorizontal className="h-5 w-5" />
         </button>
@@ -116,10 +110,10 @@ export function ChatMenuSheet({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 16, opacity: 0, scale: 0.985 }}
             transition={{ type: "spring", stiffness: 400, damping: 34 }}
-            className="relative w-full max-w-md overflow-hidden rounded-t-[24px] border border-white/[0.07] bg-[#16161B] pb-6 shadow-card sm:mb-0 sm:rounded-[22px]"
+            className="relative w-full max-w-md overflow-hidden rounded-t-[24px] border border-white/[0.07] bg-[#111113] pb-6 sm:mb-0 sm:rounded-[22px]"
           >
             <div className="mx-auto mt-2.5 h-1 w-9 rounded-full bg-white/15 sm:hidden" />
-            <p className="px-5 pb-2 pt-4 text-[11px] uppercase tracking-[0.16em] text-[#8E8E93]/70">
+            <p className="px-5 pb-2 pt-4 text-[11px] uppercase tracking-[0.16em] text-zinc-600">
               {name}
             </p>
             <div className="px-2">
@@ -132,14 +126,14 @@ export function ChatMenuSheet({
                     onClose();
                   }}
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] transition-colors hover:bg-white/[0.05] ${
-                    action.danger ? "text-danger" : "text-text"
+                    action.danger ? "text-[#FF6B6B]" : "text-zinc-200"
                   }`}
                 >
-                  <span className={action.danger ? "text-danger/80" : "text-[#8E8E93]"}>
+                  <span className={action.danger ? "text-[#FF6B6B]/80" : "text-zinc-500"}>
                     {action.icon}
                   </span>
                   <span className="flex-1">{action.label}</span>
-                  {action.hint && <span className="text-[11.5px] text-[#8E8E93]">{action.hint}</span>}
+                  {action.hint && <span className="text-[11.5px] text-zinc-600">{action.hint}</span>}
                   {action.active !== undefined && (
                     <span
                       className={`h-5 w-9 rounded-full p-0.5 transition-colors ${
@@ -160,7 +154,7 @@ export function ChatMenuSheet({
             <button
               type="button"
               onClick={onClose}
-              className="mx-2 mt-2 w-[calc(100%-16px)] rounded-xl bg-white/[0.05] py-3 text-[14px] font-medium text-text"
+              className="mx-2 mt-2 w-[calc(100%-16px)] rounded-xl bg-white/[0.05] py-3 text-[14px] font-medium text-zinc-200"
             >
               Cancel
             </button>

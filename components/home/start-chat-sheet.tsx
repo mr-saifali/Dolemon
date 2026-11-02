@@ -15,6 +15,7 @@ export function StartChatSheet({
   onPickDemo,
   starting,
   error,
+  myHandle,
 }: {
   open: boolean;
   onClose: () => void;
@@ -25,14 +26,29 @@ export function StartChatSheet({
   onPickDemo?: (id: string) => void;
   starting?: boolean;
   error?: string | null;
+  /** shown in real mode so the other person can be found */
+  myHandle?: string | null;
 }) {
   const [handle, setHandle] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setHandle("");
+      setCopied(false);
     }
   }, [open]);
+
+  const share = async () => {
+    if (!myHandle) return;
+    try {
+      await navigator.clipboard.writeText(`@${myHandle}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked — the handle is on screen anyway */
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -144,8 +160,21 @@ export function StartChatSheet({
 
                 {error && <p className="mt-3 text-[12.5px] text-[#FF6B6B]">{error}</p>}
 
-                <p className="mt-4 text-[12px] leading-relaxed text-zinc-600">
-                  They need to have signed up first — share your handle, then start the chat.
+                {myHandle && (
+                  <button
+                    type="button"
+                    onClick={() => void share()}
+                    className="mt-4 flex w-full items-center justify-between rounded-2xl bg-white/[0.04] px-4 py-3 text-left transition-colors active:bg-white/[0.07]"
+                  >
+                    <span className="text-[12px] text-zinc-500">
+                      {copied ? "Copied — send it to them" : "Your handle"}
+                    </span>
+                    <span className="text-[13px] font-medium text-zinc-200">@{myHandle}</span>
+                  </button>
+                )}
+
+                <p className="mt-3 text-[12px] leading-relaxed text-zinc-600">
+                  They need to have signed up first — then this handle opens the room.
                 </p>
               </>
             )}

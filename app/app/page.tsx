@@ -165,6 +165,7 @@ function HomeScreen() {
         onPickDemo={(id) => router.push(`/app/chat/${id}`)}
         starting={starting}
         error={startError}
+        myHandle={account?.username ?? null}
       />
     </main>
   );

@@ -119,7 +119,7 @@ export default function DownloadPage() {
                 <card.icon className="h-3.5 w-3.5 text-rose" />
                 <h2 className="text-[13px] font-medium text-zinc-200">{card.title}</h2>
               </div>
-              <ol className="mt-2.5 space-y-1.5">
+              <ul className="mt-2.5 list-none space-y-1.5">
                 {card.steps.map((step, i) => (
                   <li key={step} className="flex gap-2.5 text-[12.5px] leading-relaxed text-zinc-500">
                     <span className="text-zinc-600">{i + 1}.</span>
@@ -135,7 +135,7 @@ export default function DownloadPage() {
                     </span>
                   </li>
                 ))}
-              </ol>
+              </ul>
             </motion.div>
           ))}
         </div>

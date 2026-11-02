@@ -78,3 +78,47 @@ SELECT their own row.
 App lock is a **soft gate** — it hides the UI on a shared phone, it does not encrypt
 messages and it does not stop someone with devtools. Real secrecy needs server-side
 authorisation plus end-to-end encryption, which is the next milestone.
+
+## 4. Presence (the part that makes Dolemon different)
+
+The thread treats presence as the primary state of the room: `lib/presence.ts` exposes
+`together`, `togetherSince` and `lastSeenAt`, and the UI warms up when both people are in
+it. Swap the demo hooks for a Realtime channel:
+
+```ts
+const channel = supabase.channel(`room:${conversationId}`, {
+  config: { presence: { key: user.id } },
+});
+
+channel
+  .on("presence", { event: "sync" }, () => {
+    const state = channel.presenceState();          // who is in the room right now
+    setPartner(Object.keys(state).some((id) => id !== user.id) ? "here" : "away");
+  })
+  .on("presence", { event: "join" }, ({ key }) => {
+    if (key !== user.id) startTogetherClock();      // they walked in
+  })
+  .on("presence", { event: "leave" }, ({ key }) => {
+    if (key !== user.id) closeTogetherClock(key);   // write a presence_moments row
+  })
+  .subscribe(async (status) => {
+    if (status === "SUBSCRIBED") await channel.track({ at: Date.now() });
+  });
+```
+
+Two tables make the "you were both here" cards real rather than decorative:
+
+```sql
+create table public.presence_moments (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null,
+  started_at timestamptz not null,
+  ended_at timestamptz,
+  -- only members of the 1:1 conversation may read these rows
+  created_by uuid not null default auth.uid() references auth.users (id)
+);
+```
+
+Typing stays ephemeral and untracked in the DB — it belongs on the same channel as a
+broadcast event, which is why the UI already models `typing` as a presence state rather
+than a message.

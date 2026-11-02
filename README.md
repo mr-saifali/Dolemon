@@ -26,7 +26,7 @@ self-contained local provider, and the emailed code is shown on the verify scree
 | 5 | `/signup/username` | Live availability check (400ms debounce) + optional emoji avatar |
 | 6 | `/signup/success` | Animated confirmation → `/app` |
 
-Plus `/signin`, `/app` (chat home), `/app/chat/[id]` (thread placeholder),
+Plus `/signin`, `/app` (chat home), `/app/chat/[id]` (thread),
 `/settings` (avatar + app password), `/unlock`.
 
 ## Home screen (`/app`)
@@ -36,6 +36,24 @@ All / Unread filters, and a 1:1 conversation list with unread badges, online dot
 "typing…", pinned and muted states. Tapping a row opens the thread; the rose FAB opens
 the new-chat sheet with your invite link. In demo mode the list is sample data
 (labelled as such); with Supabase configured it renders real rows once the backend lands.
+
+## Chat thread (`/app/chat/[id]`)
+
+Built around **presence**, not around an inbox:
+
+- The room is a place you are both *in*. When you both are, the ambient rose light comes up,
+  the header reads "You're both here · 4m" with a shared clock, and a hairline ribbon under
+  the header comes alive. When one of you leaves, the light drops and the composer quietly
+  says "Aarohi left 2m ago — your message will be waiting."
+- **Presence moments** are timeline items in their own right ("You were both here together
+  yesterday · 22 minutes") — something a normal chat log can't show.
+- Bubbles with day dividers, 3-minute grouping, delivery ticks (sent → delivered → read),
+  typing bubble, auto-growing composer (Enter to send, Shift+Enter for a newline).
+- Demo partner replies ~3.4s after you send and presence drifts in and out every 18s so the
+  layer is visible; "Reset demo thread" lives in the chat menu.
+
+Presence lives in `lib/presence.ts` with a single seam to a realtime channel — see
+`docs/supabase.md` §4 for the Realtime + `presence_moments` mapping.
 
 ## Stack
 

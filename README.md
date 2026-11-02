@@ -4,6 +4,12 @@ A private, invite-only space for **one-to-one** conversations. No groups, no noi
 
 Mobile-first (designed at 390px) and centred `max-w-md` on desktop.
 
+## Deploy
+
+Supabase project `dolemon` is already provisioned (schema + RLS + presence tables).
+Vercel deployment is blocked on account permissions — see [DEPLOY.md](./DEPLOY.md) for the
+one-step fix, the env var list and the OTP caveats.
+
 ## Run it
 
 ```bash

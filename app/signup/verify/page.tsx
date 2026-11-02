@@ -12,6 +12,7 @@ import { FieldError } from "@/components/ui/field-error";
 import { auth, authMode } from "@/lib/auth";
 import { AuthFailure } from "@/lib/auth/types";
 import { getDevCode, getSignupEmail, setDevCode } from "@/lib/signup-draft";
+import { OTP_LENGTH } from "@/lib/otp";
 
 const RESEND_SECONDS = 30;
 
@@ -42,7 +43,7 @@ export default function VerifyScreen() {
 
   const verify = useCallback(
     async (value: string) => {
-      if (!email || value.length !== 6 || submitting) return;
+      if (!email || value.length !== OTP_LENGTH || submitting) return;
       setSubmitting(true);
       setError(null);
       try {
@@ -60,7 +61,7 @@ export default function VerifyScreen() {
 
   // Auto-submit once all six digits are in.
   useEffect(() => {
-    if (code.length === 6 && submittedFor.current !== code) {
+    if (code.length === OTP_LENGTH && submittedFor.current !== code) {
       submittedFor.current = code;
       void verify(code);
     }
@@ -95,7 +96,7 @@ export default function VerifyScreen() {
         <Motif icon={<MailCheck className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>Check your inbox</ScreenTitle>
         <ScreenSubtitle>
-          We sent a 6-digit code to{" "}
+          We sent a {OTP_LENGTH}-digit code to{" "}
           <span className="font-medium text-text">{email}</span>.{" "}
           <button
             type="button"
@@ -108,6 +109,7 @@ export default function VerifyScreen() {
 
         <div className="mt-9">
           <OtpInput
+            length={OTP_LENGTH}
             value={code}
             onChange={(v) => {
               setError(null);
@@ -166,7 +168,7 @@ export default function VerifyScreen() {
           size="sm"
           className="w-full"
           onClick={() => verify(code)}
-          disabled={code.length !== 6 || submitting}
+          disabled={code.length !== OTP_LENGTH || submitting}
         >
           Continue
         </Button>

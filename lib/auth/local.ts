@@ -1,4 +1,5 @@
 import { hashSecret, newSalt, randomDigits, verifySecret } from "@/lib/crypto";
+import { OTP_LENGTH } from "@/lib/otp";
 import {
   AuthFailure,
   RESERVED_USERNAMES,
@@ -38,7 +39,7 @@ const K = {
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_COOLDOWN_S = 30;
 const MAX_ATTEMPTS = 5;
-const OTP_DEV_BYPASS = "123456";
+const OTP_DEV_BYPASS = "1".repeat(OTP_LENGTH);
 
 function read<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -123,7 +124,7 @@ export const localProvider: AuthProvider = {
       }
     }
 
-    const code = randomDigits(6);
+    const code = randomDigits(OTP_LENGTH);
     write(K.otp, {
       email: normalized,
       code,

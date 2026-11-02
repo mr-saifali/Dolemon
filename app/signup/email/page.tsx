@@ -15,6 +15,7 @@ import { FieldError } from "@/components/ui/field-error";
 import { auth } from "@/lib/auth";
 import { AuthFailure } from "@/lib/auth/types";
 import { getSignupEmail, setDevCode, setSignupEmail } from "@/lib/signup-draft";
+import { OTP_LENGTH } from "@/lib/otp";
 import { useSession, landingFor } from "@/lib/session";
 
 const schema = z.object({
@@ -71,7 +72,7 @@ export default function EmailScreen() {
         <Motif icon={<Mail className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>What&apos;s your email?</ScreenTitle>
         <ScreenSubtitle>
-          We&apos;ll send a 6-digit code to make sure it&apos;s really you. No spam, ever.
+          We&apos;ll send a {OTP_LENGTH}-digit code to make sure it&apos;s really you. No spam, ever.
         </ScreenSubtitle>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8" noValidate>

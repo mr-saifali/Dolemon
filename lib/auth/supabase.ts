@@ -117,16 +117,9 @@ export const supabaseProvider: AuthProvider = {
     if (!USERNAME_PATTERN.test(value)) return false;
     if (RESERVED_USERNAMES.has(value)) return false;
 
-    const { data, error } = await client()
-      .from("profiles")
-      .select("id")
-      .ilike("username", value)
-      .maybeSingle();
-    if (error && error.code !== "PGRST116") return false;
-    if (!data) return true;
-
-    const me = await client().auth.getUser();
-    return data.id === me.data.user?.id;
+    const { data, error } = await client().rpc("username_available", { candidate: value });
+    if (error) return false;
+    return Boolean(data);
   },
 
   async saveProfile({ username, avatarId }) {

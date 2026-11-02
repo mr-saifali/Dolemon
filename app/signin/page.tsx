@@ -12,7 +12,7 @@ import { ScreenShell, Motif, ScreenTitle, ScreenSubtitle } from "@/components/sc
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
-import { auth } from "@/lib/auth";
+import { auth, isSupabaseConfigured, useDemoMode } from "@/lib/auth";
 import { AuthFailure } from "@/lib/auth/types";
 import { landingFor, useSession } from "@/lib/session";
 
@@ -113,6 +113,27 @@ export default function SignInPage() {
             Create an account
           </Link>
         </p>
+
+        {isSupabaseConfigured && (
+          <div className="mt-8 rounded-xl border border-ink-line bg-ink-surface/60 p-3 text-center">
+            <p className="text-[11.5px] leading-relaxed text-text-muted">
+              Sign-in email nahi aa raha? Free Supabase projects email bhejne me limit karte hain.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                useDemoMode();
+                toast.success("Demo mode on this device", {
+                  description: "Koi email nahi — OTP screen par hi dikhega.",
+                });
+                router.push("/signup/email");
+              }}
+              className="mt-2 text-[12.5px] font-medium text-rose underline-offset-4 hover:underline"
+            >
+              Is device par demo mode se kholo →
+            </button>
+          </div>
+        )}
       </form>
     </ScreenShell>
   );

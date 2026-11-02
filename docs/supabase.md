@@ -122,3 +122,31 @@ create table public.presence_moments (
 Typing stays ephemeral and untracked in the DB — it belongs on the same channel as a
 broadcast event, which is why the UI already models `typing` as a presence state rather
 than a message.
+
+## 5. Pulses, lamps and presence memory
+
+Three pieces sit on top of the presence channel:
+
+| Piece | Where it lives | Backend shape |
+| --- | --- | --- |
+| **Pulse** ("thinking of you", no message) | `lib/pulses.ts` | broadcast event `pulse` on the conversation channel; throttled server-side to one per 15s per sender, nothing persisted |
+| **Lamp** ("leave a light on") | `prefs.lampOn` | a `presence_settings` row per user (`lamp_on boolean`, `show_presence boolean`, `allow_pulses boolean`) |
+| **Presence memory** ("you were both here 22m") | `lib/presence-log.ts` | `presence_moments` rows written on channel `leave`; the room reads the last 7 days for the weekly chart |
+
+Mutual pulses (two crossing within 60s) create a presence moment rather than a message —
+that's the only lasting trace a pulse leaves, which is the point: it's a gesture, not a log.
+
+```sql
+create table public.presence_settings (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  show_presence boolean not null default true,
+  allow_pulses  boolean not null default true,
+  lamp_on       boolean not null default false
+);
+alter table public.presence_settings enable row level security;
+create policy "own presence settings" on public.presence_settings
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+The client already reads these through one hook (`usePrefs`), so swapping localStorage for
+a row is a single-file change.

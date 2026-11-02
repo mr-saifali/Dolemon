@@ -9,12 +9,15 @@ import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { Avatar } from "@/components/avatar";
 import { Composer } from "@/components/chat/composer";
+import { PulseOverlay } from "@/components/chat/pulse-overlay";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { PresenceMoment } from "@/components/chat/presence-moment";
 import { TypingBubble } from "@/components/chat/typing-bubble";
 import { authMode } from "@/lib/auth";
 import { demoConversations } from "@/lib/chat";
 import { formatAgo, formatDuration, usePresence } from "@/lib/presence";
+import { usePulses } from "@/lib/pulses";
+import { usePrefs } from "@/lib/prefs";
 import { groupByDay, isGrouped, useThread } from "@/lib/thread";
 import { cn } from "@/lib/utils";
 
@@ -26,10 +29,31 @@ function ThreadScreen() {
   );
 
   const partnerName = conversation?.name ?? "Them";
-  const { messages, send, resetDemo } = useThread(conversationId);
+  const { messages, send, addMoment, resetDemo } = useThread(conversationId);
+  const prefs = usePrefs();
   const { together, partner, togetherSince, lastSeenAt, iAmHere, setPresence } = usePresence({
     demo: authMode === "local",
+    logKey: conversationId,
   });
+
+  const pulses = usePulses({
+    demo: authMode === "local",
+    onIncoming: () => {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(12);
+    },
+    onMutual: () => {
+      const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+      addMoment(`You both reached for each other at ${time} — pulses crossing in the same minute`);
+      toast.success("You both reached for each other", { description: "Saved to your presence moments." });
+    },
+  });
+
+  const handlePulse = () => {
+    const result = pulses.send();
+    if (result === "disabled") {
+      toast.error("Pulses are off", { description: "Turn them on in Settings → Presence." });
+    }
+  };
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [, forceTick] = useState(0);
@@ -66,6 +90,11 @@ function ThreadScreen() {
 
   return (
     <main className="relative isolate flex h-dvh flex-col overflow-hidden bg-ink">
+      <PulseOverlay
+        burst={pulses.burst}
+        incoming={Boolean(pulses.incoming)}
+        incomingText={pulses.incoming ? `${partnerName} is thinking of you` : null}
+      />
       {/* The room warms up when you're both in it. */}
       <motion.div
         aria-hidden
@@ -100,6 +129,7 @@ function ThreadScreen() {
                 together={together}
                 typing={partner === "typing"}
                 iAmHere={iAmHere}
+                visible={prefs.showPresence}
                 togetherSince={togetherSince}
                 lastSeenAt={lastSeenAt}
                 name={partnerName}
@@ -135,11 +165,11 @@ function ThreadScreen() {
                     className="absolute right-0 top-12 z-40 w-52 overflow-hidden rounded-xl2 border border-ink-line bg-[#16161B] shadow-card"
                   >
                     <Link
-                      href="/settings"
+                      href={`/app/room/${conversationId}`}
                       className="flex items-center gap-2.5 px-4 py-3 text-[13.5px] text-text hover:bg-white/[0.04]"
                     >
                       <Settings2 className="h-4 w-4 text-text-muted" />
-                      Chat settings
+                      Open your room
                     </Link>
                     {authMode === "local" && (
                       <button
@@ -213,6 +243,9 @@ function ThreadScreen() {
       <div className="relative z-10 mx-auto w-full max-w-md">
         <Composer
           onSend={send}
+          onPulse={handlePulse}
+          pulseCoolingUntil={pulses.coolingUntil}
+          pulseDisabled={!prefs.allowPulses}
           placeholder={`Message ${partnerName}`}
           hint={
             awayLabel ? (
@@ -232,6 +265,7 @@ function PresenceLine({
   together,
   typing,
   iAmHere,
+  visible,
   togetherSince,
   lastSeenAt,
   name,
@@ -239,6 +273,7 @@ function PresenceLine({
   together: boolean;
   typing: boolean;
   iAmHere: boolean;
+  visible: boolean;
   togetherSince: number | null;
   lastSeenAt: number | null;
   name: string;
@@ -261,6 +296,14 @@ function PresenceLine({
         </span>
         You&apos;re both here
         {forMs > 20_000 && <span className="text-success/60">· {formatDuration(forMs)}</span>}
+      </p>
+    );
+  }
+
+  if (!visible) {
+    return (
+      <p className="truncate text-[11.5px] text-text-muted">
+        You&apos;re invisible · {name} can&apos;t see you
       </p>
     );
   }

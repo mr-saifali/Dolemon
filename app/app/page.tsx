@@ -9,6 +9,7 @@ import { BrandBlob } from "@/components/brand-blob";
 import { Avatar } from "@/components/avatar";
 import { ConversationRow } from "@/components/home/conversation-row";
 import { NewChatSheet } from "@/components/home/new-chat-sheet";
+import { RoomCard } from "@/components/home/room-card";
 import { Button } from "@/components/ui/button";
 import { authMode } from "@/lib/auth";
 import { demoConversations, greetingFor, type Conversation } from "@/lib/chat";
@@ -80,6 +81,8 @@ function HomeScreen() {
             <Avatar avatarId={account?.avatarId ?? null} name={account?.username ?? "You"} size="md" />
           </Link>
         </header>
+
+        {conversations[0] && <RoomCard conversation={conversations[0]} />}
 
         {/* Search */}
         <div className="relative">

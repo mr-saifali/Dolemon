@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, ChevronLeft, Lock, LogOut, ShieldCheck } from "lucide-react";
+import { Check, ChevronLeft, Lock, LogOut, ShieldCheck, Users } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { BrandBlob } from "@/components/brand-blob";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { FieldError } from "@/components/ui/field-error";
 import { auth } from "@/lib/auth";
 import { markUnlocked } from "@/lib/app-lock";
 import { AVATAR_PRESETS, avatarById } from "@/lib/avatars";
 import { passwordStrength } from "@/lib/password";
 import { useSession } from "@/lib/session";
+import { setPref, usePrefs } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
 
 function SettingsContent() {
@@ -24,6 +26,7 @@ function SettingsContent() {
   const [lockError, setLockError] = useState<string | null>(null);
   const [savingLock, setSavingLock] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const prefs = usePrefs();
 
   const avatar = avatarById(account?.avatarId);
   const strength = passwordStrength(lockPassword);
@@ -195,6 +198,34 @@ function SettingsContent() {
               App password is on
             </p>
           )}
+        </section>
+
+        <section className="mt-4 rounded-xl2 border border-ink-line bg-ink-surface/70 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose/15 text-rose">
+              <Users className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-[13.5px] font-medium">Presence</p>
+              <p className="text-[11.5px] text-text-muted">How the two of you share the same room.</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Switch
+              label="Show when I'm here"
+              description="Turn this off and the room reads you as away, even when you're inside."
+              checked={prefs.showPresence}
+              onChange={(v) => setPref("showPresence", v)}
+            />
+            <div className="h-px bg-white/[0.05]" />
+            <Switch
+              label="Allow pulses"
+              description="The little “thinking of you” that isn't a message. Turn off to stop them entirely."
+              checked={prefs.allowPulses}
+              onChange={(v) => setPref("allowPulses", v)}
+            />
+          </div>
         </section>
 
         <section className="mt-4 rounded-xl2 border border-ink-line bg-ink-surface/70 p-4">

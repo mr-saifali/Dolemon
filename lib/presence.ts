@@ -1,33 +1,45 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { appendSession } from "./presence-log";
+import { usePrefs } from "./prefs";
 
 export type PartnerPresence = "here" | "away" | "typing";
 
 /**
  * Room presence.
  *
- * The product idea: Dolemon isn't an inbox you check, it's a room you're both in.
- * So presence is the primary state of the thread, not a subtitle.
+ * Dolemon isn't an inbox you check, it's a room you're both in. Presence is therefore the
+ * primary state of the product:
+ * - `together` — both people are in the room right now
+ * - `togetherSince` — drives the shared clock in the header
+ * - `lastSeenAt` — powers "left 2m ago"
  *
- * - `together` is true only when both people are actually in the room.
- * - `togetherSince` drives the shared clock shown in the header.
- * - `lastSeenAt` powers "left 2m ago" once one of you goes.
- *
- * In demo mode a partner's presence can be simulated with setPartner(); with
- * Supabase this maps onto a Realtime presence channel (see docs/supabase.md).
+ * With Supabase this maps onto a Realtime presence channel; see docs/supabase.md §4.
  */
-export function usePresence({ demo = false }: { demo?: boolean } = {}) {
+export function usePresence({
+  demo = false,
+  logKey,
+}: {
+  demo?: boolean;
+  /** conversation id — enables presence-memory logging for the session */
+  logKey?: string;
+} = {}) {
+  const prefs = usePrefs();
   const [partner, setPartner] = useState<PartnerPresence>("here");
-  const [iAmHere, setIAmHere] = useState(true);
-  const [togetherSince, setTogetherSince] = useState<number | null>(() => Date.now());
+  const [pageVisible, setPageVisible] = useState(true);
+  const [togetherSince, setTogetherSince] = useState<number | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
-  const wasTogether = useRef(true);
 
+  // You're "in the room" only if the page is visible and you allow presence.
+  const iAmHere = pageVisible && prefs.showPresence;
   const together = iAmHere && partner !== "away";
+  const wasTogether = useRef(false);
+  const sessionStart = useRef<number | null>(null);
 
   useEffect(() => {
-    const onVisibility = () => setIAmHere(document.visibilityState === "visible");
+    const onVisibility = () => setPageVisible(document.visibilityState === "visible");
+    setPageVisible(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
@@ -36,15 +48,29 @@ export function usePresence({ demo = false }: { demo?: boolean } = {}) {
     if (together && !wasTogether.current) {
       setTogetherSince(Date.now());
       setLastSeenAt(null);
+      sessionStart.current = Date.now();
     }
     if (!together && wasTogether.current) {
       setTogetherSince(null);
       setLastSeenAt(Date.now());
+      if (logKey && sessionStart.current) {
+        appendSession(logKey, { start: sessionStart.current, end: Date.now() });
+      }
+      sessionStart.current = null;
     }
     wasTogether.current = together;
-  }, [together]);
+  }, [together, logKey]);
 
-  // Demo only: drift in and out of the room so the presence layer is visible.
+  // Log the tail of a session if the screen unmounts while you're still together.
+  useEffect(() => {
+    return () => {
+      if (logKey && sessionStart.current && wasTogether.current) {
+        appendSession(logKey, { start: sessionStart.current, end: Date.now() });
+      }
+    };
+  }, [logKey]);
+
+  // Demo only: drift in and out so the presence layer is visible without a backend.
   useEffect(() => {
     if (!demo) return;
     const t = setInterval(() => {

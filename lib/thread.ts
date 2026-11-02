@@ -149,6 +149,14 @@ export function useThread(conversationId: string) {
     [patch]
   );
 
+  /** Presence moments are timeline items, so the thread knows how to hold them. */
+  const addMoment = useCallback((text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: uid(), author: "system", kind: "presence", text, at: Date.now() },
+    ]);
+  }, []);
+
   const resetDemo = useCallback(() => {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(STORAGE_PREFIX + conversationId);
@@ -156,7 +164,7 @@ export function useThread(conversationId: string) {
     setMessages(seedMessages(conversationId));
   }, [conversationId]);
 
-  return { messages, send, resetDemo, ready };
+  return { messages, send, addMoment, resetDemo, ready };
 }
 
 /** Groups messages into day buckets for the timeline dividers. */

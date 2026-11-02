@@ -55,6 +55,26 @@ Built around **presence**, not around an inbox:
 Presence lives in `lib/presence.ts` with a single seam to a realtime channel — see
 `docs/supabase.md` §4 for the Realtime + `presence_moments` mapping.
 
+### Pulses
+
+The heart in the composer sends a **pulse** — the smallest possible "thinking of you" that
+isn't a message. It leaves nothing in the thread: hearts drift up, the room warms, and it's
+gone. You can send one every 15s (the ring drains so the limit is felt). If two pulses cross
+within a minute, that *does* get remembered as a presence moment.
+
+### The room (`/app/room/[id]`)
+
+- Your two avatars with a live line between them, lit only when you're both in.
+- **Leave a light on** — a warm glow that stays in the room while you're away.
+- **Together today** — minutes you've shared, a 7-day chart and a streak, all from logged
+  presence sessions rather than fake numbers.
+- **Presence moments** — the last few times you were both here, with times and lengths.
+
+### Presence controls
+
+`/settings` → Presence: *Show when I'm here* (invisible mode) and *Allow pulses*. Both are
+respected everywhere — the header reads "You're invisible" when you switch yourself off.
+
 ## Stack
 
 Next.js 14 App Router · TypeScript · Tailwind · shadcn-style components (Radix + cva) ·

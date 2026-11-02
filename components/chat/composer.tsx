@@ -2,15 +2,22 @@
 
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUp, Smile } from "lucide-react";
+import { ArrowUp } from "lucide-react";
+import { PulseButton } from "./pulse-button";
 import { cn } from "@/lib/utils";
 
 export function Composer({
   onSend,
+  onPulse,
+  pulseCoolingUntil = 0,
+  pulseDisabled,
   placeholder = "Message",
   hint,
 }: {
   onSend: (text: string) => void;
+  onPulse: () => void;
+  pulseCoolingUntil?: number;
+  pulseDisabled?: boolean;
   placeholder?: string;
   hint?: React.ReactNode;
 }) {
@@ -48,13 +55,7 @@ export function Composer({
           focused ? "border-rose/40 shadow-[0_0_0_4px_rgba(255,92,122,0.07)]" : "border-ink-line"
         )}
       >
-        <button
-          type="button"
-          aria-label="Emoji"
-          className="mb-1 flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text"
-        >
-          <Smile className="h-[18px] w-[18px]" />
-        </button>
+        <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
 
         <textarea
           ref={area}
@@ -96,7 +97,7 @@ export function Composer({
       </div>
 
       <p className="mt-2 text-center text-[10.5px] text-text-muted/45">
-        Just the two of you. Nothing here is shared anywhere else.
+        Tap the heart to say “thinking of you” — it leaves no message.
       </p>
     </div>
   );

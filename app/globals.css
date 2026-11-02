@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Inter when installed, otherwise the platform's own sans (no webfont fetch). */
+    --font-sans: "Inter", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+  }
+  * { @apply border-ink-line; }
+  html { -webkit-tap-highlight-color: transparent; }
+  body {
+    @apply bg-ink text-text antialiased;
+    font-feature-settings: "cv11", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: rgba(255, 92, 122, 0.3); }
+  /* keep iOS from zooming on focus */
+  input, textarea, select, button { font-size: 16px; }
+  input:focus { outline: none; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+@layer utilities {
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+  .safe-t { padding-top: max(env(safe-area-inset-top), 0px); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .text-balance { text-wrap: balance; }
+}

@@ -59,6 +59,7 @@ export const auth: AuthProvider = {
     return active().mode;
   },
   getAccount: () => active().getAccount(),
+  signUpWithPassword: (email, password) => active().signUpWithPassword(email, password),
   sendOtp: (email) => active().sendOtp(email),
   verifyOtp: (email, code) => active().verifyOtp(email, code),
   createPassword: (password) => active().createPassword(password),

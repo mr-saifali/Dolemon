@@ -22,7 +22,7 @@ export default function PasswordScreen() {
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [, setEmail] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const e = getSignupEmail();
@@ -46,18 +46,28 @@ export default function PasswordScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await auth.createPassword(password);
+      if (auth.mode === "supabase" && email) {
+        await auth.signUpWithPassword(email, password);
+      } else {
+        await auth.createPassword(password);
+      }
       router.push("/signup/username");
     } catch (err) {
       const message = err instanceof AuthFailure ? err.message : "Something went wrong. Try again?";
       setError(message);
       setSubmitting(false);
       toast.error(message);
+      if (err instanceof AuthFailure && err.code === "ACCOUNT_EXISTS") {
+        router.push("/signin");
+      }
     }
   };
 
   return (
-    <ScreenShell backHref="/signup/verify" footer={<StepDots current={3} />}>
+    <ScreenShell
+      backHref={auth.mode === "supabase" ? "/signup/email" : "/signup/verify"}
+      footer={<StepDots current={3} />}
+    >
       <form onSubmit={submit} className="flex flex-1 flex-col justify-center pt-4" noValidate>
         <Motif icon={<KeyRound className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>Create a password</ScreenTitle>

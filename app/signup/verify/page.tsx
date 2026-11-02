@@ -28,6 +28,11 @@ export default function VerifyScreen() {
   const submittedFor = useRef<string>("");
 
   useEffect(() => {
+    // Supabase runs this project with confirmation off — there is no code to type.
+    if (authMode === "supabase") {
+      router.replace("/signup/password");
+      return;
+    }
     if (!email) router.replace("/signup/email");
   }, [email, router]);
 

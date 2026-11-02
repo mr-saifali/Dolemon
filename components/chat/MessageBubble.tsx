@@ -106,7 +106,7 @@ export function MessageBubble({
       >
         <div className="flex flex-col gap-1" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
           <ReactionIcon type={message.sticker} size={44} />
-          <span className="px-1 text-[10px] tabular-nums text-[#8E8E93]/60">{clockTime(message.at)}</span>
+          <span className="px-1 text-[10px] tabular-nums text-zinc-600">{clockTime(message.at)}</span>
         </div>
       </motion.div>
     );
@@ -150,20 +150,20 @@ export function MessageBubble({
             }}
             className={cn(
               "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-rose/60",
-              message.kind === "image" || message.kind === "audio" ? "p-1.5" : "px-4 py-3",
-              "rounded-[20px]",
+              message.kind === "image" || message.kind === "audio" ? "p-1.5" : "px-4 py-2.5",
+              "rounded-[24px]",
               mine
-                ? "rounded-br-[6px] bg-[linear-gradient(135deg,#FF5C7A,#FF8FA3)] text-white"
-                : "rounded-bl-[6px] bg-[#1E1E24] text-text"
+                ? "rounded-br-[4px] bg-[linear-gradient(135deg,#FF5C7A,#FF8FA3)] text-white shadow-[0_4px_12px_rgba(255,92,122,0.2)]"
+                : "rounded-bl-[4px] bg-[#1C1C1E] text-zinc-100"
             )}
           >
             {message.replyTo && (
               <div
                 className={cn(
-                  "mb-1.5 flex items-start gap-1.5 rounded-[10px] border-l-2 px-2 py-1.5 text-[11.5px] leading-snug",
+                  "mb-1.5 flex items-start gap-1.5 rounded-[12px] border-l-2 px-2 py-1.5 text-[11.5px] leading-snug",
                   mine
                     ? "border-white/40 bg-black/10 text-white/85"
-                    : "border-rose/50 bg-white/[0.04] text-[#8E8E93]"
+                    : "border-rose/40 bg-white/[0.04] text-zinc-400"
                 )}
               >
                 <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 opacity-70" />
@@ -202,8 +202,7 @@ export function MessageBubble({
             {tail && (
               <span
                 className={cn(
-                  "float-right ml-2 mt-1 flex select-none items-center gap-1 text-[11px] leading-none",
-                  mine ? "text-white/70" : "text-[#8E8E93]/80"
+                  "float-right ml-2 mt-1 flex select-none items-center gap-1 text-[10px] leading-none opacity-50"
                 )}
               >
                 <span className="tabular-nums">{clockTime(message.at)}</span>
@@ -290,7 +289,7 @@ export function MessageBubble({
                 setConfirmRemove(false);
               }}
               className={cn(
-                "mt-1 rounded-full border border-white/[0.08] bg-[#232329] px-2.5 py-1 text-[11px] text-text",
+                "mt-1 rounded-full border border-white/[0.08] bg-[#18181B] px-2.5 py-1 text-[11px] text-zinc-200",
                 mine ? "self-end" : "self-start"
               )}
             >
@@ -307,7 +306,7 @@ export function MessageBubble({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -3 }}
               className={cn(
-                "mt-1 rounded-full border border-white/[0.08] bg-[#232329] px-2.5 py-1 text-[11px] text-[#F5F5F7]",
+                "mt-1 rounded-full border border-white/[0.08] bg-[#18181B] px-2.5 py-1 text-[11px] text-zinc-200",
                 mine ? "self-end" : "self-start"
               )}
             >

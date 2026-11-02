@@ -25,6 +25,7 @@ export type AuthErrorCode =
   | "ACCOUNT_EXISTS"
   | "ACCOUNT_NOT_FOUND"
   | "WRONG_PASSWORD"
+  | "EMAIL_CONFIRMATION"
   | "USERNAME_TAKEN"
   | "USERNAME_RESERVED"
   | "WEAK_PASSWORD"
@@ -40,6 +41,8 @@ export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   ACCOUNT_EXISTS: "This email already has an account. Sign in instead.",
   ACCOUNT_NOT_FOUND: "We couldn't find an account with that email.",
   WRONG_PASSWORD: "That password doesn't match. Try again.",
+  EMAIL_CONFIRMATION:
+    "This project still asks for email confirmation. Use sign in, or ask the owner to turn it off.",
   USERNAME_TAKEN: "That one's taken. Try another.",
   USERNAME_RESERVED: "That handle is reserved. Pick another.",
   WEAK_PASSWORD: "Use at least 8 characters, with a letter and a number.",
@@ -60,6 +63,8 @@ export class AuthFailure extends Error {
 export interface AuthProvider {
   mode: "supabase" | "local";
   getAccount(): Promise<Account | null>;
+  /** Create an account straight from email + password (no inbox needed). */
+  signUpWithPassword(email: string, password: string): Promise<void>;
   sendOtp(email: string): Promise<SendOtpResult>;
   verifyOtp(email: string, code: string): Promise<void>;
   createPassword(password: string): Promise<void>;

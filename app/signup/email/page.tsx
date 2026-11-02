@@ -52,6 +52,13 @@ export default function EmailScreen() {
     const email = values.email.trim().toLowerCase();
     setSubmitting(true);
     try {
+      // Supabase is configured with confirmation off, so there is no code to send —
+      // the password becomes the proof instead of an inbox.
+      if (auth.mode === "supabase") {
+        setSignupEmail(email);
+        router.push("/signup/password");
+        return;
+      }
       const result = await auth.sendOtp(email);
       setSignupEmail(email);
       if (result.devCode) setDevCode(result.devCode);
@@ -72,7 +79,9 @@ export default function EmailScreen() {
         <Motif icon={<Mail className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>What&apos;s your email?</ScreenTitle>
         <ScreenSubtitle>
-          We&apos;ll send a {OTP_LENGTH}-digit code to make sure it&apos;s really you. No spam, ever.
+          {auth.mode === "supabase"
+            ? "No emails, no codes. Pick a password next and you're in."
+            : `We'll send a ${OTP_LENGTH}-digit code to make sure it's really you. No spam, ever.`}
         </ScreenSubtitle>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8" noValidate>

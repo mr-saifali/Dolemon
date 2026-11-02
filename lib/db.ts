@@ -29,6 +29,8 @@ export type DbMessage = {
   kind: string;
   body: string;
   at: number;
+  /** set once the sender edits the text — rendered as a quiet "edited" */
+  editedAt?: number | null;
   reactions: MessageReaction[];
 };
 
@@ -53,9 +55,23 @@ type MessageRow = {
   kind: string | null;
   body: string | null;
   created_at: string;
+  edited_at?: string | null;
 };
 
 type ReactionRow = { message_id: string; user_id: string; reaction_type: string };
+
+function mapRow(row: MessageRow): DbMessage {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    kind: row.kind ?? "text",
+    body: row.body ?? "",
+    at: new Date(row.created_at).getTime(),
+    editedAt: row.edited_at ? new Date(row.edited_at).getTime() : null,
+    reactions: [],
+  };
+}
 
 function client() {
   const c = getSupabase();
@@ -162,19 +178,14 @@ export async function loadThread(
 
   const { data: rows, error } = await sb
     .from("messages")
-    .select("id, conversation_id, sender_id, kind, body, created_at")
+    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true })
     .limit(400);
 
   if (error) throw new Error(error.message);
   const messages = ((rows ?? []) as MessageRow[]).map((row) => ({
-    id: row.id,
-    conversationId: row.conversation_id,
-    senderId: row.sender_id,
-    kind: row.kind ?? "text",
-    body: row.body ?? "",
-    at: new Date(row.created_at).getTime(),
+    ...mapRow(row),
     reactions: [] as MessageReaction[],
   }));
 
@@ -214,19 +225,30 @@ export async function postMessage(
   const { data, error } = await sb
     .from("messages")
     .insert({ conversation_id: conversationId, sender_id: sender, body, kind })
-    .select("id, conversation_id, sender_id, kind, body, created_at")
+    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at")
     .single<MessageRow>();
 
   if (error) throw new Error(error.message);
-  return {
-    id: data.id,
-    conversationId: data.conversation_id,
-    senderId: data.sender_id,
-    kind: data.kind ?? "text",
-    body: data.body ?? "",
-    at: new Date(data.created_at).getTime(),
-    reactions: [],
-  };
+  return mapRow(data);
+}
+
+/** Edit the words of your own text message. RLS refuses anything else. */
+export async function editMessage(messageId: string, body: string): Promise<number> {
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Can't save an empty message.");
+  const editedAt = new Date().toISOString();
+  const { error } = await client()
+    .from("messages")
+    .update({ body: trimmed, edited_at: editedAt })
+    .eq("id", messageId);
+  if (error) throw new Error(error.message);
+  return new Date(editedAt).getTime();
+}
+
+/** Hard delete of your own message. */
+export async function deleteMessage(messageId: string): Promise<void> {
+  const { error } = await client().from("messages").delete().eq("id", messageId);
+  if (error) throw new Error(error.message);
 }
 
 export async function setMyReaction(messageId: string, type: ReactionType): Promise<void> {
@@ -259,29 +281,33 @@ export async function markThreadRead(conversationId: string): Promise<void> {
 }
 
 /** New messages as they land, filtered to this conversation. */
-export function watchMessages(conversationId: string, onInsert: (row: DbMessage) => void) {
+export function watchMessages(
+  conversationId: string,
+  handlers: {
+    onInsert: (row: DbMessage) => void;
+    onUpdate?: (row: DbMessage) => void;
+    onDelete?: (id: string) => void;
+  }
+) {
   const sb = client();
   const channel = sb
     .channel(`thread:${conversationId}`)
     .on(
       "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-        filter: `conversation_id=eq.${conversationId}`,
-      },
+      { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+      (payload) => handlers.onInsert(mapRow(payload.new as MessageRow))
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+      (payload) => handlers.onUpdate?.(mapRow(payload.new as MessageRow))
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
       (payload) => {
-        const row = payload.new as MessageRow;
-        onInsert({
-          id: row.id,
-          conversationId: row.conversation_id,
-          senderId: row.sender_id,
-          kind: row.kind ?? "text",
-          body: row.body ?? "",
-          at: new Date(row.created_at).getTime(),
-          reactions: [],
-        });
+        const old = payload.old as Partial<MessageRow> | undefined;
+        if (old?.id) handlers.onDelete?.(old.id);
       }
     )
     .subscribe();

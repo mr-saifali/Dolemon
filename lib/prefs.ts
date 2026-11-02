@@ -15,6 +15,14 @@ export type Prefs = {
   typingIndicator: boolean;
   /** vibration/haptic feedback on incoming pulses and calls */
   haptics: boolean;
+  /** how long Dolemon stays open after you leave it, once app-lock is set */
+  autoLock: "instant" | "1m" | "5m" | "30m";
+  /** strip animation everywhere, for people who feel motion */
+  reduceMotion: boolean;
+  /** tighter bubble spacing — more words per screen */
+  compactChat: boolean;
+  /** a soft tone when their message lands */
+  sounds: boolean;
 };
 
 const KEY = "dolemon:prefs";
@@ -25,6 +33,10 @@ const DEFAULT: Prefs = {
   readReceipts: true,
   typingIndicator: true,
   haptics: true,
+  autoLock: "1m",
+  reduceMotion: false,
+  compactChat: false,
+  sounds: true,
 };
 
 let cache: Prefs = DEFAULT;

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Copy, CornerUpLeft, Forward, Trash2 } from "lucide-react";
+import { Copy, CornerUpLeft, Forward, Pencil, Trash2 } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
 
@@ -19,7 +19,7 @@ const TINT: Record<ReactionType, string> = {
 };
 const PICKER_W = 236;
 
-export type MessageAction = "reply" | "copy" | "forward" | "delete";
+export type MessageAction = "reply" | "copy" | "forward" | "edit" | "delete";
 
 /**
  * Floats directly above the bubble it belongs to. Reactions on top, the usual four
@@ -28,14 +28,17 @@ export type MessageAction = "reply" | "copy" | "forward" | "delete";
 export function ReactionPicker({
   anchor,
   mine,
+  editable,
   myReaction,
   onPick,
   onAction,
   onClose,
 }: {
   anchor: BubbleAnchor;
-  /** is this my message — decides whether Delete is offered */
+  /** is this my message — decides whether Edit and Delete are offered */
   mine: boolean;
+  /** only plain text can be rewritten */
+  editable: boolean;
   myReaction: ReactionType | null;
   onPick: (type: ReactionType) => void;
   onAction: (action: MessageAction) => void;
@@ -100,11 +103,14 @@ export function ReactionPicker({
           initial={{ opacity: 0, y: above ? -4 : 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08, duration: 0.16 }}
-          className="mt-1.5 flex items-center justify-center gap-1 rounded-full border border-white/[0.08] bg-[#232329]/95 px-2 py-1.5 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.85)]"
+          className="mt-1.5 flex flex-wrap items-center justify-center gap-1 rounded-[20px] border border-white/[0.08] bg-[#232329]/95 px-1.5 py-1.5 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.85)]"
         >
           <ActionButton icon={<CornerUpLeft className="h-4 w-4" />} label="Reply" onClick={() => onAction("reply")} />
           <ActionButton icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => onAction("copy")} />
           <ActionButton icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => onAction("forward")} />
+          {mine && editable && (
+            <ActionButton icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => onAction("edit")} />
+          )}
           {mine && (
             <ActionButton
               icon={<Trash2 className="h-4 w-4" />}
@@ -136,7 +142,7 @@ function ActionButton({
       onClick={onClick}
       whileHover={{ scale: 1.06 }}
       whileTap={{ scale: 0.94 }}
-      className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-colors ${
+      className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] font-medium transition-colors ${
         danger ? "text-danger hover:bg-danger/10" : "text-text/90 hover:bg-white/[0.07]"
       }`}
     >

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  deleteMessage,
+  editMessage,
   loadReactions,
   loadThread,
   listConversations,
@@ -32,6 +34,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
       kind: "call",
       text: row.body,
       at: row.at,
+      editedAt: row.editedAt ?? null,
       call: { type: lower.startsWith("video") ? "video" : "voice", durationMs: 0, missed: lower.includes("missed") },
     };
   }
@@ -43,6 +46,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
       kind: "presence",
       text: row.body,
       at: row.at,
+      editedAt: row.editedAt ?? null,
     };
   }
 
@@ -52,6 +56,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
     kind: row.kind === "sticker" ? "sticker" : row.kind === "image" ? "image" : row.kind === "audio" ? "audio" : "text",
     text: row.kind === "sticker" ? "" : row.body,
     at: row.at,
+    editedAt: row.editedAt ?? null,
     status: mine ? (pending ? "sending" : "delivered") : undefined,
     reactions: row.reactions,
     sticker: row.kind === "sticker" ? (sticker || "dil") : undefined,
@@ -68,6 +73,11 @@ export function useRemoteThread(conversationId: string, enabled = true) {
   const [online, setOnline] = useState(false);
   const bus = useRef<ReturnType<typeof typingBus> | null>(null);
   const pending = useRef<Map<string, { body: string; kind: "text" | "sticker" }>>(new Map());
+  const messagesRef = useRef<ChatMessage[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const refreshReactions = useCallback(async () => {
     try {
@@ -110,20 +120,30 @@ export function useRemoteThread(conversationId: string, enabled = true) {
   // realtime: new messages
   useEffect(() => {
     if (!enabled || !me) return;
-    const stop = watchMessages(conversationId, (row) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === row.id)) return prev;
-        // drop the matching optimistic bubble if this is our own send echoing back
-        const withoutTmp = prev.filter(
-          (m) =>
-            !(
-              m.id.startsWith("tmp_") &&
-              m.author === "me" &&
-              m.text === (row.kind === "sticker" ? "" : row.body)
-            )
+    const stop = watchMessages(conversationId, {
+      onInsert: (row) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === row.id)) return prev;
+          // drop the matching optimistic bubble if this is our own send echoing back
+          const withoutTmp = prev.filter(
+            (m) =>
+              !(
+                m.id.startsWith("tmp_") &&
+                m.author === "me" &&
+                m.text === (row.kind === "sticker" ? "" : row.body)
+              )
+          );
+          return [...withoutTmp, toChatMessage(row, me)];
+        });
+      },
+      onUpdate: (row) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === row.id ? { ...m, text: row.body, editedAt: row.editedAt ?? null } : m))
         );
-        return [...withoutTmp, toChatMessage(row, me)];
-      });
+      },
+      onDelete: (id) => {
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      },
     });
     return stop;
   }, [conversationId, me, enabled]);
@@ -243,6 +263,26 @@ export function useRemoteThread(conversationId: string, enabled = true) {
 
   const remove = useCallback((messageId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    // real messages are deleted in Postgres too; optimistic bubbles only exist locally
+    if (!messageId.startsWith("tmp_")) void deleteMessage(messageId).catch(() => undefined);
+  }, []);
+
+  /** Rewrite my own text. Fails quietly for the other person's messages (RLS). */
+  const edit = useCallback(async (messageId: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const before = messagesRef.current.find((m) => m.id === messageId)?.text ?? "";
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, text: trimmed, editedAt: Date.now() } : m))
+    );
+    try {
+      if (messageId.startsWith("tmp_")) return;
+      const at = await editMessage(messageId, trimmed);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, editedAt: at } : m)));
+    } catch (error) {
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, text: before } : m)));
+      throw error;
+    }
   }, []);
 
   return {
@@ -261,6 +301,7 @@ export function useRemoteThread(conversationId: string, enabled = true) {
     clearMyReaction,
     retry,
     remove,
+    edit,
     notifyTyping: () => bus.current?.ping(),
   };
 }

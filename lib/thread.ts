@@ -25,6 +25,8 @@ export type ChatMessage = {
   status?: MessageStatus;
   media?: MediaInfo;
   replyTo?: QuotedMessage;
+  /** epoch ms — the message was rewritten after sending */
+  editedAt?: number | null;
   reactions?: MessageReaction[];
   call?: CallInfo;
   /** a standalone reaction sticker — no words at all */
@@ -259,6 +261,15 @@ export function useThread(conversationId: string, { enabled = true }: { enabled?
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }, []);
 
+  /** Rewrite my own words — the demo thread marks it the same way the live one does. */
+  const edit = useCallback(async (messageId: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, text: trimmed, editedAt: Date.now() } : m))
+    );
+  }, []);
+
   const addMoment = useCallback((text: string) => {
     setMessages((prev) => [...prev, { id: uid(), author: "system", kind: "presence", text, at: Date.now() }]);
   }, []);
@@ -290,6 +301,7 @@ export function useThread(conversationId: string, { enabled = true }: { enabled?
     clearMyReaction,
     retry,
     remove,
+    edit,
     clear,
     addMoment,
     addCall,

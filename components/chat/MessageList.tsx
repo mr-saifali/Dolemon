@@ -17,6 +17,7 @@ export function MessageList({
   typing,
   showReceipts,
   dividerId,
+  compact = false,
   onLongPress,
   onDoubleTap,
   onRemoveMyReaction,
@@ -29,6 +30,8 @@ export function MessageList({
   typing: boolean;
   showReceipts: boolean;
   dividerId: string | null;
+  /** tighter bubbles — set from Settings → Feel */
+  compact?: boolean;
   onLongPress: (message: ChatMessage, anchor: BubbleAnchor) => void;
   onDoubleTap: (message: ChatMessage) => void;
   onRemoveMyReaction: (message: ChatMessage) => void;
@@ -132,6 +135,7 @@ export function MessageList({
                       onOpenImage={onOpenImage}
                       onSwipeReply={onSwipeReply}
                       animateIn={!initialIds.current?.has(message.id)}
+                      compact={compact}
                     />
                   </div>
                 );

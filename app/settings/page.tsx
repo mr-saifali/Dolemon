@@ -9,14 +9,19 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  Copy,
   Download,
   Eye,
   Loader2,
   Lock,
   MessageSquareDashed,
   Radio,
+  ShieldCheck,
   Sparkles,
+  Trash2,
   Vibrate,
+  Volume2,
+  Wind,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
@@ -25,7 +30,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldError } from "@/components/ui/field-error";
 import { auth } from "@/lib/auth";
-import { markUnlocked } from "@/lib/app-lock";
+import { AUTO_LOCK_OPTIONS, clearUnlocked, markUnlocked, type AutoLockId } from "@/lib/app-lock";
 import { AVATAR_PRESETS, avatarById } from "@/lib/avatars";
 import { uploadAvatarImage } from "@/lib/db";
 import { compressImage } from "@/lib/media";
@@ -83,6 +88,7 @@ function SettingsContent() {
   const [savingLock, setSavingLock] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [clearArmed, setClearArmed] = useState(false);
   const photoInput = useRef<HTMLInputElement | null>(null);
   const prefs = usePrefs();
 
@@ -301,7 +307,7 @@ function SettingsContent() {
           })}
         </div>
 
-        <Section title="Privacy">
+        <Section title="Chats &amp; privacy">
           <div className="py-3">
             <button
               type="button"
@@ -337,6 +343,52 @@ function SettingsContent() {
                   transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                   className="overflow-hidden"
                 >
+                  {account?.hasAppLock && (
+                    <div className="mt-2 rounded-2xl border border-[#FF5C7A]/20 bg-[#FF5C7A]/[0.06] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-[12px] text-zinc-300">
+                          <ShieldCheck className="h-3.5 w-3.5 text-[#FF8FA3]" />
+                          Locked after {prefs.autoLock === "instant" ? "you leave" : prefs.autoLock.replace("m", " minutes")} away
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearUnlocked();
+                            toast.success("Locked. Open Dolemon again to unlock.");
+                            router.replace("/unlock");
+                          }}
+                          className="rounded-full bg-[#FF5C7A] px-3 py-1 text-[11.5px] font-medium text-white"
+                        >
+                          Lock now
+                        </button>
+                      </div>
+
+                      <p className="mt-3 px-0.5 text-[10.5px] uppercase tracking-[0.14em] text-zinc-500">
+                        Ask for it again
+                      </p>
+                      <div className="mt-1.5 flex gap-1.5">
+                        {AUTO_LOCK_OPTIONS.map((option) => {
+                          const active = prefs.autoLock === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setPref("autoLock", option.id as AutoLockId)}
+                              className={cn(
+                                "flex-1 rounded-full px-2 py-1.5 text-[11.5px] font-medium transition-colors",
+                                active
+                                  ? "bg-[linear-gradient(135deg,#FF5C7A,#FFA07A)] text-white"
+                                  : "bg-white/[0.06] text-zinc-400"
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <form onSubmit={saveLock} className="pt-3">
                     <Label htmlFor="app-lock">
                       {account?.hasAppLock ? "Change password" : "Set password"}
@@ -429,6 +481,105 @@ function SettingsContent() {
               checked={prefs.haptics}
               onChange={(v) => setPref("haptics", v)}
             />
+          </div>
+        </Section>
+
+        <Section title="Feel">
+          <div className="py-3.5">
+            <Switch
+              icon={<Tile tone="violet"><Wind className="h-[15px] w-[15px]" /></Tile>}
+              label="Reduce motion"
+              description="Fewer slides and springs, everywhere."
+              checked={prefs.reduceMotion}
+              onChange={(v) => setPref("reduceMotion", v)}
+            />
+          </div>
+          <div className="py-3.5">
+            <Switch
+              icon={<Tile tone="peach"><MessageSquareDashed className="h-[15px] w-[15px]" /></Tile>}
+              label="Compact chat"
+              description="Tighter bubbles, more of the thread on screen."
+              checked={prefs.compactChat}
+              onChange={(v) => setPref("compactChat", v)}
+            />
+          </div>
+          <div className="py-3.5">
+            <Switch
+              icon={<Tile tone="amber"><Volume2 className="h-[15px] w-[15px]" /></Tile>}
+              label="Message sounds"
+              description="A quiet chime when their message lands."
+              checked={prefs.sounds}
+              onChange={(v) => setPref("sounds", v)}
+            />
+          </div>
+        </Section>
+
+        <Section title="Your data">
+          <div className="flex items-center justify-between gap-4 py-3.5">
+            <div className="flex items-start gap-3">
+              <Tile tone="sky"><Copy className="h-[15px] w-[15px]" /></Tile>
+              <div>
+                <p className="text-[14.5px] text-zinc-200">Your handle</p>
+                <p className="mt-0.5 text-[12.5px] text-zinc-500">
+                  @{account?.username ?? "you"} — share it so they can find you.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const handle = account?.username ? `@${account.username}` : "";
+                if (!handle) return;
+                navigator.clipboard?.writeText(handle).then(
+                  () => toast.success("Handle copied"),
+                  () => toast.error("Couldn't copy")
+                );
+              }}
+              className="rounded-full bg-white/[0.06] px-3 py-1.5 text-[11.5px] text-zinc-300 active:scale-95"
+            >
+              Copy
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 py-3.5">
+            <div className="flex items-start gap-3">
+              <Tile tone="rose"><Trash2 className="h-[15px] w-[15px]" /></Tile>
+              <div>
+                <p className="text-[14.5px] text-zinc-200">Clear local cache</p>
+                <p className="mt-0.5 text-[12.5px] text-zinc-500">
+                  Demo threads and preferences on this device. Nothing on the server.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!clearArmed) {
+                  setClearArmed(true);
+                  window.setTimeout(() => setClearArmed(false), 3000);
+                  return;
+                }
+                try {
+                  Object.keys(window.localStorage)
+                    .filter((key) => key.startsWith("dolemon:"))
+                    .forEach((key) => window.localStorage.removeItem(key));
+                  if ("caches" in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((key) => caches.delete(key)));
+                  }
+                  setClearArmed(false);
+                  toast.success("Local cache cleared");
+                } catch {
+                  toast.error("Couldn't clear the cache");
+                }
+              }}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-[11.5px] active:scale-95",
+                clearArmed ? "bg-[#FF6B6B]/20 text-[#FF8B8B]" : "bg-white/[0.06] text-zinc-300"
+              )}
+            >
+              {clearArmed ? "Tap again" : "Clear"}
+            </button>
           </div>
         </Section>
 

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
 import { MessageList } from "@/components/chat/MessageList";
 import { PulseOverlay } from "@/components/chat/pulse-overlay";
@@ -27,6 +28,7 @@ import { demoConversations } from "@/lib/chat";
 import { markRead, patchMeta, useChatMetaFor } from "@/lib/conversation-meta";
 import { formatAgo, usePresence } from "@/lib/presence";
 import { buzz, usePrefs } from "@/lib/prefs";
+import { playMessageTone } from "@/lib/sound";
 import { useLiveCall } from "@/lib/live-call";
 import { usePulses } from "@/lib/pulses";
 import { QUICK_REACTION, type ReactionType } from "@/lib/reactions";
@@ -66,12 +68,31 @@ function ThreadScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [picker, setPicker] = useState<{ message: ChatMessage; anchor: BubbleAnchor } | null>(null);
   const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [dividerId, setDividerId] = useState<string | null>(null);
   const marked = useRef(false);
+  const lastSeenMessage = useRef<string | null>(null);
 
   useViewportHeight();
+
+  // a soft chime when their message lands (never for my own sends)
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    const previous = lastSeenMessage.current;
+    if (previous === null) {
+      lastSeenMessage.current = last.id;
+      return;
+    }
+    if (last.id === previous) return;
+    lastSeenMessage.current = last.id;
+    if (prefs.sounds && last.author === "them") {
+      playMessageTone();
+      if (prefs.haptics) buzz(8);
+    }
+  }, [messages, prefs.sounds, prefs.haptics]);
 
   // Swipe in from the left edge to go back to the inbox (the gesture every phone app has).
   const edge = useRef<{ x: number; y: number; id: number } | null>(null);
@@ -184,6 +205,17 @@ function ThreadScreen() {
   const retryNow = REMOTE ? remote.retry : local.retry;
   const removeNow = REMOTE ? remote.remove : local.remove;
 
+  const saveEdit = async (id: string, text: string) => {
+    try {
+      if (REMOTE) await remote.edit(id, text);
+      else await local.edit(id, text);
+      toast.success("Message updated");
+      setEditing(null);
+    } catch {
+      toast.error("Couldn't edit that message");
+    }
+  };
+
   const handleSend = (text: string) => {
     sendNow(text, replyTo ? { replyTo } : {});
     setReplyTo(null);
@@ -208,6 +240,13 @@ function ThreadScreen() {
       }
       case "forward":
         toast("Forward", { description: "Forwarding arrives with multi-room threads." });
+        break;
+      case "edit":
+        if (message.kind === "text" && message.author === "me") {
+          setEditing({ id: message.id, text: message.text });
+        } else {
+          toast("Only your own text can be edited");
+        }
         break;
       case "delete":
         removeNow(message.id);
@@ -337,6 +376,7 @@ function ThreadScreen() {
         partnerName={partnerName}
         typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator && !meta.blocked}
         showReceipts={prefs.readReceipts}
+        compact={prefs.compactChat}
         dividerId={dividerId}
         onLongPress={(message, anchor) => setPicker({ message, anchor })}
         onDoubleTap={(message) => reactNow(message.id, QUICK_REACTION)}
@@ -347,6 +387,17 @@ function ThreadScreen() {
           setReplyTo({ id: message.id, author: message.author, text: previewFor(message) })
         }
       />
+
+      <AnimatePresence>
+        {editing && (
+          <EditBar
+            key={editing.id}
+            text={editing.text}
+            onSave={(next) => saveEdit(editing.id, next)}
+            onCancel={() => setEditing(null)}
+          />
+        )}
+      </AnimatePresence>
 
       <ChatInput
         onSend={handleSend}
@@ -378,6 +429,7 @@ function ThreadScreen() {
             key={picker.message.id}
             anchor={picker.anchor}
             mine={picker.message.author === "me"}
+            editable={picker.message.kind === "text"}
             myReaction={myReaction}
             onPick={(type) => {
               reactNow(picker.message.id, type);

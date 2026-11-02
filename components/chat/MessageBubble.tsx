@@ -26,6 +26,7 @@ export function MessageBubble({
   onOpenImage,
   onSwipeReply,
   animateIn = true,
+  compact = false,
 }: {
   message: ChatMessage;
   /** same sender, inside the burst window → tighter gap */
@@ -43,6 +44,8 @@ export function MessageBubble({
   onSwipeReply?: (message: ChatMessage) => void;
   /** false for messages that were already on screen at mount — they must not animate in */
   animateIn?: boolean;
+  /** tighter spacing between bubbles */
+  compact?: boolean;
 }) {
   const mine = message.author === "me";
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -111,7 +114,7 @@ export function MessageBubble({
         initial={enter}
         animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
         transition={SPRING}
-        className={cn("flex w-full", mine ? "justify-end" : "justify-start", grouped ? "mt-1.5" : "mt-3.5")}
+        className={cn("flex w-full", mine ? "justify-end" : "justify-start", grouped ? "mt-1" : "mt-2.5")}
       >
         <div className="flex flex-col gap-1" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
           <ReactionIcon type={message.sticker} size={44} />
@@ -129,7 +132,7 @@ export function MessageBubble({
       className={cn(
         "flex w-full select-none",
         mine ? "justify-end" : "justify-start",
-        grouped ? "mt-[6px]" : "mt-[14px]"
+        grouped ? (compact ? "mt-[2px]" : "mt-[6px]") : compact ? "mt-[7px]" : "mt-[14px]"
       )}
     >
       <div
@@ -247,6 +250,7 @@ export function MessageBubble({
                 )}
               >
                 <span className="tabular-nums">{clockTime(message.at)}</span>
+                {message.editedAt ? <span className="italic">edited</span> : null}
                 {mine && showReceipts && <Ticks status={message.status} />}
               </span>
             )}

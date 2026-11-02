@@ -17,6 +17,10 @@
   body {
     @apply bg-ink text-text antialiased;
     overscroll-behavior-y: none;
+    /* a long-press must open our menu, never a text selection */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     font-feature-settings: "cv11", "ss01";
     text-rendering: optimizeLegibility;
   }
@@ -25,6 +29,16 @@
   button, a, [role="button"] { touch-action: manipulation; }
   /* momentum scrolling inside the thread */
   .scroll-momentum { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+  /* writing surfaces stay selectable, everything else does not */
+  input,
+  textarea,
+  [contenteditable="true"],
+  .selectable,
+  .selectable * {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
   /* keep iOS from zooming on focus */
   input, textarea, select, button { font-size: 16px; }
   input:focus { outline: none; }

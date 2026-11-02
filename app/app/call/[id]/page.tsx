@@ -92,7 +92,7 @@ function CallScreen({
       {/* ambient backdrop */}
       <div aria-hidden className="absolute inset-0">
         <motion.div
-          className="absolute left-1/2 top-[-10%] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.30),transparent_65%)] blur-3xl"
+          className="absolute left-1/2 top-[-10%] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.30),transparent_65%)]"
           animate={{ scale: call.phase === "connected" ? [1, 1.06, 1] : 1 }}
           transition={{ duration: 5, repeat: Infinity }}
         />

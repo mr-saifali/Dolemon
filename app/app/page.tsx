@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Plus } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
-import { ChatRow, type ChatRowData } from "@/components/home/chat-row";
+import { ChatAvatar, ChatRow, type ChatRowData } from "@/components/home/chat-row";
 import { HomeEmptyState } from "@/components/home/empty-state";
 import { PeopleSearch } from "@/components/home/people-search";
 import { StartChatSheet } from "@/components/home/start-chat-sheet";
@@ -44,6 +45,7 @@ function HomeScreen() {
         name: c.partnerUsername,
         handle: c.partnerUsername,
         avatarId: c.partnerAvatar,
+        avatarUrl: c.partnerAvatarUrl,
         preview: previewOf(c),
         at: c.lastAt,
         unread: c.unread,
@@ -89,12 +91,12 @@ function HomeScreen() {
       {/* warm glow, top right */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-28 -top-36 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.16),rgba(255,140,90,0.06)_45%,transparent_72%)] blur-3xl"
+        className="pointer-events-none absolute -right-28 -top-36 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.16),rgba(255,140,90,0.06)_45%,transparent_72%)]"
       />
       {/* cool counterweight, bottom left */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -bottom-44 -left-32 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(104,120,255,0.13),rgba(150,92,255,0.05)_50%,transparent_72%)] blur-3xl"
+        className="pointer-events-none absolute -bottom-44 -left-32 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(104,120,255,0.13),rgba(150,92,255,0.05)_50%,transparent_72%)]"
       />
       {/* soft sheen along the top edge */}
       <div
@@ -111,17 +113,32 @@ function HomeScreen() {
             className="min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
           >
             {greetingFor()},{" "}
-            <span className="font-normal text-zinc-100">@{account?.username ?? "you"}</span>
+            <span className="text-vibrant font-normal">@{account?.username ?? "you"}</span>
           </motion.h1>
 
-          <button
-            type="button"
-            onClick={openStart}
-            aria-label="Start a conversation"
-            className="-mr-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white active:scale-95"
-          >
-            <Plus className="h-6 w-6" strokeWidth={1.6} />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={openStart}
+              aria-label="Start a conversation"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white active:scale-95"
+            >
+              <Plus className="h-6 w-6" strokeWidth={1.6} />
+            </button>
+
+            <Link
+              href="/settings"
+              aria-label="Profile and settings"
+              className="rounded-2xl transition-transform active:scale-95"
+            >
+              <ChatAvatar
+                avatarId={account?.avatarId ?? null}
+                avatarUrl={account?.avatarUrl ?? null}
+                name={account?.username ?? "you"}
+                size={36}
+              />
+            </Link>
+          </div>
         </header>
 
         {REMOTE && (

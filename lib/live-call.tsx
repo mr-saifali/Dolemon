@@ -35,6 +35,7 @@ export type ActiveCall = {
   conversationId: string;
   partnerId: string;
   peerName: string;
+  peerAvatarUrl?: string | null;
   type: CallType;
   direction: CallDirection;
   phase: LivePhase;
@@ -47,6 +48,7 @@ type Signal = {
   from?: string;
   type?: CallType;
   name?: string;
+  avatar?: string | null;
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit | null;
 };
@@ -76,6 +78,10 @@ type LiveCallValue = {
   toggleMute: () => void;
   toggleCamera: () => void;
   flipCamera: () => Promise<void>;
+  /** collapsed into a floating pill so the chat stays usable mid-call */
+  minimized: boolean;
+  minimize: () => void;
+  expand: () => void;
 };
 
 const LiveCallContext = createContext<LiveCallValue | null>(null);
@@ -90,6 +96,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
   const [cameraOn, setCameraOn] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [encrypted, setEncrypted] = useState(false);
+  const [minimized, setMinimized] = useState(false);
 
   const callRef = useRef<ActiveCall | null>(null);
   const meRef = useRef<string | null>(null);
@@ -265,6 +272,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       }
 
       cleanup();
+      setMinimized(false);
 
       const ended: ActiveCall = { ...current, phase: "ended", note };
       callRef.current = ended;
@@ -477,6 +485,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
           conversationId: signal.conversationId,
           partnerId: signal.from ?? "",
           peerName: signal.name ?? "Someone",
+          peerAvatarUrl: signal.avatar ?? null,
           type: signal.type ?? "voice",
           direction: "incoming",
           phase: "ringing",
@@ -580,12 +589,14 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
         conversationId,
         partnerId: conversation.partnerId,
         peerName: conversation.partnerUsername,
+        peerAvatarUrl: conversation.partnerAvatarUrl,
         type,
         direction: "outgoing",
         phase: "inviting",
       };
       callRef.current = outgoing;
       setCall(outgoing);
+      setMinimized(false);
       facing.current = "user";
 
       await joinCallChannel(conversationId);
@@ -595,19 +606,21 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
         type,
         from: account?.id ?? undefined,
         name: account?.username ?? undefined,
+        avatar: account?.avatarUrl ?? undefined,
       });
 
       later(() => {
         if (callRef.current?.phase === "inviting") finish("No one picked up");
       }, 45_000);
     },
-    [account?.id, account?.username, finish, joinCallChannel, later, sendOn]
+    [account?.id, account?.username, account?.avatarUrl, finish, joinCallChannel, later, sendOn]
   );
 
   const accept = useCallback(async () => {
     const current = callRef.current;
     if (!current || current.direction !== "incoming") return;
     stopRing();
+    setMinimized(false);
     setCall((prev) => (prev ? { ...prev, phase: "connecting" } : prev));
     callRef.current = { ...current, phase: "connecting" };
 
@@ -700,6 +713,9 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const minimize = useCallback(() => setMinimized(true), []);
+  const expand = useCallback(() => setMinimized(false), []);
+
   const value = useMemo<LiveCallValue>(
     () => ({
       call,
@@ -717,6 +733,9 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleCamera,
       flipCamera,
+      minimized,
+      minimize,
+      expand,
     }),
     [
       call,
@@ -734,6 +753,9 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleCamera,
       flipCamera,
+      minimized,
+      minimize,
+      expand,
     ]
   );
 

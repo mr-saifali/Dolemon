@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowRight, Heart, Lock } from "lucide-react";
-import { useEffect } from "react";
+import { ArrowRight, Download, Heart, Lock } from "lucide-react";
+import { useEffect, useState } from "react";
 import { BrandBlob } from "@/components/brand-blob";
+import { InstallSheet } from "@/components/pwa/install-sheet";
+import { usePwa } from "@/components/pwa/pwa-provider";
 import { Button } from "@/components/ui/button";
 import { useSession, landingFor } from "@/lib/session";
 
@@ -14,6 +16,8 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 export default function WelcomePage() {
   const router = useRouter();
   const { account, loading } = useSession();
+  const { installed } = usePwa();
+  const [sheet, setSheet] = useState(false);
 
   useEffect(() => {
     if (!loading && account) router.replace(landingFor(account));
@@ -30,10 +34,16 @@ export default function WelcomePage() {
           transition={{ duration: 0.3, ease: EASE }}
           className="flex items-center gap-2 pt-8"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose/15 ring-1 ring-rose/25">
-            <Heart className="h-4 w-4 fill-rose text-rose" />
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(150deg,#FF5C7A,#A78BFA)] shadow-[0_6px_18px_-6px_rgba(255,92,122,0.9)]">
+            <Heart className="h-4 w-4 fill-white text-white" />
           </span>
           <span className="text-[15px] font-medium tracking-tight text-text">Dolemon</span>
+          <Link
+            href="/download"
+            className="ml-1 rounded-full border border-white/10 px-2 py-[3px] text-[10.5px] font-medium tracking-wide text-text-muted transition-colors hover:border-rose/30 hover:text-rose"
+          >
+            v0.1
+          </Link>
         </motion.header>
 
         <div className="flex flex-1 flex-col justify-center py-16">
@@ -44,10 +54,10 @@ export default function WelcomePage() {
             aria-hidden
             className="relative mb-9 h-32 w-32"
           >
-            <div className="absolute inset-0 rounded-[36px] bg-rose/10 blur-xl" />
-            <div className="relative flex h-32 w-32 items-center justify-center rounded-[32px] border border-white/[0.07] bg-gradient-to-b from-white/[0.07] to-white/[0.02] shadow-card backdrop-blur-sm">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose/15 ring-1 ring-rose/30">
-                <Heart className="h-7 w-7 fill-rose text-rose" strokeWidth={1.5} />
+            <div className="absolute inset-0 rounded-[36px] bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.26),rgba(255,160,122,0.10)_52%,transparent_74%)]" />
+            <div className="relative flex h-32 w-32 items-center justify-center rounded-[32px] border border-white/[0.09] bg-[linear-gradient(160deg,rgba(255,92,122,0.16),rgba(167,139,250,0.10)_55%,rgba(255,255,255,0.02))] shadow-card">
+              <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-[linear-gradient(150deg,#FF5C7A,#A78BFA)] shadow-[0_14px_34px_-10px_rgba(255,92,122,0.9)]">
+                <Heart className="h-7 w-7 fill-white text-white" strokeWidth={1.5} />
               </div>
             </div>
             <motion.span
@@ -66,7 +76,8 @@ export default function WelcomePage() {
             transition={{ duration: 0.32, ease: EASE, delay: 0.1 }}
             className="text-balance text-[32px] font-semibold leading-[1.12] tracking-[-0.025em] text-text"
           >
-            A private space for just you two.
+            A private space for{" "}
+            <span className="text-vibrant">just you two.</span>
           </motion.h1>
 
           <motion.p
@@ -105,6 +116,20 @@ export default function WelcomePage() {
             <ArrowRight className="h-4 w-4" />
           </Button>
 
+          {!installed && (
+            <button
+              type="button"
+              onClick={() => setSheet(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-white/[0.09] bg-white/[0.03] py-3.5 text-[14.5px] font-medium text-text transition-colors hover:border-rose/25 hover:bg-white/[0.05] active:scale-[0.99]"
+            >
+              <Download className="h-4 w-4 text-rose" />
+              Download the app
+              <span className="rounded-full bg-rose/12 px-1.5 py-0.5 text-[10px] font-medium text-rose">
+                v0.1
+              </span>
+            </button>
+          )}
+
           <p className="pt-1 text-center text-[14px] text-text-muted">
             Already have an account?{" "}
             <Link
@@ -116,6 +141,8 @@ export default function WelcomePage() {
           </p>
         </motion.div>
       </div>
+
+      <InstallSheet open={sheet} onClose={() => setSheet(false)} />
     </main>
   );
 }

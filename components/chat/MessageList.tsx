@@ -22,6 +22,7 @@ export function MessageList({
   onRemoveMyReaction,
   onRetry,
   onOpenImage,
+  onSwipeReply,
 }: {
   messages: ChatMessage[];
   partnerName: string;
@@ -33,9 +34,13 @@ export function MessageList({
   onRemoveMyReaction: (message: ChatMessage) => void;
   onRetry: (message: ChatMessage) => void;
   onOpenImage?: (url: string) => void;
+  onSwipeReply?: (message: ChatMessage) => void;
 }) {
   const scroller = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
+  /** whatever was already on screen when the thread opened stays still — no hundred springs */
+  const initialIds = useRef<Set<string> | null>(null);
+  if (initialIds.current === null) initialIds.current = new Set(messages.map((m) => m.id));
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
 
@@ -125,6 +130,8 @@ export function MessageList({
                       onRemoveMyReaction={onRemoveMyReaction}
                       onRetry={onRetry}
                       onOpenImage={onOpenImage}
+                      onSwipeReply={onSwipeReply}
+                      animateIn={!initialIds.current?.has(message.id)}
                     />
                   </div>
                 );

@@ -13,6 +13,7 @@ export type DbConversation = {
   partnerId: string;
   partnerUsername: string;
   partnerAvatar: string | null;
+  partnerAvatarUrl: string | null;
   partnerLastSeen: number | null;
   lastBody: string | null;
   lastKind: string | null;
@@ -36,6 +37,7 @@ type ConversationRow = {
   partner_id: string;
   partner_username: string | null;
   partner_avatar: string | null;
+  partner_avatar_url: string | null;
   partner_last_seen: string | null;
   last_body: string | null;
   last_kind: string | null;
@@ -74,6 +76,7 @@ export async function listConversations(): Promise<DbConversation[]> {
     partnerId: row.partner_id,
     partnerUsername: row.partner_username ?? "someone",
     partnerAvatar: row.partner_avatar,
+    partnerAvatarUrl: row.partner_avatar_url ?? null,
     partnerLastSeen: row.partner_last_seen ? new Date(row.partner_last_seen).getTime() : null,
     lastBody: row.last_body,
     lastKind: row.last_kind,
@@ -97,7 +100,12 @@ export async function openDirectConversation(handle: string): Promise<string> {
   return data as string;
 }
 
-export type DbPerson = { id: string; username: string; avatarId: string | null };
+export type DbPerson = {
+  id: string;
+  username: string;
+  avatarId: string | null;
+  avatarUrl: string | null;
+};
 
 /** People you could start a room with, by handle. Two characters or more. */
 export async function searchUsers(query: string): Promise<DbPerson[]> {
@@ -107,13 +115,43 @@ export async function searchUsers(query: string): Promise<DbPerson[]> {
   const { data, error } = await client().rpc("search_users", { q: term });
   if (error) throw new Error(error.message);
 
-  return ((data ?? []) as { id: string; username: string | null; avatar_id: string | null }[])
+  return (
+    (data ?? []) as {
+      id: string;
+      username: string | null;
+      avatar_id: string | null;
+      avatar_url: string | null;
+    }[]
+  )
     .filter((row) => Boolean(row.username))
     .map((row) => ({
       id: row.id,
       username: row.username as string,
       avatarId: row.avatar_id,
+      avatarUrl: row.avatar_url ?? null,
     }));
+}
+
+/** Uploads a compressed photo to the public `avatars` bucket and returns its URL. */
+export async function uploadAvatarImage(dataUrl: string): Promise<string> {
+  const sb = client();
+  const { data: userData } = await sb.auth.getUser();
+  const userId = userData.user?.id;
+  if (!userId) throw new Error("You're signed out.");
+
+  const blob = await (await fetch(dataUrl)).blob();
+  const path = `${userId}/avatar.jpg`;
+
+  const { error } = await sb.storage.from("avatars").upload(path, blob, {
+    contentType: blob.type || "image/jpeg",
+    cacheControl: "3600",
+    upsert: true,
+  });
+  if (error) throw new Error(error.message);
+
+  const { data } = sb.storage.from("avatars").getPublicUrl(path);
+  // bust the CDN so the new photo shows up straight away
+  return `${data.publicUrl}?v=${Date.now()}`;
 }
 
 export async function loadThread(

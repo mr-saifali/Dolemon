@@ -74,7 +74,7 @@ export function ChatInput({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="mb-2 flex items-center gap-2 rounded-2xl border border-white/[0.06] bg-[#18181B] px-3 py-2"
+              className="hairline mb-2 flex items-center gap-2 rounded-2xl bg-[#18181B] px-3 py-2"
             >
               <span className="h-6 w-0.5 rounded-full bg-rose" />
               <div className="min-w-0 flex-1">
@@ -147,7 +147,7 @@ export function ChatInput({
 
           <div
             className={cn(
-              "flex flex-1 items-end rounded-full bg-[#1C1C1E] px-4 py-3 transition-all",
+              "flex flex-1 items-end rounded-full border border-white/[0.06] bg-[#1C1C1E] px-4 py-3 transition-colors",
               focused && "shadow-[0_0_0_1px_rgba(255,92,122,0.28)]"
             )}
           >
@@ -200,7 +200,7 @@ export function ChatInput({
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={SPRING}
                   whileTap={{ scale: 0.9 }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FF8FA3)] text-white shadow-[0_6px_18px_-6px_rgba(255,92,122,0.9)]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FF7E92_55%,#FFA07A)] text-white shadow-[0_8px_22px_-8px_rgba(255,92,122,1)]"
                 >
                   <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
                 </motion.button>

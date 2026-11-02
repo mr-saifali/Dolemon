@@ -13,12 +13,14 @@ const SIZES = {
 
 export function Avatar({
   avatarId,
+  avatarUrl,
   name,
   size = "md",
   online,
   className,
 }: {
   avatarId: string | null;
+  avatarUrl?: string | null;
   name: string;
   size?: keyof typeof SIZES;
   online?: boolean;
@@ -36,7 +38,10 @@ export function Avatar({
           boxShadow: preset ? `inset 0 0 0 1px ${preset.ring}22` : undefined,
         }}
       >
-        {preset ? (
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+        ) : preset ? (
           <span aria-hidden>{preset.emoji}</span>
         ) : (
           <span className="text-[13px] font-semibold tracking-wide text-rose/90">

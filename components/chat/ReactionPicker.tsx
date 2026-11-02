@@ -8,6 +8,15 @@ import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reaction
 export type BubbleAnchor = { top: number; bottom: number; left: number; width: number };
 
 const SPRING = { type: "spring", stiffness: 400, damping: 30 } as const;
+
+/** a colour voice per reaction, so the row reads as five different feelings */
+const TINT: Record<ReactionType, string> = {
+  dil: "rgba(255,92,122,0.22)",
+  haha: "rgba(252,211,77,0.20)",
+  wow: "rgba(125,211,252,0.20)",
+  aww: "rgba(255,160,122,0.22)",
+  hype: "rgba(167,139,250,0.24)",
+};
 const PICKER_W = 236;
 
 export type MessageAction = "reply" | "copy" | "forward" | "delete";
@@ -61,7 +70,7 @@ export function ReactionPicker({
         <div
           role="menu"
           aria-label="React to message"
-          className="flex items-center justify-between gap-0.5 rounded-full border border-white/[0.08] bg-[#232329] px-[10px] py-2 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)]"
+          className="hairline flex items-center justify-between gap-0.5 rounded-full bg-[#232329] px-[10px] py-2 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)]"
         >
           {REACTION_TYPES.map((type, i) => {
             const selected = myReaction === type;
@@ -78,11 +87,10 @@ export function ReactionPicker({
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.92 }}
                 onClick={() => onPick(type)}
-                className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
-                  selected ? "bg-rose/20" : "hover:bg-white/[0.06]"
-                }`}
+                className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-white/[0.06]"
+                style={selected ? { background: TINT[type], boxShadow: `0 0 18px -4px ${TINT[type]}` } : undefined}
               >
-                <ReactionIcon type={type} size={28} />
+                <ReactionIcon type={type} size={selected ? 31 : 28} />
               </motion.button>
             );
           })}

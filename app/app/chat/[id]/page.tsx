@@ -73,6 +73,45 @@ function ThreadScreen() {
 
   useViewportHeight();
 
+  // Swipe in from the left edge to go back to the inbox (the gesture every phone app has).
+  const edge = useRef<{ x: number; y: number; id: number } | null>(null);
+  const [edgePull, setEdgePull] = useState(0);
+
+  useEffect(() => {
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch || touch.clientX > 34) return;
+      edge.current = { x: touch.clientX, y: touch.clientY, id: touch.identifier };
+    };
+    const onMove = (event: TouchEvent) => {
+      if (!edge.current) return;
+      const touch = Array.from(event.touches).find((t) => t.identifier === edge.current?.id);
+      if (!touch) return;
+      const dx = touch.clientX - edge.current.x;
+      const dy = Math.abs(touch.clientY - edge.current.y);
+      if (dx > 8 && dx > dy) setEdgePull(Math.min(110, dx * 0.55));
+    };
+    const onEnd = () => {
+      if (!edge.current) return;
+      edge.current = null;
+      setEdgePull((pull) => {
+        if (pull > 46) router.push("/app");
+        return 0;
+      });
+    };
+
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchmove", onMove, { passive: true });
+    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchcancel", onEnd);
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      window.removeEventListener("touchcancel", onEnd);
+    };
+  }, [router]);
+
   const pulses = usePulses({
     demo: !REMOTE,
     onIncoming: () => {
@@ -267,6 +306,14 @@ function ThreadScreen() {
         className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,92,122,0.06),transparent_60%)]"
       />
 
+      {edgePull > 0 && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 z-40 w-1.5 rounded-r-full bg-rose/60"
+          style={{ transform: `translateX(${edgePull - 6}px)`, opacity: Math.min(1, edgePull / 46) }}
+        />
+      )}
+
       <PulseOverlay
         burst={pulses.burst}
         incoming={Boolean(pulses.incoming)}
@@ -276,6 +323,7 @@ function ThreadScreen() {
       <ChatHeader
         name={partnerName}
         avatarId={partnerAvatar}
+        avatarUrl={REMOTE ? remote.partnerAvatarUrl : null}
         online={online}
         status={status}
         typing={status === "online" && (REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
@@ -295,6 +343,9 @@ function ThreadScreen() {
         onRemoveMyReaction={(message) => clearReactionNow(message.id)}
         onRetry={(message) => retryNow(message.id)}
         onOpenImage={setViewerUrl}
+        onSwipeReply={(message) =>
+          setReplyTo({ id: message.id, author: message.author, text: previewFor(message) })
+        }
       />
 
       <ChatInput

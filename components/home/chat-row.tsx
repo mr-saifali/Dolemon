@@ -12,6 +12,7 @@ export type ChatRowData = {
   name: string;
   handle: string;
   avatarId: string | null;
+  avatarUrl?: string | null;
   preview: string;
   at: number | null;
   unread: number;
@@ -21,11 +22,13 @@ export type ChatRowData = {
 /** A 56px gradient avatar — no card, no border, just the person. */
 export function ChatAvatar({
   avatarId,
+  avatarUrl,
   name,
   size = 56,
   online,
 }: {
   avatarId: string | null;
+  avatarUrl?: string | null;
   name: string;
   size?: number;
   online?: boolean;
@@ -37,7 +40,13 @@ export function ChatAvatar({
   return (
     <div className="relative shrink-0">
       <div
-        className="flex items-center justify-center overflow-hidden rounded-2xl"
+        className="rounded-[19px] p-[1.5px]"
+        style={{
+          background: `linear-gradient(140deg, ${hexA(ring, 0.75)} 0%, ${hexA("#A78BFA", 0.45)} 55%, ${hexA("#7DD3FC", 0.55)} 100%)`,
+        }}
+      >
+      <div
+        className="flex items-center justify-center overflow-hidden rounded-[17px]"
         style={{
           width: size,
           height: size,
@@ -45,17 +54,29 @@ export function ChatAvatar({
           boxShadow: `inset 0 0 0 1px ${hexA(ring, 0.16)}`,
         }}
       >
-        <span style={{ fontSize: size * 0.42 }} aria-hidden>
-          {preset?.emoji ?? fallback.emoji}
-        </span>
-        {!preset && (
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <span style={{ fontSize: size * 0.42 }} aria-hidden>
+            {preset?.emoji ?? fallback.emoji}
+          </span>
+        )}
+        {!preset && !avatarUrl && (
           <span className="absolute text-[13px] font-semibold tracking-wide text-rose/90">
             {initialsFor(name)}
           </span>
         )}
       </div>
+      </div>
       {online && (
-        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#09090B] bg-emerald-400" />
+        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#09090B] bg-mint shadow-[0_0_10px_rgba(94,234,212,0.85)]" />
       )}
     </div>
   );
@@ -78,9 +99,14 @@ export function ChatRow({ chat, index }: { chat: ChatRowData; index: number }) {
     >
       <Link
         href={`/app/chat/${chat.id}`}
-        className="flex items-center gap-3.5 rounded-2xl px-1 py-3 transition-colors active:bg-white/[0.03]"
+        className="press flex items-center gap-3.5 rounded-2xl px-1 py-3 active:bg-white/[0.04]"
       >
-        <ChatAvatar avatarId={chat.avatarId} name={chat.name} online={Boolean(chat.typing)} />
+        <ChatAvatar
+            avatarId={chat.avatarId}
+            avatarUrl={chat.avatarUrl}
+            name={chat.name}
+            online={Boolean(chat.typing)}
+          />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
@@ -96,14 +122,14 @@ export function ChatRow({ chat, index }: { chat: ChatRowData; index: number }) {
 
           <div className="mt-0.5 flex items-center justify-between gap-3">
             {chat.typing ? (
-              <span className="flex items-center gap-1.5 text-[13px] text-rose/80">
+              <span className="flex items-center gap-1.5 text-[13px] text-[#FF9E7A]">
                 <TypingDots /> typing
               </span>
             ) : (
               <p className="truncate text-[13.5px] text-zinc-400">{chat.preview}</p>
             )}
             {chat.unread > 0 && (
-              <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#FF5C7A] px-1.5 text-[10.5px] font-semibold text-white">
+              <span className="flex h-[19px] min-w-[19px] shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FFA07A)] px-1.5 text-[10.5px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(255,92,122,0.9)]">
                 {unreadLabel}
               </span>
             )}

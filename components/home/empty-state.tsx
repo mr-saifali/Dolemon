@@ -21,11 +21,11 @@ export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
       <div className="relative mb-8 flex h-44 w-44 items-center justify-center">
         <motion.div
           aria-hidden
-          className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.30),rgba(255,140,90,0.10)_45%,transparent_72%)] blur-2xl"
+          className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.30),rgba(255,140,90,0.10)_45%,transparent_72%)]"
           animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         />
-        <div className="absolute h-28 w-28 rounded-full border border-rose-500/20 bg-rose-500/10 backdrop-blur-[2px]" />
+        <div className="absolute h-28 w-28 rounded-full border border-rose-400/25 bg-[radial-gradient(circle_at_30%_25%,rgba(255,92,122,0.18),rgba(167,139,250,0.10)_60%,transparent_75%)]" />
 
         <svg
           width="164"
@@ -46,38 +46,30 @@ export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
             </linearGradient>
           </defs>
 
-          <motion.circle
-            cx="64"
-            cy="64"
-            r="36"
-            stroke="url(#dm-ring-a)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeDasharray="188 38"
-            animate={{ rotate: 360 }}
-            transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
-            style={{ transformOrigin: "64px 64px" }}
-          />
-          <motion.circle
-            cx="100"
-            cy="64"
-            r="36"
-            stroke="url(#dm-ring-b)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeDasharray="156 70"
-            animate={{ rotate: -360 }}
-            transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
-            style={{ transformOrigin: "100px 64px" }}
-          />
-          <motion.circle
-            cx="82"
-            cy="64"
-            r="3.2"
-            fill="#FF5C7A"
-            animate={{ opacity: [0.45, 1, 0.45], r: [2.8, 3.6, 2.8] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-          />
+          {/* CSS transforms only: these two rings never touch the main thread */}
+          <g className="spin-slow" style={{ transformOrigin: "64px 64px", willChange: "transform" }}>
+            <circle
+              cx="64"
+              cy="64"
+              r="36"
+              stroke="url(#dm-ring-a)"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeDasharray="188 38"
+            />
+          </g>
+          <g className="spin-slow-reverse" style={{ transformOrigin: "100px 64px", willChange: "transform" }}>
+            <circle
+              cx="100"
+              cy="64"
+              r="36"
+              stroke="url(#dm-ring-b)"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeDasharray="156 70"
+            />
+          </g>
+          <circle cx="82" cy="64" r="3.2" fill="#FF5C7A" className="animate-pulse-soft" style={{ transformOrigin: "82px 64px" }} />
         </svg>
       </div>
 
@@ -87,22 +79,22 @@ export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
         want to talk to.
       </p>
 
-      <motion.button
-        type="button"
-        onClick={onInvite}
-        whileTap={{ scale: 0.97 }}
-        animate={{
-          boxShadow: [
-            "0 0 18px rgba(255,92,122,0.25)",
-            "0 0 30px rgba(255,92,122,0.45)",
-            "0 0 18px rgba(255,92,122,0.25)",
-          ],
-        }}
-        transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
-        className="mt-7 rounded-full bg-gradient-to-r from-[#FF5C7A] to-[#FF8FA3] px-6 py-3 text-[14px] font-medium text-white transition-transform duration-200 hover:scale-105 active:scale-100"
-      >
-        Invite your person
-      </motion.button>
+      <div className="relative mt-7">
+        <motion.span
+          aria-hidden
+          className="pointer-events-none absolute -inset-1 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.45),rgba(255,160,122,0.18)_55%,transparent_72%)]"
+          animate={{ opacity: [0.55, 0.95, 0.55] }}
+          transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.button
+          type="button"
+          onClick={onInvite}
+          whileTap={{ scale: 0.97 }}
+          className="relative rounded-full bg-gradient-to-r from-[#FF5C7A] to-[#FF8FA3] px-6 py-3 text-[14px] font-medium text-white shadow-[0_10px_30px_-8px_rgba(255,92,122,0.55)] transition-transform duration-200 hover:scale-105 active:scale-100"
+        >
+          Invite your person
+        </motion.button>
+      </div>
 
       <button
         type="button"
@@ -122,7 +114,7 @@ export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setHowOpen(false)}
-              className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
+              className="absolute inset-0 bg-black/72"
             />
             <motion.div
               role="dialog"

@@ -26,7 +26,16 @@ self-contained local provider, and the emailed code is shown on the verify scree
 | 5 | `/signup/username` | Live availability check (400ms debounce) + optional emoji avatar |
 | 6 | `/signup/success` | Animated confirmation → `/app` |
 
-Plus `/signin`, `/app` (chat placeholder), `/settings` (avatar + app password), `/unlock`.
+Plus `/signin`, `/app` (chat home), `/app/chat/[id]` (thread placeholder),
+`/settings` (avatar + app password), `/unlock`.
+
+## Home screen (`/app`)
+
+Greeting + handle, account avatar → settings, live search across names/handles/messages,
+All / Unread filters, and a 1:1 conversation list with unread badges, online dots,
+"typing…", pinned and muted states. Tapping a row opens the thread; the rose FAB opens
+the new-chat sheet with your invite link. In demo mode the list is sample data
+(labelled as such); with Supabase configured it renders real rows once the backend lands.
 
 ## Stack
 

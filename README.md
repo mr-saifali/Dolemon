@@ -4,11 +4,14 @@ A private, invite-only space for **one-to-one** conversations. No groups, no noi
 
 Mobile-first (designed at 390px) and centred `max-w-md` on desktop.
 
-## Deploy
+## Live
 
-Supabase project `dolemon` is already provisioned (schema + RLS + presence tables).
-Vercel deployment is blocked on account permissions — see [DEPLOY.md](./DEPLOY.md) for the
-one-step fix, the env var list and the OTP caveats.
+**[dolemon.vercel.app](https://dolemon.vercel.app)** — production deploy of `main`,
+running the local provider (demo mode) so the whole flow is clickable without an inbox.
+
+Supabase project `dolemon` is provisioned (schema + RLS + presence tables) and its auth
+site URL points at the live domain. See [DEPLOY.md](./DEPLOY.md) for env vars, how the
+first builds were fixed, and the OTP/SMTP caveats before switching to real auth.
 
 ## Run it
 
@@ -53,13 +56,33 @@ Built around **presence**, not around an inbox:
   says "Aarohi left 2m ago — your message will be waiting."
 - **Presence moments** are timeline items in their own right ("You were both here together
   yesterday · 22 minutes") — something a normal chat log can't show.
-- Bubbles with day dividers, 3-minute grouping, delivery ticks (sent → delivered → read),
-  typing bubble, auto-growing composer (Enter to send, Shift+Enter for a newline).
+- Bubbles with day separators (Aaj / Kal / 12 Nov), 3-minute grouping, delivery ticks
+  (sending → sent → delivered → read → failed + tap-to-retry), typing bubble, auto-growing
+  composer (Enter to send, Shift+Enter for a newline).
+- Auto-scroll only pins when you're within 120px of the bottom; scroll up and new messages
+  collect behind a `↓ N naya` pill instead of yanking you away from what you were reading.
 - Demo partner replies ~3.4s after you send and presence drifts in and out every 18s so the
   layer is visible; "Reset demo thread" lives in the chat menu.
 
 Presence lives in `lib/presence.ts` with a single seam to a realtime channel — see
 `docs/supabase.md` §4 for the Realtime + `presence_moments` mapping.
+
+### Five reactions, no emoji
+
+Dolemon doesn't use unicode emoji. The five reactions are hand-drawn SVG components in
+`components/reactions/` — **Dil** (heart), **Haha** (laughing face), **Wow** (wide eyes),
+**Aww** (welling up), **Hype** (flame) — each 28×28, flat with one gradient, no outlines,
+and still distinguishable at 16px in a chip.
+
+- **Long-press** a bubble (300ms) → the five faces + Reply / Copy / Forward / Delete float
+  above it. Delete only appears on your own messages.
+- **Double-tap** → Dil lands: a 72px heart rises out of the bubble (scale 0.6 → 1.4,
+  y −40px, 700ms). Double-tap again and it's taken back.
+- One reaction per person per message. Chips sit −8px under the bubble, aligned to its
+  side, with your own highlighted in rose. Tap your chip to remove it; tap theirs and it
+  says "Aarohi ne Dil kiya" instead of silently toggling.
+- Reactions are modelled in `lib/reactions.ts` and persist per thread; the same shape is
+  stored in `message_reactions` in Supabase (see `docs/supabase.md` §7).
 
 ### Pulses
 

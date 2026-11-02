@@ -9,6 +9,7 @@ export type ChatMeta = {
   unread?: number;
   deleted?: boolean;
   lastReadAt?: number;
+  blocked?: boolean;
 };
 
 type MetaMap = Record<string, ChatMeta>;

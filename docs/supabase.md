@@ -196,3 +196,66 @@ Wiring checklist:
 Until that's connected the call screen runs a simulated session (labelled "Simulated call ·
 media not connected") so the whole flow — ring, accept, mute, camera flip, timer, end, timeline
 entry, missed call — can be reviewed and edited.
+
+## 7. Messages + reactions (already deployed)
+
+The `message_reactions` feature is live on the project (`dolemon_messages_and_reactions`
+migration):
+
+```sql
+conversations(id, created_at)
+conversation_members(conversation_id, user_id)          -- membership is the ACL
+messages(id, conversation_id, sender_id, kind, body, created_at)
+message_reactions(
+  id, message_id → messages(id) on delete cascade,
+  user_id → auth.users(id) on delete cascade,
+  reaction_type check in ('dil','haha','wow','aww','hype'),
+  created_at,
+  unique (message_id, user_id)                          -- one reaction per person
+)
+```
+
+RLS:
+
+| Table | Select | Insert | Update / Delete |
+| --- | --- | --- | --- |
+| `conversations` | members only | — | — |
+| `conversation_members` | members only | — | — |
+| `messages` | members only | `sender_id = auth.uid()` + member | own rows |
+| `message_reactions` | messages you can see | `user_id = auth.uid()` + visible message | own rows only |
+
+`is_conversation_member()` and `can_see_message()` are `security definer` helpers so the
+policies don't recurse into each other. Both `messages` and `message_reactions` are in the
+`supabase_realtime` publication.
+
+The client already speaks this shape (`lib/reactions.ts`): `dil | haha | wow | aww | hype`,
+one reaction per person per message, and a pick replaces the old one. Until auth + message
+persistence are switched on, the thread and its reactions live in `localStorage` and sync
+between tabs over a `BroadcastChannel` named `dolemon:thread:<id>` — the same seam a
+Realtime channel plugs into.
+
+### Replacing the local store with Realtime
+
+```ts
+const sb = getSupabase();
+
+// one channel per conversation
+const channel = sb
+  .channel(`reactions:${conversationId}`)
+  .on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: "message_reactions", filter: `conversation_id=eq.${conversationId}` },
+    (payload) => mergeReaction(payload.new, payload.eventType)
+  )
+  .subscribe();
+
+// writing my reaction: delete-then-insert keeps the unique(message_id, user_id) rule
+await sb.from("message_reactions").upsert(
+  { message_id, user_id: me, reaction_type: type },
+  { onConflict: "message_id,user_id" }
+);
+```
+
+Note the `filter` above needs `conversation_id` on the reactions table for server-side
+filtering; today it's one hop away on `messages`, so subscribe without a filter and drop
+rows that don't belong to the open thread.

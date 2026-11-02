@@ -33,10 +33,13 @@ function active(): AuthProvider {
 }
 
 /** Pin this browser to the local provider so a demo never depends on email delivery. */
-export function useDemoMode() {
+export function enableDemoMode() {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(OVERRIDE_KEY, "local");
 }
+
+/** Backwards-compatible alias — this was never a hook, despite the name. */
+export const useDemoMode = enableDemoMode;
 
 export function clearDemoMode() {
   if (typeof window === "undefined") return;

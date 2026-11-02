@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toggleReaction, type MessageReaction, type ReactionBy, type ReactionType } from "./reactions";
 
 export type MessageAuthor = "me" | "them" | "system";
-export type MessageKind = "text" | "presence" | "image" | "audio" | "call";
-export type MessageStatus = "sending" | "sent" | "delivered" | "read";
+export type MessageKind = "text" | "presence" | "image" | "audio" | "call" | "sticker";
+export type MessageStatus = "sending" | "sent" | "delivered" | "read" | "failed";
 
 export type CallInfo = { type: "voice" | "video"; durationMs: number; missed?: boolean };
 
@@ -12,7 +13,8 @@ export type MediaInfo = { url: string; width?: number; height?: number; duration
 
 export type QuotedMessage = { id: string; author: MessageAuthor; text: string };
 
-export type Reaction = { emoji: string; by: MessageAuthor };
+/** Kept as an alias so older imports keep type-checking. */
+export type Reaction = MessageReaction;
 
 export type ChatMessage = {
   id: string;
@@ -23,8 +25,10 @@ export type ChatMessage = {
   status?: MessageStatus;
   media?: MediaInfo;
   replyTo?: QuotedMessage;
-  reactions?: Reaction[];
+  reactions?: MessageReaction[];
   call?: CallInfo;
+  /** a standalone reaction sticker — no words at all */
+  sticker?: ReactionType;
 };
 
 export type ThreadSeed = Omit<ChatMessage, "at"> & { minutesAgo: number };
@@ -39,7 +43,7 @@ const SEEDS: Record<string, ThreadSeed[]> = {
     { id: "s2", author: "them", kind: "text", text: "okay I finally watched that film you kept pushing", minutesAgo: 96 },
     { id: "s3", author: "me", kind: "text", text: "AND? was I right or was I right", minutesAgo: 94 },
     { id: "s4", author: "them", kind: "text", text: "you were right. annoyingly right.", minutesAgo: 93 },
-    { id: "s5", author: "me", kind: "text", text: "I'm framing this message", minutesAgo: 92, reactions: [{ emoji: "😌", by: "them" }] },
+    { id: "s5", author: "me", kind: "text", text: "I'm framing this message", minutesAgo: 92, reactions: [{ type: "aww", by: "them" }] },
     { id: "s6", author: "them", kind: "call", text: "Voice call · 4m 12s", minutesAgo: 40, call: { type: "voice", durationMs: 252_000 } },
     { id: "s7", author: "them", kind: "text", text: "reached home. call me when you're free? 🥺", minutesAgo: 3 },
     { id: "s8", author: "me", kind: "text", text: "calling in 10", minutesAgo: 2 },
@@ -108,12 +112,19 @@ function write(conversationId: string, messages: ChatMessage[]) {
 
 const uid = () => `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-type SendOptions = { kind?: MessageKind; media?: MediaInfo; replyTo?: QuotedMessage };
+type SendOptions = {
+  kind?: MessageKind;
+  media?: MediaInfo;
+  replyTo?: QuotedMessage;
+  sticker?: ReactionType;
+};
 
 export function useThread(conversationId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [ready, setReady] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const channel = useRef<BroadcastChannel | null>(null);
+  const fromRemote = useRef(false);
 
   useEffect(() => {
     const stored = read(conversationId);
@@ -121,8 +132,33 @@ export function useThread(conversationId: string) {
     setReady(true);
   }, [conversationId]);
 
+  /**
+   * Live across tabs — open the same thread twice and messages, reactions and ticks
+   * follow each other. This is the same surface a Supabase Realtime channel plugs into.
+   */
   useEffect(() => {
-    if (ready) write(conversationId, messages);
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(`dolemon:thread:${conversationId}`);
+    channel.current = ch;
+    ch.onmessage = (event: MessageEvent) => {
+      if (!Array.isArray(event.data)) return;
+      fromRemote.current = true;
+      setMessages(event.data as ChatMessage[]);
+    };
+    return () => {
+      ch.close();
+      channel.current = null;
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    write(conversationId, messages);
+    if (fromRemote.current) {
+      fromRemote.current = false;
+      return;
+    }
+    channel.current?.postMessage(messages);
   }, [conversationId, messages, ready]);
 
   useEffect(() => {
@@ -135,12 +171,14 @@ export function useThread(conversationId: string) {
   }, []);
 
   const deliver = useCallback(
-    (id: string, reply?: string) => {
+    (id: string, reply?: string | null) => {
       timers.current.push(setTimeout(() => patch(id, { status: "sent" }), 450));
       timers.current.push(setTimeout(() => patch(id, { status: "delivered" }), 900));
       timers.current.push(
         setTimeout(() => {
           patch(id, { status: "read" });
+          // a `null` reply means "don't answer this one" — used for wordless stickers
+          if (reply === null) return;
           setMessages((prev) => [
             ...prev,
             { id: uid(), author: "them", kind: "text", text: reply ?? pick(REPLIES), at: Date.now() },
@@ -154,8 +192,9 @@ export function useThread(conversationId: string) {
   const send = useCallback(
     (text: string, options: SendOptions = {}) => {
       const trimmed = text.trim();
-      if (!trimmed && !options.media) return;
+      if (!trimmed && !options.media && !options.sticker) return;
       const id = uid();
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
       setMessages((prev) => [
         ...prev,
         {
@@ -164,30 +203,53 @@ export function useThread(conversationId: string) {
           kind: options.kind ?? "text",
           text: trimmed,
           at: Date.now(),
-          status: "sending",
+          status: offline ? "failed" : "sending",
           media: options.media,
           replyTo: options.replyTo,
+          sticker: options.sticker,
         },
       ]);
-      deliver(id, options.kind === "image" ? pick(PHOTO_REPLIES) : options.kind === "audio" ? pick(VOICE_REPLIES) : undefined);
+      if (!offline) {
+        const reply =
+          options.kind === "sticker"
+            ? null
+            : options.kind === "image"
+              ? pick(PHOTO_REPLIES)
+              : options.kind === "audio"
+                ? pick(VOICE_REPLIES)
+                : undefined;
+        deliver(id, reply);
+      }
       return id;
     },
     [deliver]
   );
 
-  const react = useCallback((messageId: string, emoji: string, by: MessageAuthor = "me") => {
+  const react = useCallback((messageId: string, type: ReactionType, by: ReactionBy = "me") => {
     setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== messageId) return m;
-        const existing = m.reactions ?? [];
-        const mine = existing.find((r) => r.by === by && r.emoji === emoji);
-        const next = mine
-          ? existing.filter((r) => !(r.by === by && r.emoji === emoji))
-          : [...existing.filter((r) => r.by !== by), { emoji, by }];
-        return { ...m, reactions: next };
-      })
+      prev.map((m) =>
+        m.id === messageId ? { ...m, reactions: toggleReaction(m.reactions, type, by) } : m
+      )
     );
   }, []);
+
+  /** Remove whatever I cast on this message, if anything. */
+  const clearMyReaction = useCallback((messageId: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId ? { ...m, reactions: (m.reactions ?? []).filter((r) => r.by !== "me") } : m
+      )
+    );
+  }, []);
+
+  /** Re-run delivery for a message that failed while offline. */
+  const retry = useCallback(
+    (messageId: string) => {
+      patch(messageId, { status: "sending" });
+      deliver(messageId);
+    },
+    [deliver, patch]
+  );
 
   const remove = useCallback((messageId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
@@ -207,12 +269,29 @@ export function useThread(conversationId: string) {
     ]);
   }, []);
 
+  const clear = useCallback(() => {
+    setMessages([]);
+    write(conversationId, []);
+  }, [conversationId]);
+
   const resetDemo = useCallback(() => {
     if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_PREFIX + conversationId);
     setMessages(seedMessages(conversationId));
   }, [conversationId]);
 
-  return { messages, send, react, remove, addMoment, addCall, resetDemo, ready };
+  return {
+    messages,
+    send,
+    react,
+    clearMyReaction,
+    retry,
+    remove,
+    clear,
+    addMoment,
+    addCall,
+    resetDemo,
+    ready,
+  };
 }
 
 /** Calls happen on their own route, so the timeline entry is written straight to storage. */
@@ -261,10 +340,10 @@ export function dayLabel(date: Date, now = new Date()) {
   const sameDay = (a: Date, b: Date) =>
     a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
 
-  if (sameDay(date, now)) return "Today";
+  if (sameDay(date, now)) return "Aaj";
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (sameDay(date, yesterday)) return "Yesterday";
+  if (sameDay(date, yesterday)) return "Kal";
   if (now.getTime() - date.getTime() < 7 * 86_400_000) {
     return date.toLocaleDateString("en-IN", { weekday: "long" });
   }
@@ -296,6 +375,8 @@ export function previewFor(message: ChatMessage) {
       return message.text;
     case "presence":
       return message.text;
+    case "sticker":
+      return "Reaction";
     default:
       return message.text;
   }

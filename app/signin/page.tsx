@@ -12,7 +12,7 @@ import { ScreenShell, Motif, ScreenTitle, ScreenSubtitle } from "@/components/sc
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
-import { auth, isSupabaseConfigured, useDemoMode } from "@/lib/auth";
+import { auth, enableDemoMode, isSupabaseConfigured } from "@/lib/auth";
 import { AuthFailure } from "@/lib/auth/types";
 import { landingFor, useSession } from "@/lib/session";
 
@@ -122,7 +122,7 @@ export default function SignInPage() {
             <button
               type="button"
               onClick={() => {
-                useDemoMode();
+                enableDemoMode();
                 toast.success("Demo mode on this device", {
                   description: "Koi email nahi — OTP screen par hi dikhega.",
                 });

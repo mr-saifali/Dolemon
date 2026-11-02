@@ -10,8 +10,9 @@ Mobile-first (designed at 390px) and centred `max-w-md` on desktop.
 running on Supabase: email + password accounts (no inbox needed) and real 1:1 threads
 synced over Realtime.
 
-Open the app → create an account → tap **+** → type your friend's handle. Both people need
-an account; then messages, reactions, typing dots and presence are live between them.
+Open the app → create an account → search your person by **@handle** → the room opens. Both
+people need an account; messages, reactions, typing dots and presence are live between them,
+and voice/video calls ring the other device directly.
 
 Supabase project `dolemon` is provisioned (schema + RLS + presence tables) and its auth
 site URL points at the live domain. See [DEPLOY.md](./DEPLOY.md) for env vars, how the
@@ -44,11 +45,15 @@ Plus `/signin`, `/app` (chat home), `/app/chat/[id]` (thread),
 
 ## Home screen (`/app`)
 
-Greeting + handle, account avatar → settings, live search across names/handles/messages,
-All / Unread filters, and a 1:1 conversation list with unread badges, online dots,
-"typing…", pinned and muted states. Tapping a row opens the thread; the rose FAB opens
-the new-chat sheet with your invite link. In demo mode the list is sample data
-(labelled as such); with Supabase configured it renders real rows once the backend lands.
+A quiet greeting, one **+**, and a **search field** that finds real people by handle
+(`search_users()` in Postgres, two characters or more, your own row excluded). Matches drop
+down under the field — tap one and the room opens.
+
+With no conversations yet the screen is an invitation, not an error page: two slowly orbiting
+rings inside a breathing rose glow, *"It's a little quiet here."*, and a gradient
+**Invite your person** button with a soft pulsing shadow. **How it works** opens a three-step
+explainer. Below that, the 1:1 list with unread badges, online dots and "typing…" once people
+are talking.
 
 ## Chat thread (`/app/chat/[id]`)
 
@@ -108,16 +113,23 @@ within a minute, that *does* get remembered as a presence moment.
 `/settings` → Presence: *Show when I'm here* (invisible mode) and *Allow pulses*. Both are
 respected everywhere — the header reads "You're invisible" when you switch yourself off.
 
-## Calls (`/app/call/[id]`)
+## Calls — real WebRTC
 
-Voice and video call UI with the full state machine: `dialing → ringing → connected → ended`,
-plus an incoming variant with accept/decline, missed-call handling, a live timer, mute,
-speaker, camera on/off, camera flip, wake-lock, and a call entry written back into the thread
-(`Voice call · 4m 12s` / `Missed voice call`). Demo mode simulates the media; the WebRTC
-wiring checklist is in `docs/supabase.md` §6.
+Voice and video calls are **live peer-to-peer WebRTC**. `LiveCallProvider` (root layout)
+subscribes to a personal channel `user:<id>`, so a call can ring you on any screen; the
+offer/answer and ICE candidates travel on `call:<conversationId>`. STUN only, no TURN — two
+mobile networks behind symmetric NAT can occasionally fail to meet, and the UI says so.
 
-Start one from the phone/video icons in a chat header, or from the chat menu →
-*Simulate incoming call*.
+- **Encryption:** media is DTLS-SRTP, negotiated directly between the two browsers. The
+  moment ICE connects the overlay reads *"Encrypted · phone to phone"* — that line comes from
+  `pc.getStats()` reporting `dtlsState: "connected"`, not from a promise. Supabase relays only
+  signalling (invite, SDP, ICE); it never receives audio or video.
+- Incoming ring, accept/decline, mute, camera on/off, flip camera, live timer, and a
+  `Voice call · 4m 12s` / `Missed voice call` pill written back into the thread.
+- `/app/call/[id]?kind=voice|video` still works as a deep link: it starts the call and drops
+  you back into the room, with the full-screen overlay on top.
+
+The local demo keeps the simulated call screen (no media) for click-through.
 
 ## Everything else a messenger needs
 
@@ -134,7 +146,7 @@ Start one from the phone/video icons in a chat header, or from the chat menu →
 
 | Gap | Why |
 | --- | --- |
-| End-to-end encryption | Needs a server-side key exchange; the app-lock is a UI gate, not encryption |
+| End-to-end encrypted **messages** | Calls are E2EE (DTLS-SRTP, peer to peer). Text is stored in Postgres under RLS, so it is encrypted in transit but readable by the project owner. Real message E2EE needs a key exchange per device |
 | Push notifications | Requires Web Push + service worker + a backend sender |
 | Real media storage | Photos/voice notes live on-device until Supabase Storage is wired |
 | Multi-device sync | Single-device local state today |

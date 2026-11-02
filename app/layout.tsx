@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
+import { LiveCallProvider } from "@/lib/live-call";
+import { LiveCallOverlay } from "@/components/call/live-call-overlay";
 import { SessionProvider } from "@/lib/session";
 import "./globals.css";
 
@@ -23,7 +25,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <LiveCallProvider>
+            {children}
+            <LiveCallOverlay />
+          </LiveCallProvider>
+        </SessionProvider>
         <Toaster
           position="top-center"
           toastOptions={{

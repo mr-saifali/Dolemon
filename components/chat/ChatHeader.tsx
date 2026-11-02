@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, MoreHorizontal, Phone, Video } from "lucide-react";
 import { ChatAvatar } from "@/components/home/chat-row";
 
 /**
@@ -17,6 +17,7 @@ export function ChatHeader({
   typing,
   hidden,
   onMenu,
+  onCall,
 }: {
   name: string;
   avatarId: string | null;
@@ -27,6 +28,8 @@ export function ChatHeader({
   /** presence is turned off — say so instead of lying */
   hidden?: boolean;
   onMenu: () => void;
+  /** live calls only — hidden in the local demo */
+  onCall?: (type: "voice" | "video") => void;
 }) {
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
@@ -53,6 +56,27 @@ export function ChatHeader({
             </p>
           </div>
         </div>
+
+        {onCall && (
+          <>
+            <button
+              type="button"
+              onClick={() => onCall("voice")}
+              aria-label="Voice call"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+            >
+              <Phone className="h-[18px] w-[18px]" strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onCall("video")}
+              aria-label="Video call"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+            >
+              <Video className="h-[18px] w-[18px]" strokeWidth={1.8} />
+            </button>
+          </>
+        )}
 
         <button
           type="button"

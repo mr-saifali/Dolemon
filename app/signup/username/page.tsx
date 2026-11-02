@@ -94,7 +94,7 @@ export default function UsernameScreen() {
   };
 
   return (
-    <ScreenShell backHref="/signup/password" footer={<StepDots current={4} />}>
+    <ScreenShell backHref="/signup/password" footer={<StepDots current={auth.mode === "supabase" ? 3 : 4} total={auth.mode === "supabase" ? 3 : 4} />}>
       <form onSubmit={submit} className="flex flex-1 flex-col justify-center pt-4" noValidate>
         <Motif icon={<AtSign className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>Pick your name</ScreenTitle>

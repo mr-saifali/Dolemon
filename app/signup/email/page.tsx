@@ -74,7 +74,7 @@ export default function EmailScreen() {
   };
 
   return (
-    <ScreenShell backHref="/" footer={<StepDots current={1} />}>
+    <ScreenShell backHref="/" footer={<StepDots current={1} total={auth.mode === "supabase" ? 3 : 4} />}>
       <div className="flex flex-1 flex-col justify-center pt-4">
         <Motif icon={<Mail className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>What&apos;s your email?</ScreenTitle>
@@ -102,7 +102,7 @@ export default function EmailScreen() {
           </div>
 
           <Button type="submit" size="lg" className="mt-6 w-full" loading={submitting}>
-            Send my code
+            Continue
           </Button>
 
           <p className="mt-4 text-center text-[12.5px] leading-relaxed text-text-muted/80">

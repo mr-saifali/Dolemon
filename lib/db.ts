@@ -13,6 +13,7 @@ export type DbConversation = {
   partnerId: string;
   partnerUsername: string;
   partnerAvatar: string | null;
+  partnerLastSeen: number | null;
   lastBody: string | null;
   lastKind: string | null;
   lastAt: number | null;
@@ -35,6 +36,7 @@ type ConversationRow = {
   partner_id: string;
   partner_username: string | null;
   partner_avatar: string | null;
+  partner_last_seen: string | null;
   last_body: string | null;
   last_kind: string | null;
   last_at: string | null;
@@ -72,6 +74,7 @@ export async function listConversations(): Promise<DbConversation[]> {
     partnerId: row.partner_id,
     partnerUsername: row.partner_username ?? "someone",
     partnerAvatar: row.partner_avatar,
+    partnerLastSeen: row.partner_last_seen ? new Date(row.partner_last_seen).getTime() : null,
     lastBody: row.last_body,
     lastKind: row.last_kind,
     lastAt: row.last_at ? new Date(row.last_at).getTime() : null,
@@ -92,6 +95,25 @@ export async function openDirectConversation(handle: string): Promise<string> {
     throw new Error("Couldn't open that chat. Try again?");
   }
   return data as string;
+}
+
+export type DbPerson = { id: string; username: string; avatarId: string | null };
+
+/** People you could start a room with, by handle. Two characters or more. */
+export async function searchUsers(query: string): Promise<DbPerson[]> {
+  const term = query.trim().replace(/^@+/, "").toLowerCase();
+  if (term.length < 2) return [];
+
+  const { data, error } = await client().rpc("search_users", { q: term });
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as { id: string; username: string | null; avatar_id: string | null }[])
+    .filter((row) => Boolean(row.username))
+    .map((row) => ({
+      id: row.id,
+      username: row.username as string,
+      avatarId: row.avatar_id,
+    }));
 }
 
 export async function loadThread(
@@ -139,10 +161,12 @@ export async function loadReactions(
   return map;
 }
 
+export type MessageKind = "text" | "sticker" | "call" | "image" | "audio" | "presence";
+
 export async function postMessage(
   conversationId: string,
   body: string,
-  kind: "text" | "sticker" = "text"
+  kind: MessageKind = "text"
 ): Promise<DbMessage> {
   const sb = client();
   const { data: userData } = await sb.auth.getUser();

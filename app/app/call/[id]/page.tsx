@@ -15,6 +15,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
+import { LiveCallLauncher } from "@/components/call/live-call-launcher";
 import { Avatar } from "@/components/avatar";
 import { authMode } from "@/lib/auth";
 import { useCallSession } from "@/lib/calls";
@@ -308,6 +309,15 @@ export default function CallPage({
 }) {
   const type = searchParams.kind === "video" ? "video" : "voice";
   const direction = searchParams.direction === "incoming" ? "incoming" : "outgoing";
+
+  // Live calls render in the global overlay; this route just kicks one off.
+  if (authMode === "supabase") {
+    return (
+      <AppGuard>
+        <LiveCallLauncher conversationId={params.id} type={type} />
+      </AppGuard>
+    );
+  }
 
   return (
     <AppGuard>

@@ -50,6 +50,15 @@ async function loadProfile(userId: string, email: string): Promise<Account> {
     .maybeSingle<ProfileRow>();
 
   if (error) throw mapError(error.message);
+
+  if (!data) {
+    // the signup trigger should have made this row — heal it if it ever misses
+    await client()
+      .from("profiles")
+      .upsert({ id: userId, avatar_id: null }, { onConflict: "id", ignoreDuplicates: true })
+      .then(() => undefined, () => undefined);
+  }
+
   return {
     id: userId,
     email,
@@ -66,7 +75,22 @@ export const supabaseProvider: AuthProvider = {
   async getAccount() {
     const { data, error } = await client().auth.getUser();
     if (error || !data.user?.email) return null;
-    return loadProfile(data.user.id, data.user.email);
+
+    const account = await loadProfile(data.user.id, data.user.email);
+
+    // "last seen" heartbeat, at most every five minutes per tab
+    if (typeof window !== "undefined") {
+      const key = `dolemon:seen:${data.user.id}`;
+      const previous = Number(window.localStorage.getItem(key) ?? 0);
+      if (Date.now() - previous > 5 * 60_000) {
+        window.localStorage.setItem(key, String(Date.now()));
+        void client()
+          .rpc("touch_presence")
+          .then(() => undefined, () => undefined);
+      }
+    }
+
+    return account;
   },
 
   /**

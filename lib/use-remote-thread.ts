@@ -23,6 +23,29 @@ const tmpId = () => `tmp_${Date.now().toString(36)}${Math.random().toString(36).
 function toChatMessage(row: DbMessage, me: string | null, pending = false): ChatMessage {
   const mine = row.senderId === me;
   const sticker = row.kind === "sticker" && (row.body as ReactionType);
+
+  if (row.kind === "call") {
+    const lower = row.body.toLowerCase();
+    return {
+      id: row.id,
+      author: mine ? "me" : "them",
+      kind: "call",
+      text: row.body,
+      at: row.at,
+      call: { type: lower.startsWith("video") ? "video" : "voice", durationMs: 0, missed: lower.includes("missed") },
+    };
+  }
+
+  if (row.kind === "presence") {
+    return {
+      id: row.id,
+      author: "system",
+      kind: "presence",
+      text: row.body,
+      at: row.at,
+    };
+  }
+
   return {
     id: row.id,
     author: mine ? "me" : "them",
@@ -231,6 +254,7 @@ export function useRemoteThread(conversationId: string, enabled = true) {
     partnerName: partner?.partnerUsername ?? null,
     partnerAvatar: partner?.partnerAvatar ?? null,
     partnerLastAt: partner?.lastAt ?? null,
+    partnerLastSeenAt: partner?.partnerLastSeen ?? null,
     send,
     react,
     clearMyReaction,

@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Moon, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { ChatRow, type ChatRowData } from "@/components/home/chat-row";
+import { HomeEmptyState } from "@/components/home/empty-state";
+import { PeopleSearch } from "@/components/home/people-search";
 import { StartChatSheet } from "@/components/home/start-chat-sheet";
 import { authMode } from "@/lib/auth";
 import { demoConversations, greetingFor } from "@/lib/chat";
@@ -78,71 +79,60 @@ function HomeScreen() {
     }
   };
 
+  const openStart = () => {
+    setStartError(null);
+    setSheetOpen(true);
+  };
+
   return (
     <main className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#09090B]">
+      {/* warm glow, top right */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-32 -top-40 h-[460px] w-[460px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.18),rgba(255,140,90,0.07)_45%,transparent_72%)] blur-3xl"
+        className="pointer-events-none absolute -right-28 -top-36 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.16),rgba(255,140,90,0.06)_45%,transparent_72%)] blur-3xl"
+      />
+      {/* cool counterweight, bottom left */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-44 -left-32 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(104,120,255,0.13),rgba(150,92,255,0.05)_50%,transparent_72%)] blur-3xl"
+      />
+      {/* soft sheen along the top edge */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-52 bg-[radial-gradient(120%_100%_at_50%_0%,rgba(255,92,122,0.09),transparent_72%)]"
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-6 safe-t">
-        <header className="flex items-start justify-between gap-2 pb-4 pt-9">
+        <header className="flex items-center justify-between gap-3 pb-5 pt-9">
           <motion.h1
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="text-[30px] font-light leading-tight tracking-[-0.02em] text-zinc-100"
+            className="min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
           >
             {greetingFor()},{" "}
-            <span className="font-normal text-zinc-100">
-              @{account?.username ?? "you"}
-            </span>
+            <span className="font-normal text-zinc-100">@{account?.username ?? "you"}</span>
           </motion.h1>
 
-          <div className="mt-1 flex shrink-0 items-center">
-            <button
-              type="button"
-              onClick={() => {
-                setStartError(null);
-                setSheetOpen(true);
-              }}
-              aria-label="Start a conversation"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
-            >
-              <Plus className="h-[19px] w-[19px]" strokeWidth={1.8} />
-            </button>
-            <Link
-              href="/settings"
-              aria-label="Settings"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
-            >
-              <Moon className="h-[18px] w-[18px]" strokeWidth={1.7} />
-            </Link>
-          </div>
+          <button
+            type="button"
+            onClick={openStart}
+            aria-label="Start a conversation"
+            className="-mr-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white active:scale-95"
+          >
+            <Plus className="h-6 w-6" strokeWidth={1.6} />
+          </button>
         </header>
+
+        {REMOTE && (
+          <div className="pb-5">
+            <PeopleSearch onPick={(username) => void startChat(username)} />
+          </div>
+        )}
 
         <div className="flex-1 pb-10">
           {rows.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1 }}
-              className="mt-24 text-center"
-            >
-              <p className="text-[15px] text-zinc-400">No one here yet.</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-600">
-                {REMOTE
-                  ? "Tap + and type a friend's handle to open a room."
-                  : "Demo mode — tap + to open a sample chat."}
-              </p>
-              <button
-                type="button"
-                onClick={() => setSheetOpen(true)}
-                className="mt-5 rounded-full bg-white/5 px-4 py-2 text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.08]"
-              >
-                Start a conversation
-              </button>
-            </motion.div>
+            <HomeEmptyState onInvite={openStart} />
           ) : (
             <div className="flex flex-col">
               {rows.map((chat, i) => (
@@ -174,6 +164,7 @@ function HomeScreen() {
 function previewOf(c: DbConversation) {
   if (!c.lastBody) return "Say something. No one else is reading.";
   if (c.lastKind === "sticker") return "Sent a reaction";
+  if (c.lastKind === "call") return c.lastBody;
   return c.lastBody;
 }
 

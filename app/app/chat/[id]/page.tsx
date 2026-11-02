@@ -27,6 +27,7 @@ import { demoConversations } from "@/lib/chat";
 import { markRead, patchMeta, useChatMetaFor } from "@/lib/conversation-meta";
 import { formatAgo, usePresence } from "@/lib/presence";
 import { buzz, usePrefs } from "@/lib/prefs";
+import { useLiveCall } from "@/lib/live-call";
 import { usePulses } from "@/lib/pulses";
 import { QUICK_REACTION, type ReactionType } from "@/lib/reactions";
 import { previewFor, useThread, type ChatMessage, type QuotedMessage } from "@/lib/thread";
@@ -43,6 +44,7 @@ function ThreadScreen() {
     () => demoConversations().find((c) => c.id === conversationId) ?? null
   );
 
+  const live = useLiveCall();
   const prefs = usePrefs();
   const meta = useChatMetaFor(conversationId);
   const local = useThread(conversationId, { enabled: !REMOTE });
@@ -112,10 +114,11 @@ function ThreadScreen() {
   const status = useMemo(() => {
     if (online) return "online";
     if (REMOTE) {
-      return remote.partnerLastAt ? `last seen ${formatAgo(remote.partnerLastAt)}` : "last seen recently";
+      const seen = remote.partnerLastSeenAt ?? remote.partnerLastAt;
+      return seen ? `last seen ${formatAgo(seen)}` : "last seen recently";
     }
     return lastSeenAt ? `last seen ${formatAgo(lastSeenAt)}` : "last seen recently";
-  }, [online, remote.partnerLastAt, lastSeenAt]);
+  }, [online, remote.partnerLastAt, remote.partnerLastSeenAt, lastSeenAt]);
 
   const handlePulse = useCallback(() => {
     const result = pulses.send();
@@ -180,13 +183,19 @@ function ThreadScreen() {
       key: "voice",
       label: "Voice call",
       icon: <Phone className="h-[18px] w-[18px]" />,
-      onSelect: () => router.push(`/app/call/${conversationId}?kind=voice&direction=outgoing`),
+      onSelect: () =>
+        REMOTE
+          ? void live.start(conversationId, "voice")
+          : router.push(`/app/call/${conversationId}?kind=voice&direction=outgoing`),
     },
     {
       key: "video",
       label: "Video call",
       icon: <Video className="h-[18px] w-[18px]" />,
-      onSelect: () => router.push(`/app/call/${conversationId}?kind=video&direction=outgoing`),
+      onSelect: () =>
+        REMOTE
+          ? void live.start(conversationId, "video")
+          : router.push(`/app/call/${conversationId}?kind=video&direction=outgoing`),
     },
     {
       key: "room",
@@ -272,6 +281,7 @@ function ThreadScreen() {
         typing={status === "online" && (REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
         hidden={!prefs.showPresence}
         onMenu={() => setMenuOpen(true)}
+        onCall={REMOTE ? (type) => void live.start(conversationId, type) : undefined}
       />
 
       <MessageList

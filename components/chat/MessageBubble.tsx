@@ -120,7 +120,10 @@ export function MessageBubble({
         )}
       >
         <div className={cn("flex items-end gap-1.5", mine ? "flex-row-reverse" : "flex-row")}>
-          <span className="pb-0.5 text-[10px] leading-none tabular-nums text-zinc-600">{clockTime(message.at)}</span>
+          <span className="flex items-center gap-1 pb-0.5 text-[10px] leading-none tabular-nums text-zinc-600">
+            {clockTime(message.at)}
+            {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
+          </span>
           <ReactionIcon type={message.sticker} size={44} />
         </div>
       </motion.div>
@@ -299,7 +302,7 @@ export function MessageBubble({
                   <span className={cn("float-right ml-1.5 mt-[3px] flex items-center gap-1 text-[10px] leading-none", metaColor)}>
                     <span className="tabular-nums">{clockTime(message.at)}</span>
                     {message.editedAt ? <span className="italic">edited</span> : null}
-                    {mine && showReceipts && <Ticks status={message.status} />}
+                    {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
                   </span>
                 )}
               </>
@@ -405,17 +408,30 @@ function BubbleMeta({
     <span className={cn("mt-1.5 flex items-center justify-end gap-1 text-[10px] leading-none", metaColor)}>
       <span className="tabular-nums">{clockTime(message.at)}</span>
       {message.editedAt ? <span className="italic">edited</span> : null}
-      {mine && showReceipts && <Ticks status={message.status} />}
+      {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
     </span>
   );
 }
 
-function Ticks({ status }: { status?: ChatMessage["status"] }) {
+/**
+ * Telegram's tick ladder: one tick = sent, two = delivered, two in the accent
+ * colour = read. When we know the exact read moment it's shown right after.
+ */
+function Ticks({ status, seenAt }: { status?: ChatMessage["status"]; seenAt?: number | null }) {
   if (status === "failed") return <AlertCircle className="h-3 w-3 text-red-300" aria-label="Not sent" />;
   if (status === "sending" || !status) return <Clock className="h-3 w-3 text-white/40" aria-label="Sending" />;
   if (status === "sent") return <Check className="h-3 w-3 text-white/70" aria-label="Sent" />;
   if (status === "delivered") return <CheckCheck className="h-3 w-3 text-white/70" aria-label="Delivered" />;
-  return <CheckCheck className="h-3 w-3 text-white" aria-label="Read" />;
+  return (
+    <>
+      <CheckCheck className="h-3 w-3" style={{ color: "var(--accent)" }} aria-label="Read" />
+      {seenAt ? (
+        <span className="tabular-nums text-white/75" aria-label={`Read at ${clockTime(seenAt)}`}>
+          Read {clockTime(seenAt)}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: number; mine: boolean }) {

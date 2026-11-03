@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { AlertCircle, Check, CheckCheck, Clock } from "lucide-react";
 import { avatarById, AVATAR_PRESETS } from "@/lib/avatars";
 import { initialsFor } from "@/lib/chat";
 import { TypingDots } from "@/components/ui/typing-dots";
@@ -17,7 +18,19 @@ export type ChatRowData = {
   at: number | null;
   unread: number;
   typing?: boolean;
+  /** the last line is yours → the tick ladder sits next to the time, like Telegram */
+  lastMine?: boolean;
+  lastStatus?: "sending" | "sent" | "delivered" | "read" | "failed" | null;
 };
+
+/** The tick ladder at list scale. */
+function HomeTicks({ status }: { status: NonNullable<ChatRowData["lastStatus"]> }) {
+  if (status === "failed") return <AlertCircle className="h-3.5 w-3.5 text-red-400" aria-label="Not sent" />;
+  if (status === "sending") return <Clock className="h-3.5 w-3.5 text-zinc-500" aria-label="Sending" />;
+  if (status === "sent") return <Check className="h-3.5 w-3.5 text-zinc-400" aria-label="Sent" />;
+  if (status === "delivered") return <CheckCheck className="h-3.5 w-3.5 text-zinc-400" aria-label="Delivered" />;
+  return <CheckCheck className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} aria-label="Read" />;
+}
 
 /** A 56px gradient avatar — no card, no border, just the person. */
 export function ChatAvatar({
@@ -114,7 +127,8 @@ export function ChatRow({ chat, index }: { chat: ChatRowData; index: number }) {
               {chat.handle ? `@${chat.handle}` : chat.name}
             </p>
             {chat.at && (
-              <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">
+              <span className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-zinc-500">
+                {chat.lastMine && chat.lastStatus ? <HomeTicks status={chat.lastStatus} /> : null}
                 {formatChatTime(chat.at)}
               </span>
             )}

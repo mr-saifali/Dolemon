@@ -52,7 +52,7 @@ function ThreadScreen() {
   const prefs = usePrefs();
   const meta = useChatMetaFor(conversationId);
   const local = useThread(conversationId, { enabled: !REMOTE });
-  const remote = useRemoteThread(conversationId, REMOTE);
+  const remote = useRemoteThread(conversationId, REMOTE, { shareReads: prefs.readReceipts });
 
   const messages = REMOTE ? remote.messages : local.messages;
   const ready = REMOTE ? remote.ready : local.ready;

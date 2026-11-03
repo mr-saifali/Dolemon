@@ -93,13 +93,6 @@ function SettingsContent() {
   const photoInput = useRef<HTMLInputElement | null>(null);
   const prefs = usePrefs();
 
-  // delete account: 0 = closed · 1 = ask why + password · 2 = final confirmation
-  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
-  const [deleteReason, setDeleteReason] = useState("");
-  const [deletePassword, setDeletePassword] = useState("");
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
   const avatar = avatarById(account?.avatarId);
   const strength = passwordStrength(lockPassword);
 
@@ -110,28 +103,6 @@ function SettingsContent() {
       toast.success(value ? "You're private now" : "You're visible in search again");
     } catch {
       toast.error("Couldn't change that");
-    }
-  };
-
-  const continueDeletion = async () => {
-    setDeleteError(null);
-    if (!(await auth.verifyPassword(deletePassword))) {
-      setDeleteError("That password doesn't match. Try again.");
-      setDeletePassword("");
-      return;
-    }
-    setDeleteStep(2);
-  };
-
-  const runDeletion = async () => {
-    setDeleting(true);
-    try {
-      await auth.deleteAccount();
-      window.location.replace("/");
-    } catch {
-      setDeleting(false);
-      setDeleteStep(1);
-      setDeleteError("Couldn't delete that. Try again?");
     }
   };
 
@@ -724,19 +695,6 @@ function SettingsContent() {
           Sign out
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setDeleteReason("");
-            setDeletePassword("");
-            setDeleteError(null);
-            setDeleteStep(1);
-          }}
-          className="mt-1 block w-full py-2 text-center text-[12.5px] text-zinc-600 transition-colors hover:text-zinc-400"
-        >
-          Delete account
-        </button>
-
         <Link
           href="/download"
           className="press hairline mt-6 flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3.5 active:bg-white/[0.06]"
@@ -755,106 +713,6 @@ function SettingsContent() {
           v{APP_VERSION} · {APP_RELEASE_NAME}
         </p>
       </div>
-
-      <AnimatePresence>
-        {deleteStep > 0 && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={deleteStep === 1 && !deleting ? () => setDeleteStep(0) : undefined}
-              className="absolute inset-0 bg-black/70"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 14, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 380, damping: 32 }}
-              className="relative w-full max-w-sm rounded-[22px] border border-white/[0.08] bg-[#141418] p-5 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]"
-            >
-              {deleteStep === 1 ? (
-                <>
-                  <h2 className="text-[17px] font-medium text-zinc-100">Delete your account?</h2>
-                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-500">
-                    Your history, chats, avatar and settings on this device are wiped, and the
-                    account is removed from the server. There&apos;s no undo.
-                  </p>
-
-                  <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                    Why are you leaving? <span className="normal-case tracking-normal text-zinc-600">(optional)</span>
-                  </label>
-                  <textarea
-                    value={deleteReason}
-                    onChange={(e) => setDeleteReason(e.target.value)}
-                    rows={2}
-                    placeholder="We'd genuinely like to know…"
-                    className="mt-1.5 w-full resize-none rounded-xl border border-white/[0.08] bg-[#0F0F13] px-3 py-2.5 text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-white/20"
-                  />
-
-                  <label className="mt-3.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                    Your password
-                  </label>
-                  <input
-                    type="password"
-                    value={deletePassword}
-                    onChange={(e) => {
-                      setDeletePassword(e.target.value);
-                      setDeleteError(null);
-                    }}
-                    placeholder="Required to continue"
-                    className="mt-1.5 w-full rounded-xl border border-white/[0.08] bg-[#0F0F13] px-3 py-2.5 text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-white/20"
-                  />
-
-                  {deleteError && <p className="mt-2 text-[12px] text-[#FF6B6B]">{deleteError}</p>}
-
-                  <div className="mt-5 flex gap-2.5">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setDeleteStep(0)}
-                      className="flex-1 rounded-xl"
-                    >
-                      Keep it
-                    </Button>
-                    <Button
-                      onClick={() => void continueDeletion()}
-                      disabled={!deletePassword}
-                      className="flex-1 rounded-xl bg-[linear-gradient(135deg,#FF5F5F,#D92D43)] text-white disabled:opacity-40"
-                    >
-                      Continue
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-[17px] font-medium text-zinc-100">Last chance</h2>
-                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-500">
-                    <span className="text-zinc-300">@{account?.username ?? "you"}</span> — your
-                    messages, media, and everything else — is gone forever. No undo, no recovery.
-                  </p>
-                  <div className="mt-5 flex gap-2.5">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setDeleteStep(0)}
-                      className="flex-1 rounded-xl"
-                    >
-                      Keep my account
-                    </Button>
-                    <Button
-                      onClick={() => void runDeletion()}
-                      disabled={deleting}
-                      className="flex-1 rounded-xl bg-[linear-gradient(135deg,#FF5F5F,#D92D43)] text-white disabled:opacity-60"
-                    >
-                      {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete forever"}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </main>
   );
 }

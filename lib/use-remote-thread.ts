@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  conversationReadState,
   deleteMessage,
   editMessage,
   loadReactions,
@@ -36,6 +37,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
       text: row.body,
       at: row.at,
       editedAt: row.editedAt ?? null,
+      status: mine ? (pending ? "sending" : "delivered") : undefined,
       call: { type: lower.startsWith("video") ? "video" : "voice", durationMs: 0, missed: lower.includes("missed") },
     };
   }
@@ -89,6 +91,19 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
   };
 }
 
+/**
+ * Telegram's rule in one line: my messages at or before the partner's read
+ * cursor are read — and the exact moment they opened it is the read time.
+ */
+function applyReadCursor(messages: ChatMessage[], readAt: number | null): ChatMessage[] {
+  if (readAt == null) return messages;
+  return messages.map((m) => {
+    if (m.author !== "me" || m.at > readAt) return m;
+    if (m.status === "read" && m.seenAt) return m;
+    return { ...m, status: "read", seenAt: readAt };
+  });
+}
+
 /** Media attached to a send. `dataUrl` renders instantly and is uploaded before insert. */
 export type RemoteMediaOptions = {
   dataUrl?: string;
@@ -107,14 +122,24 @@ export type RemoteSendOptions = {
   media?: RemoteMediaOptions;
 };
 
-/** Live thread backed by Supabase: messages, reactions, typing and presence. */
-export function useRemoteThread(conversationId: string, enabled = true) {
+/**
+ * Live thread backed by Supabase: messages, reactions, typing and presence.
+ * `shareReads` mirrors the "Read receipts" toggle — when off we still mark the
+ * thread read for ourselves but never push our read cursor to the partner.
+ */
+export function useRemoteThread(
+  conversationId: string,
+  enabled = true,
+  { shareReads = true }: { shareReads?: boolean } = {}
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<string | null>(null);
   const [partner, setPartner] = useState<DbConversation | null>(null);
   const [typing, setTyping] = useState(false);
   const [online, setOnline] = useState(false);
+  /** the other person's read cursor — everything of mine at or before it is seen */
+  const [partnerReadAt, setPartnerReadAt] = useState<number | null>(null);
   const bus = useRef<ReturnType<typeof typingBus> | null>(null);
   const pending = useRef<Map<string, { body: string; kind: RemoteSendOptions["kind"]; media?: RemoteMediaOptions }>>(new Map());
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -142,14 +167,17 @@ export function useRemoteThread(conversationId: string, enabled = true) {
     let cancelled = false;
     (async () => {
       try {
-        const [{ messages: rows, me: myId }, conversations] = await Promise.all([
+        const [result, conversations, readAt] = await Promise.all([
           loadThread(conversationId),
           listConversations().catch(() => [] as DbConversation[]),
+          conversationReadState(conversationId).catch(() => null),
         ]);
         if (cancelled) return;
+        const myId = result.me;
         setMe(myId);
         setPartner(conversations.find((c) => c.id === conversationId) ?? null);
-        setMessages(rows.map((row) => toChatMessage(row, myId)));
+        setPartnerReadAt(readAt);
+        setMessages(applyReadCursor(result.messages.map((row) => toChatMessage(row, myId)), readAt));
       } catch {
         if (!cancelled) setMessages([]);
       } finally {
@@ -188,6 +216,10 @@ export function useRemoteThread(conversationId: string, enabled = true) {
       onDelete: (id) => {
         setMessages((prev) => prev.filter((m) => m.id !== id));
       },
+      onRead: (at) => {
+        setPartnerReadAt((prev) => (prev == null || at > prev ? at : prev));
+        setMessages((prev) => applyReadCursor(prev, at));
+      },
     });
     return stop;
   }, [conversationId, me, enabled]);
@@ -215,8 +247,8 @@ export function useRemoteThread(conversationId: string, enabled = true) {
 
   useEffect(() => {
     if (!ready || !enabled) return;
-    void markThreadRead(conversationId);
-  }, [ready, conversationId, enabled]);
+    void markThreadRead(conversationId, shareReads);
+  }, [ready, conversationId, enabled, shareReads]);
 
   const deliver = useCallback(
     async (id: string, body: string, kind: RemoteSendOptions["kind"], media?: RemoteMediaOptions) => {
@@ -394,6 +426,7 @@ export function useRemoteThread(conversationId: string, enabled = true) {
     messages,
     typing,
     online,
+    partnerReadAt,
     partnerName: partner?.partnerUsername ?? null,
     partnerAvatar: partner?.partnerAvatar ?? null,
     partnerAvatarUrl: partner?.partnerAvatarUrl ?? null,

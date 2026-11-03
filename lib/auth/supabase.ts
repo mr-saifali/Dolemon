@@ -24,6 +24,7 @@ type ProfileRow = {
   avatar_url?: string | null;
   app_lock_hash?: string | null;
   app_lock_salt?: string | null;
+  visibility?: string | null;
 };
 
 function client() {
@@ -46,7 +47,7 @@ function mapError(message: string): AuthFailure {
 async function loadProfile(userId: string, email: string): Promise<Account> {
   const { data, error } = await client()
     .from("profiles")
-    .select("id, username, avatar_id, avatar_url, app_lock_hash")
+    .select("id, username, avatar_id, avatar_url, app_lock_hash, visibility")
     .eq("id", userId)
     .maybeSingle<ProfileRow>();
 
@@ -68,6 +69,7 @@ async function loadProfile(userId: string, email: string): Promise<Account> {
     avatarUrl: data?.avatar_url ?? null,
     profileComplete: Boolean(data?.username),
     hasAppLock: Boolean(data?.app_lock_hash),
+    isPrivate: data?.visibility === "private",
   };
 }
 
@@ -247,5 +249,38 @@ export const supabaseProvider: AuthProvider = {
       .eq("id", auth.user.id)
       .maybeSingle<ProfileRow>();
     return Boolean(data?.app_lock_hash);
+  },
+
+  async verifyPassword(password) {
+    const { data } = await client().auth.getUser();
+    if (!data.user?.email) return false;
+    // a successful sign-in proves the password; the session is for the same user
+    const { error } = await client().auth.signInWithPassword({
+      email: data.user.email,
+      password,
+    });
+    return !error;
+  },
+
+  async setPrivate(privateFlag) {
+    const { data: auth } = await client().auth.getUser();
+    if (!auth.user?.email) throw new AuthFailure("ACCOUNT_NOT_FOUND");
+    const { error } = await client().rpc("set_account_visibility", {
+      visibility: privateFlag ? "private" : "public",
+    });
+    if (error) throw mapError(error.message);
+    return loadProfile(auth.user.id, auth.user.email);
+  },
+
+  async deleteAccount() {
+    // wipes profile, messages, memberships and settings server-side
+    await client().rpc("delete_my_account").then(() => undefined, () => undefined);
+    await client().auth.signOut();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.clear();
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("dolemon:"))
+        .forEach((key) => window.localStorage.removeItem(key));
+    }
   },
 };

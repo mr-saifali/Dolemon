@@ -90,7 +90,8 @@ export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
           type="button"
           onClick={onInvite}
           whileTap={{ scale: 0.97 }}
-          className="relative rounded-full bg-gradient-to-r from-[#FF5C7A] to-[#FF8FA3] px-6 py-3 text-[14px] font-medium text-white shadow-[0_10px_30px_-8px_rgba(255,92,122,0.55)] transition-transform duration-200 hover:scale-105 active:scale-100"
+          className="relative rounded-full px-6 py-3 text-[14px] font-medium text-white shadow-[0_10px_30px_-8px_var(--glow-send)] transition-transform duration-200 hover:scale-105 active:scale-100"
+          style={{ background: "var(--brand-grad)" }}
         >
           Invite your person
         </motion.button>

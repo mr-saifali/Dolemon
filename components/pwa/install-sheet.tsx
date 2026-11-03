@@ -68,7 +68,8 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
               <button
                 type="button"
                 onClick={() => void run()}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#FF5C7A] to-[#FF8FA3] py-3.5 text-[14.5px] font-medium text-white shadow-[0_10px_30px_-8px_rgba(255,92,122,0.55)]"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-[14.5px] font-medium text-white shadow-[0_10px_30px_-8px_var(--glow-send)]"
+                style={{ background: "var(--brand-grad)" }}
               >
                 <Download className="h-4 w-4" />
                 Install the app

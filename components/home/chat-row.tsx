@@ -129,7 +129,10 @@ export function ChatRow({ chat, index }: { chat: ChatRowData; index: number }) {
               <p className="truncate text-[13.5px] text-zinc-400">{chat.preview}</p>
             )}
             {chat.unread > 0 && (
-              <span className="flex h-[19px] min-w-[19px] shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FFA07A)] px-1.5 text-[10.5px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(255,92,122,0.9)]">
+              <span
+                className="flex h-[19px] min-w-[19px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-semibold text-white shadow-[0_4px_14px_-4px_var(--glow-send)]"
+                style={{ background: "var(--brand-grad)" }}
+              >
                 {unreadLabel}
               </span>
             )}

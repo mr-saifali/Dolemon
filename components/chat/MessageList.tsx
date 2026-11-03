@@ -160,7 +160,7 @@ export function MessageList({
             className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#232329] px-3 py-1.5 text-[12px] text-text shadow-[0_14px_30px_-10px_rgba(0,0,0,0.85)]"
             aria-label={`${newCount} new messages — jump to latest`}
           >
-            <ArrowDown className="h-3.5 w-3.5 text-rose" />
+            <ArrowDown className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} />
             {newCount} naya
           </motion.button>
         )}

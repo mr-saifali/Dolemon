@@ -3,11 +3,33 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  :root,
+  :root[data-theme="feminine"] {
     /* Inter when installed, otherwise the platform's own sans (no webfont fetch). */
     --font-sans: "Inter", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       "Helvetica Neue", Arial, sans-serif;
+
+    /* the original Dolemon look — soft rose + violet */
+    --accent: #ff5c7a;
+    --accent-soft: #ff8fa3;
+    --sent-bg: linear-gradient(165deg, #8f7bff 0%, #6d5ae8 100%);
+    --sent-rim: inset 0 0 0 1px rgba(255, 255, 255, 0);
+    --sent-glow: 0 4px 16px -8px rgba(125, 107, 255, 0.45);
+    --glow-send: rgba(125, 107, 255, 0.7);
+    --brand-grad: linear-gradient(100deg, #ff5c7a 0%, #ffa07a 46%, #ffd7a8 100%);
   }
+
+  /* the masculine look — onyx, champagne gold, serif wordmark. Luxury, not loud. */
+  :root[data-theme="masculine"] {
+    --accent: #c8a45d;
+    --accent-soft: #d9bc85;
+    --sent-bg: linear-gradient(165deg, #272732 0%, #16161d 100%);
+    --sent-rim: inset 0 0 0 1px rgba(200, 164, 93, 0.38);
+    --sent-glow: 0 6px 20px -10px rgba(0, 0, 0, 0.85);
+    --glow-send: rgba(200, 164, 93, 0.55);
+    --brand-grad: linear-gradient(100deg, #c8a45d 0%, #e3c98f 52%, #f2e4c2 100%);
+  }
+
   * { @apply border-ink-line; }
   html {
     -webkit-tap-highlight-color: transparent;
@@ -54,6 +76,21 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+  /* theme-aware brand type — rose/peach in feminine mode, champagne gold in masculine */
+  .text-brand {
+    background-image: var(--brand-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* the app wordmark — serif + wider tracking is a masculine-only thing */
+  .wordmark {
+    letter-spacing: 0.3em;
+  }
+  :root[data-theme="masculine"] .wordmark {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    letter-spacing: 0.34em;
   }
   .text-vibrant-cool {
     background-image: linear-gradient(100deg, #A78BFA 0%, #7DD3FC 100%);

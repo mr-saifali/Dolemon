@@ -148,7 +148,8 @@ export function StartChatSheet({
                     type="submit"
                     disabled={!handle.trim() || starting}
                     aria-label="Open chat"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#FF5C7A] text-white disabled:opacity-40"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
+                    style={{ background: "var(--accent)" }}
                   >
                     {starting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

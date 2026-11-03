@@ -24,6 +24,7 @@ type StoredUser = {
   avatarId: string | null;
   avatarUrl?: string | null;
   appLock?: { hash: string; salt: string } | null;
+  isPrivate?: boolean;
   createdAt: number;
 };
 
@@ -81,6 +82,7 @@ function toAccount(u: StoredUser): Account {
     avatarUrl: u.avatarUrl ?? null,
     profileComplete: Boolean(u.username),
     hasAppLock: Boolean(u.appLock),
+    isPrivate: Boolean(u.isPrivate),
   };
 }
 
@@ -273,5 +275,36 @@ export const localProvider: AuthProvider = {
 
   async hasAppLock() {
     return Boolean(currentUser()?.appLock);
+  },
+
+  async verifyPassword(password: string) {
+    const me = currentUser();
+    if (!me) return false;
+    return verifySecret(password, me.salt, me.passwordHash);
+  },
+
+  async setPrivate(privateFlag) {
+    const me = requireUser();
+    const all = users();
+    all[me.email] = { ...me, isPrivate: privateFlag };
+    saveUsers(all);
+    return toAccount(all[me.email]);
+  },
+
+  async deleteAccount() {
+    const me = requireUser();
+    const all = users();
+    delete all[me.email];
+    saveUsers(all);
+    remove(K.session);
+    remove(K.verified);
+    remove(K.otp);
+    if (typeof window !== "undefined") {
+      // wipe this account's threads and state on the device
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("dolemon:"))
+        .forEach((key) => window.localStorage.removeItem(key));
+      window.sessionStorage.clear();
+    }
   },
 };

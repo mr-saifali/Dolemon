@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
 import { MotionPrefs } from "@/components/motion-prefs";
+import { ThemePrefs } from "@/components/theme-prefs";
 import { LiveCallProvider } from "@/lib/live-call";
 import { LiveCallOverlay } from "@/components/call/live-call-overlay";
 import { SessionProvider } from "@/lib/session";
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body>
+        <ThemePrefs>
         <MotionPrefs>
         <PwaProvider>
           <SessionProvider>
@@ -51,6 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </SessionProvider>
         </PwaProvider>
         </MotionPrefs>
+        </ThemePrefs>
         <Toaster
           position="top-center"
           toastOptions={{

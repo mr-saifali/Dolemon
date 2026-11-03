@@ -9,6 +9,8 @@ export type Account = {
   profileComplete: boolean;
   /** true when an app-lock password exists for this account. */
   hasAppLock: boolean;
+  /** private accounts stay out of search — only an exact handle finds them. */
+  isPrivate: boolean;
 };
 
 export type SendOtpResult = {
@@ -80,6 +82,12 @@ export interface AuthProvider {
   setAppLock(password: string | null): Promise<void>;
   verifyAppLock(password: string): Promise<boolean>;
   hasAppLock(): Promise<boolean>;
+  /** verify the account's own password (account deletion gate). */
+  verifyPassword(password: string): Promise<boolean>;
+  /** hide the account from search — only an exact handle finds it. */
+  setPrivate(isPrivate: boolean): Promise<Account>;
+  /** irreversible: wipe the profile and this account's data, then sign out. */
+  deleteAccount(): Promise<void>;
 }
 
 export const RESERVED_USERNAMES = new Set([

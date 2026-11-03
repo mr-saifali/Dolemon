@@ -12,7 +12,6 @@ import {
   Video as VideoIcon,
   VideoOff,
   Volume2,
-  VolumeX,
 } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { LiveCallLauncher } from "@/components/call/live-call-launcher";
@@ -40,6 +39,7 @@ function CallScreen({
 
   const call = useCallSession({ direction, type, demo: authMode === "local" });
   const ended = useRef(false);
+  const video = call.type === "video";
 
   // Keep the screen awake during a call where the platform allows it.
   useEffect(() => {
@@ -70,7 +70,7 @@ function CallScreen({
   useEffect(() => {
     if (call.phase !== "ended") return;
     const t = setTimeout(() => {
-      finish({ type, durationMs: call.elapsed, missed: direction === "incoming" && call.elapsed === 0 });
+      finish({ type: call.type, durationMs: call.elapsed, missed: direction === "incoming" && call.elapsed === 0 });
     }, 900);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,7 +84,7 @@ function CallScreen({
         : call.phase === "connected"
           ? formatCallDuration(call.elapsed)
           : call.phase === "incoming"
-            ? `Incoming ${type} call`
+            ? `Incoming ${video ? "video" : "voice"} call`
             : "Call ended";
 
   return (
@@ -96,7 +96,7 @@ function CallScreen({
           animate={{ scale: call.phase === "connected" ? [1, 1.06, 1] : 1 }}
           transition={{ duration: 5, repeat: Infinity }}
         />
-        {type === "video" && (
+        {video && (
           <div className="absolute inset-0 bg-[linear-gradient(160deg,#1A1A22,#0B0B0F_60%)] opacity-70" />
         )}
       </div>
@@ -139,7 +139,7 @@ function CallScreen({
           {status}
         </p>
 
-        {type === "video" && call.phase === "connected" && (
+        {video && call.phase === "connected" && (
           <div className="mt-8 w-full max-w-md">
             <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[24px] border border-white/[0.07] bg-[#121217]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,92,122,0.16),transparent_60%)]" />
@@ -162,69 +162,91 @@ function CallScreen({
 
       <div className="relative z-10 mx-auto w-full max-w-md px-6 pb-8 safe-b">
         {call.phase === "incoming" ? (
-          <div className="flex items-center justify-around">
-            <CallAction label="Decline" variant="decline" onClick={() => finish(call.decline())}>
-              <PhoneOff className="h-6 w-6" />
-            </CallAction>
-            <CallAction
-              label="Accept"
-              variant="accept"
-              onClick={call.accept}
-              pulse
+          <div className="flex items-center justify-center gap-4">
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.95 }}
+              onClick={() => finish(call.decline())}
+              aria-label="Decline call"
+              className="flex h-14 w-32 items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#FF6B7D] to-[#E23B4E] text-[13px] font-medium text-white shadow-[0_14px_34px_-12px_rgba(244,53,78,0.8)]"
             >
-              {type === "video" ? <VideoIcon className="h-6 w-6" /> : <Phone className="h-6 w-6" />}
-            </CallAction>
+              <PhoneOff className="h-5 w-5" />
+              Decline
+            </motion.button>
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.95 }}
+              animate={{ scale: [1, 1.04, 1] }}
+              transition={{ duration: 1.6, repeat: Infinity }}
+              onClick={call.accept}
+              aria-label="Accept call"
+              className="flex h-14 w-32 items-center justify-center gap-2 rounded-full bg-gradient-to-b from-[#5CE89B] to-[#2FCB6E] text-[13px] font-medium text-white shadow-[0_14px_34px_-12px_rgba(47,203,110,0.8)]"
+            >
+              {video ? <VideoIcon className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
+              Accept
+            </motion.button>
           </div>
         ) : (
           <>
-            <div className="mb-5 flex items-center justify-center gap-3">
+            <div className="mb-6 flex items-center justify-center gap-3.5">
               <RoundControl
                 active={!call.muted}
                 onClick={() => call.setMuted((m) => !m)}
                 label={call.muted ? "Unmute" : "Mute"}
               >
-                {call.muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                {call.muted ? <MicOff className="h-[22px] w-[22px]" /> : <Mic className="h-[22px] w-[22px]" />}
               </RoundControl>
 
               <RoundControl
-                active={!call.speaker}
+                active={call.speaker}
                 onClick={() => call.setSpeaker((s) => !s)}
-                label={call.speaker ? "Speaker off" : "Speaker"}
+                label={call.speaker ? "Speaker on" : "Speaker off"}
               >
-                {call.speaker ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+                <Volume2 className="h-[22px] w-[22px]" />
               </RoundControl>
 
-              {type === "video" && (
+              <RoundControl
+                active={video}
+                onClick={call.toggleType}
+                label={video ? "Voice only" : "Go to video"}
+              >
+                {video ? <Phone className="h-[22px] w-[22px]" /> : <VideoIcon className="h-[22px] w-[22px]" />}
+              </RoundControl>
+
+              {video && (
                 <>
                   <RoundControl
-                    active={!call.cameraOn}
+                    active={call.cameraOn}
                     onClick={() => call.setCameraOn((c) => !c)}
                     label={call.cameraOn ? "Camera off" : "Camera on"}
                   >
-                    {call.cameraOn ? <VideoIcon className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                    {call.cameraOn ? <VideoIcon className="h-[22px] w-[22px]" /> : <VideoOff className="h-[22px] w-[22px]" />}
                   </RoundControl>
                   <RoundControl
                     active
                     onClick={() => call.setFrontCamera((f) => !f)}
                     label="Flip camera"
                   >
-                    <RotateCcw className="h-5 w-5" />
+                    <RotateCcw className="h-[22px] w-[22px]" />
                   </RoundControl>
                 </>
               )}
             </div>
 
             <div className="flex justify-center">
-              <CallAction
-                label="End"
-                variant="decline"
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.95 }}
                 onClick={() => {
                   const info = call.end();
                   finish(info);
                 }}
+                aria-label="End call"
+                className="flex h-14 w-44 items-center justify-center gap-2.5 rounded-full bg-gradient-to-b from-[#FF5F5F] to-[#D92D43] text-[14px] font-medium tracking-wide text-white shadow-[0_16px_38px_-12px_rgba(217,45,67,0.85)]"
               >
-                <PhoneOff className="h-6 w-6" />
-              </CallAction>
+                <PhoneOff className="h-5 w-5" strokeWidth={2} />
+                End call
+              </motion.button>
             </div>
           </>
         )}
@@ -257,46 +279,12 @@ function RoundControl({
       className={cn(
         "flex h-14 w-14 items-center justify-center rounded-full border transition-colors",
         active
-          ? "border-white/10 bg-white/[0.08] text-text hover:bg-white/[0.12]"
-          : "border-transparent bg-white text-[#0B0B0F]"
+          ? "border-white/10 bg-white/[0.10] text-text hover:bg-white/[0.14]"
+          : "border-white/[0.14] bg-white/[0.04] text-text-muted hover:bg-white/[0.08] hover:text-text"
       )}
     >
       {children}
     </button>
-  );
-}
-
-function CallAction({
-  children,
-  label,
-  variant,
-  onClick,
-  pulse,
-}: {
-  children: React.ReactNode;
-  label: string;
-  variant: "accept" | "decline";
-  onClick: () => void;
-  pulse?: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <motion.button
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        animate={pulse ? { scale: [1, 1.06, 1] } : undefined}
-        transition={pulse ? { duration: 1.6, repeat: Infinity } : undefined}
-        whileTap={{ scale: 0.94 }}
-        className={cn(
-          "flex h-[68px] w-[68px] items-center justify-center rounded-full text-[#0B0B0F] shadow-[0_16px_40px_-14px_rgba(0,0,0,0.9)]",
-          variant === "accept" ? "bg-success" : "bg-rose"
-        )}
-      >
-        {children}
-      </motion.button>
-      <span className="text-[11px] text-text-muted">{label}</span>
-    </div>
   );
 }
 

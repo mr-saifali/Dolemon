@@ -206,9 +206,14 @@ export function MessageBubble({
                   : "px-4 py-2.5",
               "rounded-[20px]",
               mine
-                ? "rounded-br-[4px] bg-[linear-gradient(165deg,#8F7BFF_0%,#6D5AE8_100%)] text-white shadow-[0_4px_16px_-8px_rgba(125,107,255,0.45)]"
+                ? "rounded-br-[4px] text-white"
                 : "rounded-bl-[4px] bg-[#1C1C1E] text-zinc-100"
             )}
+            style={
+              mine
+                ? { background: "var(--sent-bg)", boxShadow: "var(--sent-rim), var(--sent-glow)" }
+                : undefined
+            }
           >
             {message.replyTo && (
               <div

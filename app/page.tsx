@@ -34,10 +34,13 @@ export default function WelcomePage() {
           transition={{ duration: 0.3, ease: EASE }}
           className="flex items-center gap-2 pt-8"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(150deg,#FF5C7A,#A78BFA)] shadow-[0_6px_18px_-6px_rgba(255,92,122,0.9)]">
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-xl shadow-[0_6px_18px_-6px_var(--glow-send)]"
+            style={{ background: "var(--brand-grad)" }}
+          >
             <Heart className="h-4 w-4 fill-white text-white" />
           </span>
-          <span className="text-[15px] font-medium tracking-tight text-text">Dolemon</span>
+          <span className="wordmark text-[15px] font-medium tracking-tight text-text">Dolemon</span>
           <Link
             href="/download"
             className="ml-1 rounded-full border border-white/10 px-2 py-[3px] text-[10.5px] font-medium tracking-wide text-text-muted transition-colors hover:border-rose/30 hover:text-rose"
@@ -56,7 +59,10 @@ export default function WelcomePage() {
           >
             <div className="absolute inset-0 rounded-[36px] bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.26),rgba(255,160,122,0.10)_52%,transparent_74%)]" />
             <div className="relative flex h-32 w-32 items-center justify-center rounded-[32px] border border-white/[0.09] bg-[linear-gradient(160deg,rgba(255,92,122,0.16),rgba(167,139,250,0.10)_55%,rgba(255,255,255,0.02))] shadow-card">
-              <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-[linear-gradient(150deg,#FF5C7A,#A78BFA)] shadow-[0_14px_34px_-10px_rgba(255,92,122,0.9)]">
+              <div
+                className="flex h-16 w-16 items-center justify-center rounded-[22px] shadow-[0_14px_34px_-10px_var(--glow-send)]"
+                style={{ background: "var(--brand-grad)" }}
+              >
                 <Heart className="h-7 w-7 fill-white text-white" strokeWidth={1.5} />
               </div>
             </div>

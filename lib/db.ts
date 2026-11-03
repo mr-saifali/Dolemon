@@ -338,8 +338,39 @@ export async function removeMyReaction(messageId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function markThreadRead(conversationId: string): Promise<void> {
-  await client().rpc("mark_conversation_read", { target: conversationId });
+/**
+ * Marks the thread read. With `shareReads` on (the "Read receipts" toggle),
+ * the read cursor is also pushed to the partner so their ticks turn — and
+ * broadcast on the thread channel so it happens live, not on their next refresh.
+ */
+export async function markThreadRead(conversationId: string, shareReads = true): Promise<void> {
+  const sb = client();
+  await sb.rpc("mark_conversation_read", { target: conversationId });
+  if (!shareReads) return;
+
+  const me = (await sb.auth.getUser()).data.user?.id ?? null;
+  if (!me) return;
+  const at = Date.now();
+
+  // the partner's read cursor — best-effort, never blocks reading
+  await sb.rpc("touch_read_cursor", { target: conversationId }).then(
+    () => undefined,
+    () => undefined
+  );
+
+  const channel = sb.channel(`thread:${conversationId}`);
+  await channel
+    .send({ type: "broadcast", event: "read", payload: { user: me, at } })
+    .catch(() => undefined);
+  await sb.removeChannel(channel);
+}
+
+/** When the other person last opened this thread (their read cursor), or null. */
+export async function conversationReadState(conversationId: string): Promise<number | null> {
+  const { data, error } = await client().rpc("conversation_read_state", { target: conversationId });
+  if (error) return null;
+  const at = (data as { partner_read_at?: string | null } | null)?.partner_read_at;
+  return at ? new Date(at).getTime() : null;
 }
 
 /** New messages as they land, filtered to this conversation. */
@@ -349,7 +380,10 @@ export function watchMessages(
     onInsert: (row: DbMessage) => void;
     onUpdate?: (row: DbMessage) => void;
     onDelete?: (id: string) => void;
-  }
+    /** the partner opened the thread at `at` — their read cursor moved */
+    onRead?: (at: number) => void;
+  },
+  me?: string | null
 ) {
   const sb = client();
   const channel = sb
@@ -372,6 +406,11 @@ export function watchMessages(
         if (old?.id) handlers.onDelete?.(old.id);
       }
     )
+    .on("broadcast", { event: "read" }, ({ payload }) => {
+      const p = payload as { user?: string; at?: number } | null;
+      if (!p?.at || p.user === me) return;
+      handlers.onRead?.(p.at);
+    })
     .subscribe();
 
   return () => {

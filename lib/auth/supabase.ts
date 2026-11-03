@@ -44,10 +44,18 @@ function mapError(message: string): AuthFailure {
   return new AuthFailure("UNKNOWN", "Something went wrong. Try again?");
 }
 
+/**
+ * Loads the profile.
+ *
+ * IMPORTANT: the `visibility` column only exists after migration 004 has been
+ * run, and it is fetched in its OWN best-effort query on purpose — a missing
+ * column must never break login. While the migration is pending, every
+ * account simply reads as public.
+ */
 async function loadProfile(userId: string, email: string): Promise<Account> {
   const { data, error } = await client()
     .from("profiles")
-    .select("id, username, avatar_id, avatar_url, app_lock_hash, visibility")
+    .select("id, username, avatar_id, avatar_url, app_lock_hash")
     .eq("id", userId)
     .maybeSingle<ProfileRow>();
 
@@ -61,6 +69,14 @@ async function loadProfile(userId: string, email: string): Promise<Account> {
       .then(() => undefined, () => undefined);
   }
 
+  let visibility: string | null = null;
+  const vis = await client()
+    .from("profiles")
+    .select("visibility")
+    .eq("id", userId)
+    .maybeSingle<{ visibility?: string | null }>();
+  if (!vis.error) visibility = vis.data?.visibility ?? null;
+
   return {
     id: userId,
     email,
@@ -69,7 +85,7 @@ async function loadProfile(userId: string, email: string): Promise<Account> {
     avatarUrl: data?.avatar_url ?? null,
     profileComplete: Boolean(data?.username),
     hasAppLock: Boolean(data?.app_lock_hash),
-    isPrivate: data?.visibility === "private",
+    isPrivate: visibility === "private",
   };
 }
 
@@ -80,7 +96,15 @@ export const supabaseProvider: AuthProvider = {
     const { data, error } = await client().auth.getUser();
     if (error || !data.user?.email) return null;
 
-    const account = await loadProfile(data.user.id, data.user.email);
+    // A valid session must never be thrown out by a one-off network hiccup —
+    // retry once before giving up.
+    let account: Account;
+    try {
+      account = await loadProfile(data.user.id, data.user.email);
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      account = await loadProfile(data.user.id, data.user.email);
+    }
 
     // "last seen" heartbeat, at most every five minutes per tab
     if (typeof window !== "undefined") {
@@ -270,17 +294,5 @@ export const supabaseProvider: AuthProvider = {
     });
     if (error) throw mapError(error.message);
     return loadProfile(auth.user.id, auth.user.email);
-  },
-
-  async deleteAccount() {
-    // wipes profile, messages, memberships and settings server-side
-    await client().rpc("delete_my_account").then(() => undefined, () => undefined);
-    await client().auth.signOut();
-    if (typeof window !== "undefined") {
-      window.sessionStorage.clear();
-      Object.keys(window.localStorage)
-        .filter((key) => key.startsWith("dolemon:"))
-        .forEach((key) => window.localStorage.removeItem(key));
-    }
   },
 };

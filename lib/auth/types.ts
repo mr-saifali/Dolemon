@@ -82,12 +82,13 @@ export interface AuthProvider {
   setAppLock(password: string | null): Promise<void>;
   verifyAppLock(password: string): Promise<boolean>;
   hasAppLock(): Promise<boolean>;
-  /** verify the account's own password (account deletion gate). */
+  /** verify the account's own password. */
   verifyPassword(password: string): Promise<boolean>;
   /** hide the account from search — only an exact handle finds it. */
   setPrivate(isPrivate: boolean): Promise<Account>;
-  /** irreversible: wipe the profile and this account's data, then sign out. */
-  deleteAccount(): Promise<void>;
+  // Note: there is deliberately NO self-deletion. Accounts can't be removed
+  // from inside the app — an account only goes away if an admin removes it
+  // in the Supabase dashboard.
 }
 
 export const RESERVED_USERNAMES = new Set([

@@ -45,7 +45,18 @@ export default function SignInPage() {
     setFormError(null);
     try {
       await auth.signInWithPassword(values.email, values.password);
-      const next = await refresh();
+      let next = await refresh();
+      if (!next) {
+        // signed in, but the profile fetch hiccuped — the session is saved,
+        // so one retry before we say anything
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        next = await refresh();
+      }
+      if (!next) {
+        setFormError("You're signed in — we just couldn't load your profile yet. Refresh the page and it'll pick back up.");
+        setSubmitting(false);
+        return;
+      }
       toast.success("Welcome back");
       router.replace(landingFor(next));
     } catch (err) {

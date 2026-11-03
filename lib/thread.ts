@@ -32,6 +32,8 @@ export type ChatMessage = {
   text: string;
   at: number;
   status?: MessageStatus;
+  /** epoch ms — the exact moment the other person read this one (Telegram-style) */
+  seenAt?: number | null;
   media?: MediaInfo;
   replyTo?: QuotedMessage;
   /** epoch ms — the message was rewritten after sending */
@@ -143,7 +145,11 @@ export function useThread(conversationId: string, { enabled = true }: { enabled?
       return;
     }
     const stored = read(conversationId);
-    setMessages(stored ?? seedMessages(conversationId));
+    // my older messages that predate the tick system count as delivered —
+    // they landed, we just don't have a read record for them
+    const normalize = (list: ChatMessage[]) =>
+      list.map((m) => (m.author === "me" && !m.status ? { ...m, status: "delivered" as const } : m));
+    setMessages(normalize(stored ?? seedMessages(conversationId)));
     setReady(true);
   }, [conversationId, enabled]);
 
@@ -191,7 +197,8 @@ export function useThread(conversationId: string, { enabled = true }: { enabled?
       timers.current.push(setTimeout(() => patch(id, { status: "delivered" }), 900));
       timers.current.push(
         setTimeout(() => {
-          patch(id, { status: "read" });
+          // the exact moment they "opened" it — same clock we show for the read time
+          patch(id, { status: "read", seenAt: Date.now() });
           // a `null` reply means "don't answer this one" — used for wordless stickers
           if (reply === null) return;
           setMessages((prev) => [

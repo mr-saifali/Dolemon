@@ -13,10 +13,17 @@ import { StartChatSheet } from "@/components/home/start-chat-sheet";
 import { authMode } from "@/lib/auth";
 import { demoConversations, greetingFor } from "@/lib/chat";
 import { useChatMeta } from "@/lib/conversation-meta";
-import { listConversations, openDirectConversation, type DbConversation } from "@/lib/db";
+import {
+  conversationReadState,
+  listConversations,
+  openDirectConversation,
+  type DbConversation,
+} from "@/lib/db";
 import { useSession } from "@/lib/session";
+import { usePrefs } from "@/lib/prefs";
 import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
 import type { ChatMessage } from "@/lib/thread";
+import type { MessageStatus } from "@/lib/thread";
 
 const REMOTE = authMode === "supabase";
 
@@ -24,10 +31,13 @@ function HomeScreen() {
   const router = useRouter();
   const { account } = useSession();
   const metaMap = useChatMeta();
+  const { readReceipts } = usePrefs();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [remoteChats, setRemoteChats] = useState<DbConversation[] | null>(null);
+  /** per-conversation partner read cursor (live mode) — powers the list ticks */
+  const [readStates, setReadStates] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     if (!REMOTE) return;
@@ -40,18 +50,48 @@ function HomeScreen() {
     };
   }, []);
 
+  // When the list changes, learn where each partner's read cursor sits.
+  useEffect(() => {
+    if (!REMOTE || !remoteChats) return;
+    let alive = true;
+    void Promise.all(
+      remoteChats.map(async (c) => {
+        const at = await conversationReadState(c.id).catch(() => null);
+        return [c.id, at] as const;
+      })
+    ).then((entries) => {
+      if (!alive) return;
+      setReadStates((prev) => {
+        const next = { ...prev };
+        for (const [id, at] of entries) next[id] = at;
+        return next;
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [remoteChats]);
+
   const rows = useMemo<ChatRowData[]>(() => {
     if (REMOTE) {
-      return (remoteChats ?? []).map((c) => ({
-        id: c.id,
-        name: c.partnerUsername,
-        handle: c.partnerUsername,
-        avatarId: c.partnerAvatar,
-        avatarUrl: c.partnerAvatarUrl,
-        preview: previewOf(c),
-        at: c.lastAt,
-        unread: c.unread,
-      }));
+      const myId = account?.id ?? null;
+      return (remoteChats ?? []).map((c) => {
+        const lastMine = myId != null && c.lastSender === myId;
+        const cursor = readStates[c.id] ?? null;
+        const seen = lastMine && c.lastAt != null && cursor != null && cursor >= c.lastAt;
+        return {
+          id: c.id,
+          name: c.partnerUsername,
+          handle: c.partnerUsername,
+          avatarId: c.partnerAvatar,
+          avatarUrl: c.partnerAvatarUrl,
+          preview: previewOf(c),
+          at: c.lastAt,
+          unread: c.unread,
+          lastMine,
+          lastStatus: lastMine ? (readReceipts && seen ? "read" : "delivered") : null,
+        };
+      });
     }
 
     return demoConversations()
@@ -64,6 +104,14 @@ function HomeScreen() {
         const unread = meta?.lastReadAt
           ? unreadSince(c.id, meta.lastReadAt)
           : (meta?.unread ?? c.unread);
+        const lastStatus: MessageStatus | null =
+          last?.author === "me" && last.status
+            ? readReceipts
+              ? last.status
+              : last.status === "read"
+                ? "delivered"
+                : last.status
+            : null;
         return {
           id: c.id,
           name: c.name,
@@ -73,10 +121,12 @@ function HomeScreen() {
           at: last?.at ?? c.lastAt,
           unread,
           typing: meta?.muted ? false : c.typing,
+          lastMine: last?.author === "me",
+          lastStatus,
         };
       })
       .sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
-  }, [remoteChats, metaMap]);
+  }, [remoteChats, metaMap, readStates, readReceipts, account?.id]);
 
   const startChat = async (handle: string) => {
     setStartError(null);

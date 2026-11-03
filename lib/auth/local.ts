@@ -290,21 +290,4 @@ export const localProvider: AuthProvider = {
     saveUsers(all);
     return toAccount(all[me.email]);
   },
-
-  async deleteAccount() {
-    const me = requireUser();
-    const all = users();
-    delete all[me.email];
-    saveUsers(all);
-    remove(K.session);
-    remove(K.verified);
-    remove(K.otp);
-    if (typeof window !== "undefined") {
-      // wipe this account's threads and state on the device
-      Object.keys(window.localStorage)
-        .filter((key) => key.startsWith("dolemon:"))
-        .forEach((key) => window.localStorage.removeItem(key));
-      window.sessionStorage.clear();
-    }
-  },
 };

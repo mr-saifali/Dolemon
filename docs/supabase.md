@@ -322,3 +322,22 @@ await sb.from("message_reactions").upsert(
 Note the `filter` above needs `conversation_id` on the reactions table for server-side
 filtering; today it's one hop away on `messages`, so subscribe without a filter and drop
 rows that don't belong to the open thread.
+
+## 8. Pending migrations (manual run — in order)
+
+The app is written to degrade gracefully without these (nothing breaks login),
+but each unlocks a feature. Run them in the Supabase SQL editor, in order:
+
+| File | Unlocks |
+| --- | --- |
+| `docs/migrations/004_privacy_deletion.sql` | Private/public accounts, delete-chat, (deletion — see 006) |
+| `docs/migrations/005_read_receipts.sql` | Telegram-style read ticks + exact read time (live) |
+| `docs/migrations/006_revoke_self_deletion.sql` | Drops `delete_my_account()` — accounts can't self-delete |
+
+Notes:
+- **004 contains `delete_my_account()`.** If you already ran 004, just run 006 —
+  it drops that one function. The app itself has no self-deletion path.
+- `mark_conversation_read` (your existing unread logic) is **not** touched; 005
+  adds a separate `touch_read_cursor` / `conversation_read_state` pair next to it.
+- An account is only ever removed by an admin: Supabase → Authentication → Users
+  → Delete user.

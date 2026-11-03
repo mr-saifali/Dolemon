@@ -12,6 +12,7 @@ import {
   removeMyReaction,
   setMyReaction,
   typingBus,
+  uploadChatMedia,
   watchMessages,
   watchReactions,
   type DbConversation,
@@ -50,10 +51,35 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
     };
   }
 
+  const media = row.mediaUrl
+    ? {
+        url: row.mediaUrl,
+        name: row.mediaName ?? undefined,
+        sizeBytes: row.mediaSize ?? undefined,
+        durationMs: row.mediaDurationMs ?? undefined,
+      }
+    : undefined;
+
+  if (row.kind === "image" || row.kind === "audio" || row.kind === "file") {
+    return {
+      id: row.id,
+      author: mine ? "me" : "them",
+      kind: row.kind,
+      text:
+        row.body ||
+        (row.kind === "image" ? "Photo" : row.kind === "audio" ? "Voice note" : "File"),
+      at: row.at,
+      editedAt: row.editedAt ?? null,
+      status: mine ? (pending ? "sending" : "delivered") : undefined,
+      reactions: row.reactions,
+      media,
+    };
+  }
+
   return {
     id: row.id,
     author: mine ? "me" : "them",
-    kind: row.kind === "sticker" ? "sticker" : row.kind === "image" ? "image" : row.kind === "audio" ? "audio" : "text",
+    kind: row.kind === "sticker" ? "sticker" : "text",
     text: row.kind === "sticker" ? "" : row.body,
     at: row.at,
     editedAt: row.editedAt ?? null,
@@ -62,6 +88,24 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
     sticker: row.kind === "sticker" ? (sticker || "dil") : undefined,
   };
 }
+
+/** Media attached to a send. `dataUrl` renders instantly and is uploaded before insert. */
+export type RemoteMediaOptions = {
+  dataUrl?: string;
+  /** already-uploaded public URL (keeps retries from re-uploading) */
+  url?: string;
+  name?: string;
+  sizeBytes?: number;
+  durationMs?: number;
+  /** extension without the dot */
+  ext?: string;
+};
+
+export type RemoteSendOptions = {
+  kind?: "text" | "sticker" | "image" | "audio" | "file";
+  sticker?: ReactionType;
+  media?: RemoteMediaOptions;
+};
 
 /** Live thread backed by Supabase: messages, reactions, typing and presence. */
 export function useRemoteThread(conversationId: string, enabled = true) {
@@ -72,7 +116,7 @@ export function useRemoteThread(conversationId: string, enabled = true) {
   const [typing, setTyping] = useState(false);
   const [online, setOnline] = useState(false);
   const bus = useRef<ReturnType<typeof typingBus> | null>(null);
-  const pending = useRef<Map<string, { body: string; kind: "text" | "sticker" }>>(new Map());
+  const pending = useRef<Map<string, { body: string; kind: RemoteSendOptions["kind"]; media?: RemoteMediaOptions }>>(new Map());
   const messagesRef = useRef<ChatMessage[]>([]);
 
   useEffect(() => {
@@ -175,9 +219,29 @@ export function useRemoteThread(conversationId: string, enabled = true) {
   }, [ready, conversationId, enabled]);
 
   const deliver = useCallback(
-    async (id: string, body: string, kind: "text" | "sticker") => {
+    async (id: string, body: string, kind: RemoteSendOptions["kind"], media?: RemoteMediaOptions) => {
       try {
-        const row = await postMessage(conversationId, body, kind);
+        let finalUrl = media?.url;
+        // Photo / voice / file: upload to storage first, then insert the row with the URL.
+        if (media?.dataUrl && !finalUrl) {
+          finalUrl = await uploadChatMedia(
+            conversationId,
+            media.dataUrl,
+            media.ext ?? (kind === "image" ? "jpg" : kind === "audio" ? "webm" : "bin")
+          );
+          // remember the uploaded URL so a retry never re-uploads
+          const queued = pending.current.get(id);
+          if (queued) pending.current.set(id, { ...queued, media: { ...media, url: finalUrl, dataUrl: undefined } });
+        }
+
+        const row = await postMessage(
+          conversationId,
+          body,
+          kind ?? "text",
+          finalUrl
+            ? { url: finalUrl, name: media?.name, sizeBytes: media?.sizeBytes, durationMs: media?.durationMs }
+            : undefined
+        );
         pending.current.delete(id);
         setMessages((prev) =>
           prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "delivered" } : m))
@@ -190,26 +254,51 @@ export function useRemoteThread(conversationId: string, enabled = true) {
   );
 
   const send = useCallback(
-    (text: string, options: { kind?: "text" | "sticker"; sticker?: ReactionType } = {}) => {
-      const kind = options.kind === "sticker" ? "sticker" : "text";
-      const body = kind === "sticker" ? (options.sticker ?? "dil") : text.trim();
-      if (!body) return;
+    (text: string, options: RemoteSendOptions = {}) => {
+      const kind: RemoteSendOptions["kind"] =
+        options.kind === "sticker" || options.kind === "image" || options.kind === "audio" || options.kind === "file"
+          ? options.kind
+          : "text";
+      const body =
+        kind === "sticker"
+          ? (options.sticker ?? "dil")
+          : kind === "file"
+            ? (options.media?.name ?? "File")
+            : text.trim();
+      if (!body && kind !== "sticker") return;
 
       const id = tmpId();
-      pending.current.set(id, { body, kind });
+      pending.current.set(id, { body, kind, media: options.media });
+      const optimistic = options.media?.dataUrl
+        ? {
+            url: options.media.dataUrl,
+            name: options.media.name,
+            sizeBytes: options.media.sizeBytes,
+            durationMs: options.media.durationMs,
+          }
+        : options.media?.url
+          ? {
+              url: options.media.url,
+              name: options.media.name,
+              sizeBytes: options.media.sizeBytes,
+              durationMs: options.media.durationMs,
+            }
+          : undefined;
+
       setMessages((prev) => [
         ...prev,
         {
           id,
           author: "me",
-          kind: kind === "sticker" ? "sticker" : "text",
+          kind: kind === "sticker" ? "sticker" : kind,
           text: kind === "sticker" ? "" : body,
           at: Date.now(),
           status: "sending",
           sticker: kind === "sticker" ? ((options.sticker ?? "dil") as ReactionType) : undefined,
+          media: optimistic,
         },
       ]);
-      void deliver(id, body, kind);
+      void deliver(id, body, kind, options.media);
     },
     [deliver]
   );
@@ -219,11 +308,25 @@ export function useRemoteThread(conversationId: string, enabled = true) {
       const queued = pending.current.get(messageId);
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, status: "sending" } : m)));
       if (queued) {
-        void deliver(messageId, queued.body, queued.kind);
+        void deliver(messageId, queued.body, queued.kind, queued.media);
         return;
       }
       const current = messages.find((m) => m.id === messageId);
-      if (current) void deliver(messageId, current.text, current.kind === "sticker" ? "sticker" : "text");
+      if (!current) return;
+      if (current.kind === "sticker") {
+        void deliver(messageId, current.text, "sticker");
+        return;
+      }
+      if (current.media?.url) {
+        void deliver(messageId, current.text, current.kind === "file" ? "file" : current.kind === "image" ? "image" : current.kind === "audio" ? "audio" : "text", {
+          url: current.media.url,
+          name: current.media.name,
+          sizeBytes: current.media.sizeBytes,
+          durationMs: current.media.durationMs,
+        });
+      } else {
+        void deliver(messageId, current.text, "text");
+      }
     },
     [deliver, messages]
   );

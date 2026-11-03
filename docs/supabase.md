@@ -234,6 +234,69 @@ persistence are switched on, the thread and its reactions live in `localStorage`
 between tabs over a `BroadcastChannel` named `dolemon:thread:<id>` — the same seam a
 Realtime channel plugs into.
 
+## 7a. Chat media — photos, voice notes, files
+
+Run this in the SQL editor. It adds the media columns to `messages` and a
+public `chat-media` storage bucket whose folder-per-conversation RLS policy
+only lets members of that 1:1 upload.
+
+```sql
+-- media columns (all nullable — text/sticker rows stay untouched)
+alter table public.messages
+  add column if not exists media_url text,
+  add column if not exists media_name text,
+  add column if not exists media_size bigint,
+  add column if not exists media_duration integer;
+
+-- if your messages.kind has a check constraint, widen it to include the
+-- media kinds (harmless if it doesn't exist):
+alter table public.messages drop constraint if exists messages_kind_check;
+alter table public.messages
+  add constraint messages_kind_check
+  check (kind in ('text','sticker','call','presence','image','audio','file'));
+
+-- public bucket. Object path shape: <conversation_id>/<uuid>.<ext>
+insert into storage.buckets (id, name, public)
+values ('chat-media', 'chat-media', true)
+on conflict (id) do update set public = true;
+
+-- the conversation folder a storage path belongs to (null when malformed)
+create or replace function public.chat_media_conv(name text)
+returns uuid
+language sql immutable
+as $$
+  select case
+    when split_part(name, '/', 1) ~ '^[0-9a-fA-F-]{36}$'
+    then split_part(name, '/', 1)::uuid
+    else null
+  end;
+$$;
+
+-- only members of that 1:1 may upload into its folder
+drop policy if exists "chat media upload by members" on storage.objects;
+create policy "chat media upload by members" on storage.objects for insert
+  with check (
+    bucket_id = 'chat-media'
+    and auth.role() = 'authenticated'
+    and public.is_conversation_member(public.chat_media_conv(name))
+  );
+
+-- anyone may delete files they uploaded
+drop policy if exists "chat media delete own" on storage.objects;
+create policy "chat media delete own" on storage.objects for delete
+  using (bucket_id = 'chat-media' and owner = auth.uid());
+```
+
+> If your `is_conversation_member` helper takes a named parameter (e.g.
+> `target uuid`) or lives under a different name, adjust the one line in the
+> insert policy to match — it's the only place the helper is referenced.
+
+The client flow (`lib/use-remote-thread.ts` → `uploadChatMedia` in `lib/db.ts`):
+show the bubble instantly with the local data URL, upload to
+`chat-media/<conversation_id>/<uuid>.<ext>`, then insert the row with the
+public URL — the partner's client picks it up over Realtime and renders the
+same photo / player / file card.
+
 ### Replacing the local store with Realtime
 
 ```ts

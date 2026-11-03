@@ -199,7 +199,7 @@ export function ChatInput({
                   // The tap must not steal focus from the field — that's what
                   // made the keyboard dip away and come back on send.
                   onPointerDown={(e) => e.preventDefault()}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(165deg,#FF5C7A_0%,#FF6B8B_100%)] text-white shadow-[0_6px_18px_-8px_rgba(255,92,122,0.7)]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(165deg,#8F7BFF_0%,#6D5AE8_100%)] text-white shadow-[0_6px_18px_-8px_rgba(125,107,255,0.7)]"
                 >
                   <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
                 </motion.button>

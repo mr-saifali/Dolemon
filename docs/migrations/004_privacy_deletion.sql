@@ -38,7 +38,7 @@ revoke execute on function public.set_account_visibility(text) from anon;
 -- 2. Search hides private accounts
 -- ----------------------------------------------------------------------------
 -- Replaces the existing search_users(). Same return shape the app already
--- reads: id, username, avatar_id, avatar_url.
+-- reads: id, username, avatar_id, avatar_url (photo lives on profiles itself).
 create or replace function public.search_users(q text)
 returns table (
   id uuid,
@@ -54,9 +54,8 @@ as $$
   select p.id,
          p.username,
          p.avatar_id,
-         av.url as avatar_url
+         p.avatar_url
     from public.profiles p
-    left join public.avatars av on av.id = p.avatar_id
    where p.username is not null
      and p.visibility = 'public'          -- <-- the privacy gate
      and (

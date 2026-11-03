@@ -36,6 +36,8 @@ import { QUICK_REACTION, type ReactionType } from "@/lib/reactions";
 import { previewFor, useThread, type ChatMessage, type QuotedMessage } from "@/lib/thread";
 import { deleteConversation } from "@/lib/db";
 import { useRemoteThread } from "@/lib/use-remote-thread";
+import { useSession } from "@/lib/session";
+import { useDoremon } from "@/lib/doremon/use-doremon";
 import { useViewportHeight } from "@/lib/use-viewport-height";
 
 const REMOTE = authMode === "supabase";
@@ -57,10 +59,20 @@ function ThreadScreen() {
   const messages = REMOTE ? remote.messages : local.messages;
   const ready = REMOTE ? remote.ready : local.ready;
 
+  const { account } = useSession();
+  const myHandle = account?.username ?? "you";
+
   const partnerName = REMOTE
     ? `@${remote.partnerName ?? "…"}`
     : conversation?.name ?? "Them";
   const partnerAvatar = REMOTE ? remote.partnerAvatar : conversation?.avatarId ?? null;
+
+  // Doremon — watches the room, keeps the record, speaks when he should.
+  const doremon = useDoremon(conversationId, messages, {
+    remote: REMOTE,
+    me: myHandle,
+    partner: partnerName.replace(/^@/, ""),
+  });
 
   const { together, partner, lastSeenAt, setPresence } = usePresence({
     demo: !REMOTE,
@@ -252,6 +264,14 @@ function ThreadScreen() {
   };
 
   const handleSend = (text: string) => {
+    const trimmed = text.trim();
+    // /doremon <anything> — a word to Doremon, not a message to them
+    if (/^\/doremon\b/i.test(trimmed)) {
+      const question = trimmed.replace(/^\/doremon\s*/i, "").trim();
+      setReplyTo(null);
+      void doremon.ask(question);
+      return;
+    }
     sendNow(text, replyTo ? { replyTo } : {});
     setReplyTo(null);
   };
@@ -429,6 +449,9 @@ function ThreadScreen() {
         hidden={!prefs.showPresence}
         onMenu={() => setMenuOpen(true)}
         onCall={REMOTE ? (type) => void live.start(conversationId, type) : undefined}
+        doremonStatus={doremon.status}
+        doremonMemory={doremon.memory}
+        onDoremon={() => void doremon.ask("")}
       />
 
       <MessageList
@@ -438,6 +461,8 @@ function ThreadScreen() {
         showReceipts={prefs.readReceipts}
         compact={prefs.compactChat}
         dividerId={dividerId}
+        doremon={doremon.doremonMessages}
+        doremonThinking={doremon.thinking}
         onLongPress={(message, anchor) => setPicker({ message, anchor })}
         onDoubleTap={(message) => reactNow(message.id, QUICK_REACTION)}
         onRemoveMyReaction={(message) => clearReactionNow(message.id)}

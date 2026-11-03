@@ -341,3 +341,27 @@ Notes:
   adds a separate `touch_read_cursor` / `conversation_read_state` pair next to it.
 - An account is only ever removed by an admin: Supabase → Authentication → Users
   → Delete user.
+
+## 9. Doremon — the resident AI
+
+Doremon watches every chat, keeps a compressed record per conversation
+(moods, fight patterns, deep-talk moments), steps in when a fight starts or
+the talk goes dry, and answers `/doremon <anything>` in chat.
+
+**Setup**
+
+1. Env (Vercel → project → Environment Variables, or `.env.local` locally):
+   - `GEMINI_API_KEY` — from https://aistudio.google.com/apikey (server-side only)
+   - `GEMINI_MODEL` — optional, default `gemini-2.5-flash` (bump to the newest flash)
+2. Run `docs/migrations/008_doremon_memory.sql` in the SQL editor — the
+   `doremon_memory` table (jsonb record, member RLS, on-delete cascade).
+
+**Behaviour**
+
+- No key / table not run: Doremon still works — his local brain (heuristics +
+  persona templates) keeps him alive; the compressed record just lives in the
+  browser until the table exists.
+- The Gemini key never reaches the browser — all calls go through
+  `POST /api/doremon`.
+- His chat lines are ephemeral (like system moments); the *record* is what
+  persists, shared by both members.

@@ -98,7 +98,8 @@ export function EditBar({
             type="button"
             onClick={() => void save()}
             disabled={saving || !value.trim()}
-            className="flex h-8 items-center gap-1 rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FFA07A)] px-3.5 text-[12px] font-medium text-white disabled:opacity-50"
+            className="flex h-8 items-center gap-1 rounded-full px-3.5 text-[12px] font-medium text-white disabled:opacity-50"
+            style={{ background: "var(--brand-grad)" }}
           >
             <Check className="h-3.5 w-3.5" strokeWidth={3} />
             {saving ? "Saving" : "Save"}

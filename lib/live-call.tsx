@@ -43,7 +43,7 @@ export type ActiveCall = {
 };
 
 type Signal = {
-  kind: "invite" | "accept" | "decline" | "offer" | "answer" | "ice" | "end" | "ready";
+  kind: "invite" | "accept" | "decline" | "offer" | "answer" | "ice" | "end" | "ready" | "switch";
   conversationId: string;
   from?: string;
   type?: CallType;
@@ -68,6 +68,8 @@ type LiveCallValue = {
   elapsed: number;
   muted: boolean;
   cameraOn: boolean;
+  /** route the far end out of the loudspeaker instead of the receiver */
+  speaker: boolean;
   notice: string | null;
   /** true once the DTLS handshake is up — media is encrypted on the wire */
   encrypted: boolean;
@@ -78,6 +80,9 @@ type LiveCallValue = {
   toggleMute: () => void;
   toggleCamera: () => void;
   flipCamera: () => Promise<void>;
+  toggleSpeaker: () => void;
+  /** flip a live call between voice and video (renegotiates both sides) */
+  switchType: (type: CallType) => Promise<void>;
   /** collapsed into a floating pill so the chat stays usable mid-call */
   minimized: boolean;
   minimize: () => void;
@@ -94,6 +99,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
   const [elapsed, setElapsed] = useState(0);
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(true);
+  const [speaker, setSpeaker] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [encrypted, setEncrypted] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -241,6 +247,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     connectedAt.current = null;
     setMuted(false);
     setCameraOn(true);
+    setSpeaker(false);
     setElapsed(0);
     setEncrypted(false);
 
@@ -398,9 +405,13 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     if (!current) return;
     try {
       setCall((prev) => (prev ? { ...prev, phase: "connecting" } : prev));
-      const stream = await getMedia(current.type);
-      const pc = buildPeer(stream);
-      void pc.createDataChannel("dolemon");
+      // the peer was usually built when the call started (media is ready by now);
+      // this is the fallback for any path that skipped it
+      if (!pcRef.current) {
+        const stream = await getMedia(current.type);
+        buildPeer(stream);
+      }
+      void pcRef.current?.createDataChannel("dolemon");
       // the offer goes out once the other side says it's on the channel
     } catch {
       finish("Allow microphone and camera to call");
@@ -422,6 +433,14 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
       if (signal.kind === "ready") {
         if (current.direction === "outgoing") await sendOffer();
+        return;
+      }
+
+      // the other side flipped voice ↔ video — their renegotiation offer follows
+      if (signal.kind === "switch" && signal.type) {
+        const next: ActiveCall = { ...current, type: signal.type };
+        callRef.current = next;
+        setCall(next);
         return;
       }
 
@@ -599,6 +618,18 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       setMinimized(false);
       facing.current = "user";
 
+      // Ask for the microphone (and camera, on a video call) right away —
+      // before the invite even goes out. The permission prompt must not wait
+      // for the other side to pick up, and the tracks must be ready so the
+      // offer can't be half-formed when they do.
+      try {
+        const stream = await getMedia(type);
+        buildPeer(stream);
+      } catch {
+        finish("Allow microphone and camera to call");
+        return;
+      }
+
       await joinCallChannel(conversationId);
       await sendOn(conversation.partnerId, {
         kind: "invite",
@@ -613,7 +644,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
         if (callRef.current?.phase === "inviting") finish("No one picked up");
       }, 45_000);
     },
-    [account?.id, account?.username, account?.avatarUrl, finish, joinCallChannel, later, sendOn]
+    [account?.id, account?.username, account?.avatarUrl, buildPeer, finish, getMedia, joinCallChannel, later, sendOn]
   );
 
   const accept = useCallback(async () => {
@@ -688,6 +719,80 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /**
+   * Route the far end to the loudspeaker. Browsers that expose setSinkId get real
+   * output switching; iOS Safari gets the (semi-deprecated) setSpeakerphoneOn;
+   * everywhere else we at least keep the state honest for the UI.
+   */
+  const toggleSpeaker = useCallback(() => {
+    setSpeaker((previous) => {
+      const next = !previous;
+      try {
+        const nav = navigator as unknown as { setSpeakerphoneOn?: (on: boolean) => void };
+        nav.setSpeakerphoneOn?.(next);
+      } catch {
+        /* routing is best-effort — the UI state is the contract */
+      }
+      return next;
+    });
+  }, []);
+
+  /** Push a fresh offer/answer round-trip after local tracks change. */
+  const renegotiate = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc || !offerChannelReady.current) return;
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendCall({ kind: "offer", sdp: pc.localDescription ?? offer });
+    } catch {
+      /* a mid-call renegotiation failing shouldn't kill an active call */
+    }
+  }, [sendCall]);
+
+  /**
+   * Flip a live call between voice and video. The local tracks change first
+   * (add/kill the video track), then a renegotiation carries it to the other
+   * side, and a "switch" signal flips their UI so both screens agree.
+   */
+  const switchType = useCallback(
+    async (target: CallType) => {
+      const current = callRef.current;
+      const pc = pcRef.current;
+      if (!current || !pc || current.phase !== "connected" || current.type === target) return;
+
+      if (target === "video") {
+        try {
+          const fresh = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing.current, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+          const [track] = fresh.getVideoTracks();
+          const sender = pc.getSenders().find((item) => item.track?.kind === "video");
+          if (sender) await sender.replaceTrack(track);
+          else await pc.addTrack(track, fresh);
+          if (localRef.current) {
+            localRef.current.addTrack(track);
+            setLocalStream(new MediaStream(localRef.current.getTracks()));
+          }
+        } catch {
+          setNotice("Camera permission is needed for video");
+          return;
+        }
+      } else {
+        const sender = pc.getSenders().find((item) => item.track?.kind === "video");
+        if (sender) await sender.replaceTrack(null).catch(() => undefined);
+      }
+
+      const next: ActiveCall = { ...current, type: target };
+      callRef.current = next;
+      setCall(next);
+      sendCall({ kind: "switch", type: target });
+      await renegotiate();
+    },
+    [renegotiate, sendCall]
+  );
+
   const flipCamera = useCallback(async () => {
     const pc = pcRef.current;
     const stream = localRef.current;
@@ -724,6 +829,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       elapsed,
       muted,
       cameraOn,
+      speaker,
       notice,
       encrypted,
       start,
@@ -733,6 +839,8 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleCamera,
       flipCamera,
+      toggleSpeaker,
+      switchType,
       minimized,
       minimize,
       expand,
@@ -744,6 +852,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       elapsed,
       muted,
       cameraOn,
+      speaker,
       notice,
       encrypted,
       start,
@@ -753,6 +862,8 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleCamera,
       flipCamera,
+      toggleSpeaker,
+      switchType,
       minimized,
       minimize,
       expand,

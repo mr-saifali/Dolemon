@@ -177,7 +177,8 @@ export default function UnlockPage() {
               type="submit"
               whileTap={{ scale: 0.98 }}
               disabled={!password || submitting}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(165deg,#FF5C7A_0%,#FF6B8B_100%)] py-3.5 text-[14px] font-medium text-white shadow-[0_10px_28px_-12px_rgba(255,92,122,0.7)] disabled:opacity-40"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-[14px] font-medium text-white disabled:opacity-40"
+              style={{ background: "var(--brand-grad)", boxShadow: "0 10px 28px -12px var(--glow-send)" }}
             >
               {submitting ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />

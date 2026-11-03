@@ -20,6 +20,7 @@ import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MessageList } from "@/components/chat/MessageList";
 import { PulseOverlay } from "@/components/chat/pulse-overlay";
 import { ReactionPicker, type BubbleAnchor, type MessageAction } from "@/components/chat/ReactionPicker";
@@ -33,6 +34,7 @@ import { useLiveCall } from "@/lib/live-call";
 import { usePulses } from "@/lib/pulses";
 import { QUICK_REACTION, type ReactionType } from "@/lib/reactions";
 import { previewFor, useThread, type ChatMessage, type QuotedMessage } from "@/lib/thread";
+import { deleteConversation } from "@/lib/db";
 import { useRemoteThread } from "@/lib/use-remote-thread";
 import { useViewportHeight } from "@/lib/use-viewport-height";
 
@@ -72,6 +74,8 @@ function ThreadScreen() {
   const [attachOpen, setAttachOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [dividerId, setDividerId] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const marked = useRef(false);
   const lastSeenMessage = useRef<string | null>(null);
 
@@ -287,6 +291,24 @@ function ThreadScreen() {
     setPicker(null);
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      if (REMOTE) {
+        await deleteConversation(conversationId);
+      } else {
+        local.clear();
+        patchMeta(conversationId, { deleted: true });
+      }
+      toast.success("Chat deleted");
+      setDeleteOpen(false);
+      router.replace("/app");
+    } catch {
+      toast.error("Couldn't delete that chat");
+      setDeleting(false);
+    }
+  };
+
   const menuActions: ChatMenuAction[] = [
     {
       key: "voice",
@@ -332,6 +354,13 @@ function ThreadScreen() {
         patchMeta(conversationId, { blocked: !meta.blocked });
         toast.success(meta.blocked ? "Unblocked" : `Blocked ${partnerName}`);
       },
+    },
+    {
+      key: "delete",
+      label: "Delete chat",
+      icon: <Trash2 className="h-[18px] w-[18px]" />,
+      danger: true,
+      onSelect: () => setDeleteOpen(true),
     },
     ...(!REMOTE
       ? [
@@ -452,6 +481,16 @@ function ThreadScreen() {
         name={partnerName}
         actions={menuActions}
         onClose={() => setMenuOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title={`Delete this chat?`}
+        description={`Everything with ${partnerName} — messages, photos, voice notes — is removed for both of you. There's no undo.`}
+        confirmLabel="Delete chat"
+        busy={deleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteOpen(false)}
       />
 
       <AnimatePresence>

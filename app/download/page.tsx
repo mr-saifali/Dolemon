@@ -77,7 +77,8 @@ export default function DownloadPage() {
             <button
               type="button"
               onClick={() => void run()}
-              className="mt-7 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#FF5C7A] to-[#FF8FA3] py-3.5 text-[14.5px] font-medium text-white shadow-[0_12px_34px_-10px_rgba(255,92,122,0.6)] transition-transform active:scale-[0.99]"
+              className="mt-7 flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-[14.5px] font-medium text-white shadow-[0_12px_34px_-10px_var(--glow-send)] transition-transform active:scale-[0.99]"
+              style={{ background: "var(--brand-grad)" }}
             >
               <Download className="h-4 w-4" />
               Install now

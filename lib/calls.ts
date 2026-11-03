@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CallInfo } from "./thread";
 
-export type CallDirection = "outgoing" | "incoming";
+export type CallDirection = "incoming" | "outgoing";
 export type CallPhase = "incoming" | "dialing" | "ringing" | "connected" | "ended";
 
 /**
@@ -14,6 +14,7 @@ export type CallPhase = "incoming" | "dialing" | "ringing" | "connected" | "ende
  * teardown — see docs/supabase.md §6.
  *
  * In demo mode the other side answers after a short ring and media stays simulated.
+ * The voice ↔ video switch works the same way it will once the live provider is wired.
  */
 export function useCallSession({
   direction,
@@ -25,11 +26,12 @@ export function useCallSession({
   demo?: boolean;
 }) {
   const [phase, setPhase] = useState<CallPhase>(direction === "incoming" ? "incoming" : "dialing");
+  const [callType, setCallType] = useState<CallInfo["type"]>(type);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [muted, setMuted] = useState(false);
-  const [speaker, setSpeaker] = useState(type === "video");
-  const [cameraOn, setCameraOn] = useState(type === "video");
+  const [speaker, setSpeaker] = useState(callType === "video");
+  const [cameraOn, setCameraOn] = useState(callType === "video");
   const [frontCamera, setFrontCamera] = useState(true);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -60,19 +62,29 @@ export function useCallSession({
     if (phase === "incoming") connect();
   }, [phase, connect]);
 
+  /** Flip between a voice-only call and a video call, mid-call. */
+  const toggleType = useCallback(() => {
+    setCallType((t) => {
+      const next: CallInfo["type"] = t === "video" ? "voice" : "video";
+      if (next === "video") setCameraOn(true);
+      return next;
+    });
+  }, []);
+
   const end = useCallback((): CallInfo => {
     const durationMs = connectedAt ? Date.now() - connectedAt : 0;
     setPhase("ended");
-    return { type, durationMs, missed: durationMs === 0 && direction === "incoming" };
-  }, [connectedAt, direction, type]);
+    return { type: callType, durationMs, missed: durationMs === 0 && direction === "incoming" };
+  }, [callType, connectedAt, direction]);
 
   const decline = useCallback((): CallInfo => {
     setPhase("ended");
-    return { type, durationMs: 0, missed: true };
-  }, [type]);
+    return { type: callType, durationMs: 0, missed: true };
+  }, [callType]);
 
   return {
     phase,
+    type: callType,
     elapsed,
     muted,
     speaker,
@@ -82,6 +94,7 @@ export function useCallSession({
     setSpeaker,
     setCameraOn,
     setFrontCamera,
+    toggleType,
     accept,
     decline,
     end,

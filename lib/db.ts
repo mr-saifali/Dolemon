@@ -129,6 +129,12 @@ export async function openDirectConversation(handle: string): Promise<string> {
   return data as string;
 }
 
+/** Deletes the whole 1:1 — conversation, messages, memberships (both sides). */
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const { error } = await client().rpc("delete_conversation", { target: conversationId });
+  if (error) throw new Error(error.message);
+}
+
 export type DbPerson = {
   id: string;
   username: string;

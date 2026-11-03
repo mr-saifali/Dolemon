@@ -17,6 +17,8 @@ export type Prefs = {
   haptics: boolean;
   /** how long Dolemon stays open after you leave it, once app-lock is set */
   autoLock: "instant" | "1m" | "5m" | "30m";
+  /** the look of the app — "feminine" is the original soft rose/violet, "masculine" is onyx + gold */
+  appearance: "feminine" | "masculine";
   /** strip animation everywhere, for people who feel motion */
   reduceMotion: boolean;
   /** tighter bubble spacing — more words per screen */
@@ -34,6 +36,7 @@ const DEFAULT: Prefs = {
   typingIndicator: true,
   haptics: true,
   autoLock: "1m",
+  appearance: "feminine",
   reduceMotion: false,
   compactChat: false,
   sounds: true,

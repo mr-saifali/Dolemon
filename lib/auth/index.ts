@@ -72,6 +72,9 @@ export const auth: AuthProvider = {
   setAppLock: (password) => active().setAppLock(password),
   verifyAppLock: (password) => active().verifyAppLock(password),
   hasAppLock: () => active().hasAppLock(),
+  verifyPassword: (password) => active().verifyPassword(password),
+  setPrivate: (isPrivate) => active().setPrivate(isPrivate),
+  deleteAccount: () => active().deleteAccount(),
 };
 
 export type { Account } from "./types";

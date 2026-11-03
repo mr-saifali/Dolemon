@@ -118,8 +118,8 @@ function HomeScreen() {
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-6 safe-t">
         <header className="flex items-center justify-between gap-3 pb-5 pt-9">
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#FF5C7A]" aria-hidden />
+            <p className="wordmark flex items-center gap-1.5 text-[10px] font-medium uppercase text-zinc-500">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} aria-hidden />
               Dolemon
             </p>
             <motion.h1
@@ -129,7 +129,7 @@ function HomeScreen() {
               className="mt-1.5 min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
             >
               {greetingFor()},{" "}
-              <span className="text-vibrant font-normal">@{account?.username ?? "you"}</span>
+              <span className="text-brand font-normal">@{account?.username ?? "you"}</span>
             </motion.h1>
           </div>
 

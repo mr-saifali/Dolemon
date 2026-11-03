@@ -35,11 +35,10 @@ export function Switch({
         onClick={() => onChange(!checked)}
         className={cn(
           "relative mt-0.5 h-[28px] w-[48px] shrink-0 rounded-full transition-colors duration-200",
-          checked
-            ? "bg-[linear-gradient(135deg,#FF5C7A,#FFA07A)] shadow-[0_4px_14px_-5px_rgba(255,92,122,0.95)]"
-            : "bg-[#2A2A30]",
+          !checked && "bg-[#2A2A30]",
           disabled && "opacity-50"
         )}
+        style={checked ? { background: "var(--brand-grad)", boxShadow: "0 4px 14px -5px var(--glow-send)" } : undefined}
       >
         <motion.span
           layout

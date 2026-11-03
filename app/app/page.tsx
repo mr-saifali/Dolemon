@@ -196,9 +196,11 @@ function HomeScreen() {
 }
 
 function previewOf(c: DbConversation) {
-  if (!c.lastBody) return "Say something. No one else is reading.";
+  if (c.lastKind === "image") return "📷 Photo";
+  if (c.lastKind === "audio") return "🎙️ Voice note";
+  if (c.lastKind === "file") return c.lastBody ? `📎 ${c.lastBody}` : "📎 File";
   if (c.lastKind === "sticker") return "Sent a reaction";
-  if (c.lastKind === "call") return c.lastBody;
+  if (!c.lastBody) return "Say something. No one else is reading.";
   return c.lastBody;
 }
 

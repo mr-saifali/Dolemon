@@ -4,12 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toggleReaction, type MessageReaction, type ReactionBy, type ReactionType } from "./reactions";
 
 export type MessageAuthor = "me" | "them" | "system";
-export type MessageKind = "text" | "presence" | "image" | "audio" | "call" | "sticker";
+export type MessageKind = "text" | "presence" | "image" | "audio" | "file" | "call" | "sticker";
 export type MessageStatus = "sending" | "sent" | "delivered" | "read" | "failed";
 
 export type CallInfo = { type: "voice" | "video"; durationMs: number; missed?: boolean };
 
-export type MediaInfo = { url: string; width?: number; height?: number; durationMs?: number };
+export type MediaInfo = {
+  url: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  name?: string;
+  sizeBytes?: number;
+  /** file extension without the dot — used when uploading to storage */
+  ext?: string;
+};
 
 export type QuotedMessage = { id: string; author: MessageAuthor; text: string };
 
@@ -409,6 +418,8 @@ export function previewFor(message: ChatMessage) {
       return "📷 Photo";
     case "audio":
       return "🎙️ Voice note";
+    case "file":
+      return message.media?.name ? `📎 ${message.media.name}` : "📎 File";
     case "call":
       return message.text;
     case "presence":
@@ -418,4 +429,10 @@ export function previewFor(message: ChatMessage) {
     default:
       return message.text;
   }
+}
+
+export function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

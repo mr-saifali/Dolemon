@@ -2,13 +2,13 @@
 
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Check, CheckCheck, Clock, CornerUpLeft, Pause, Play, RotateCw } from "lucide-react";
+import { AlertCircle, Check, CheckCheck, Clock, CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { ReactionChip } from "./ReactionChip";
 import type { BubbleAnchor } from "./ReactionPicker";
 import { buzz } from "@/lib/prefs";
 import { reactionChips, reactionLabel, reactionSentence } from "@/lib/reactions";
-import { clockTime, formatCallDuration, type ChatMessage } from "@/lib/thread";
+import { clockTime, formatBytes, formatCallDuration, type ChatMessage } from "@/lib/thread";
 import { cn } from "@/lib/utils";
 
 const SPRING = { type: "spring", stiffness: 400, damping: 30 } as const;
@@ -127,7 +127,6 @@ export function MessageBubble({
     );
   }
 
-  const isRich = message.kind === "image" || message.kind === "audio";
   const metaColor = mine ? "text-white/50" : "text-zinc-500";
 
   return (
@@ -199,11 +198,15 @@ export function MessageBubble({
               openPicker();
             }}
             className={cn(
-              "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-rose/50",
-              isRich ? "p-1.5" : "px-4 py-2.5",
+              "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-violet/50",
+              message.kind === "image" || message.kind === "audio"
+                ? "p-1.5"
+                : message.kind === "file"
+                  ? "px-4 py-3"
+                  : "px-4 py-2.5",
               "rounded-[20px]",
               mine
-                ? "rounded-br-[4px] bg-[linear-gradient(165deg,#FF5C7A_0%,#FF6B8B_100%)] text-white shadow-[0_4px_16px_-8px_rgba(255,92,122,0.4)]"
+                ? "rounded-br-[4px] bg-[linear-gradient(165deg,#8F7BFF_0%,#6D5AE8_100%)] text-white shadow-[0_4px_16px_-8px_rgba(125,107,255,0.45)]"
                 : "rounded-bl-[4px] bg-[#1C1C1E] text-zinc-100"
             )}
           >
@@ -242,6 +245,37 @@ export function MessageBubble({
                     className="max-h-[300px] w-full max-w-[248px] object-cover"
                   />
                 </button>
+                {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
+              </div>
+            ) : message.kind === "file" && message.media ? (
+              <div>
+                <a
+                  href={message.media.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  download={message.media.name}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-3 py-1"
+                  aria-label={`Download ${message.media.name || "file"}`}
+                >
+                  <span
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                      mine ? "bg-black/15" : "bg-rose/15"
+                    )}
+                  >
+                    <FileText className={cn("h-[18px] w-[18px]", mine ? "text-white" : "text-rose")} />
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-[14px]">{message.media.name || "File"}</span>
+                    {message.media.sizeBytes ? (
+                      <span className={cn("block text-[11px]", mine ? "text-white/60" : "text-zinc-500")}>
+                        {formatBytes(message.media.sizeBytes)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <Download className={cn("h-[18px] w-[18px] shrink-0", mine ? "text-white/70" : "text-zinc-500")} />
+                </a>
                 {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
               </div>
             ) : message.kind === "audio" && message.media ? (

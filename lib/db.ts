@@ -31,6 +31,11 @@ export type DbMessage = {
   at: number;
   /** set once the sender edits the text — rendered as a quiet "edited" */
   editedAt?: number | null;
+  /** chat media (photo / voice note / file) — public URL in the chat-media bucket */
+  mediaUrl?: string | null;
+  mediaName?: string | null;
+  mediaSize?: number | null;
+  mediaDurationMs?: number | null;
   reactions: MessageReaction[];
 };
 
@@ -56,6 +61,10 @@ type MessageRow = {
   body: string | null;
   created_at: string;
   edited_at?: string | null;
+  media_url?: string | null;
+  media_name?: string | null;
+  media_size?: number | null;
+  media_duration?: number | null;
 };
 
 type ReactionRow = { message_id: string; user_id: string; reaction_type: string };
@@ -69,6 +78,10 @@ function mapRow(row: MessageRow): DbMessage {
     body: row.body ?? "",
     at: new Date(row.created_at).getTime(),
     editedAt: row.edited_at ? new Date(row.edited_at).getTime() : null,
+    mediaUrl: row.media_url ?? null,
+    mediaName: row.media_name ?? null,
+    mediaSize: row.media_size ?? null,
+    mediaDurationMs: row.media_duration ?? null,
     reactions: [],
   };
 }
@@ -178,7 +191,7 @@ export async function loadThread(
 
   const { data: rows, error } = await sb
     .from("messages")
-    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at")
+    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at, media_url, media_name, media_size, media_duration")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true })
     .limit(400);
@@ -210,12 +223,46 @@ export async function loadReactions(
   return map;
 }
 
-export type MessageKind = "text" | "sticker" | "call" | "image" | "audio" | "presence";
+export type MessageKind = "text" | "sticker" | "call" | "image" | "audio" | "file" | "presence";
+
+export type MediaPayload = {
+  url: string;
+  name?: string;
+  sizeBytes?: number;
+  durationMs?: number;
+};
+
+const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Uploads chat media (photo / voice note / file) to the public `chat-media`
+ * bucket under `<conversation_id>/…` and returns the public URL. The RLS
+ * policy only lets members of that 1:1 write into its folder.
+ */
+export async function uploadChatMedia(conversationId: string, dataUrl: string, ext = "bin"): Promise<string> {
+  const sb = client();
+  const { data: userData } = await sb.auth.getUser();
+  if (!userData.user?.id) throw new Error("You're signed out.");
+
+  const blob = await (await fetch(dataUrl)).blob();
+  if (blob.size > MAX_MEDIA_BYTES) throw new Error("That file is too big (25 MB max).");
+
+  const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await sb.storage.from("chat-media").upload(path, blob, {
+    contentType: blob.type || "application/octet-stream",
+    cacheControl: "31536000",
+  });
+  if (error) throw new Error(error.message);
+
+  const { data } = sb.storage.from("chat-media").getPublicUrl(path);
+  return data.publicUrl;
+}
 
 export async function postMessage(
   conversationId: string,
   body: string,
-  kind: MessageKind = "text"
+  kind: MessageKind = "text",
+  media?: MediaPayload
 ): Promise<DbMessage> {
   const sb = client();
   const { data: userData } = await sb.auth.getUser();
@@ -224,8 +271,17 @@ export async function postMessage(
 
   const { data, error } = await sb
     .from("messages")
-    .insert({ conversation_id: conversationId, sender_id: sender, body, kind })
-    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at")
+    .insert({
+      conversation_id: conversationId,
+      sender_id: sender,
+      body,
+      kind,
+      media_url: media?.url ?? null,
+      media_name: media?.name ?? null,
+      media_size: media?.sizeBytes ?? null,
+      media_duration: media?.durationMs ?? null,
+    })
+    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at, media_url, media_name, media_size, media_duration")
     .single<MessageRow>();
 
   if (error) throw new Error(error.message);

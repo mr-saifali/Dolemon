@@ -201,12 +201,31 @@ function ThreadScreen() {
     }
   }, [pulses, prefs.haptics]);
 
-  // one call site, two backends — remote ignores attachments it can't carry yet
+  // one call site, two backends — remote uploads the media before inserting the row
   const sendNow = (text: string, options?: Parameters<typeof local.send>[1]) => {
     if (REMOTE) {
+      const kind =
+        options?.kind === "sticker"
+          ? "sticker"
+          : options?.kind === "image"
+            ? "image"
+            : options?.kind === "audio"
+              ? "audio"
+              : options?.kind === "file"
+                ? "file"
+                : "text";
       remote.send(text, {
-        kind: options?.kind === "sticker" ? "sticker" : "text",
+        kind,
         sticker: options?.sticker,
+        media: options?.media
+          ? {
+              dataUrl: options.media.url,
+              name: options.media.name,
+              sizeBytes: options.media.sizeBytes,
+              durationMs: options.media.durationMs,
+              ext: options.media.ext,
+            }
+          : undefined,
       });
       return;
     }
@@ -457,13 +476,22 @@ function ThreadScreen() {
         open={attachOpen}
         onClose={() => setAttachOpen(false)}
         onPhoto={(image) =>
-          sendNow(
-            `Photo · ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false })}`,
-            { kind: "image", media: { url: image.dataUrl, width: image.width, height: image.height } }
-          )
+          sendNow("Photo", {
+            kind: "image",
+            media: { url: image.dataUrl, width: image.width, height: image.height, ext: "jpg" },
+          })
         }
         onVoice={(audio) =>
-          sendNow("Voice note", { kind: "audio", media: { url: audio.dataUrl, durationMs: audio.durationMs } })
+          sendNow("Voice note", {
+            kind: "audio",
+            media: { url: audio.dataUrl, durationMs: audio.durationMs, ext: audio.ext },
+          })
+        }
+        onFile={(file) =>
+          sendNow(file.name, {
+            kind: "file",
+            media: { url: file.dataUrl, name: file.name, sizeBytes: file.sizeBytes, ext: file.ext },
+          })
         }
       />
 

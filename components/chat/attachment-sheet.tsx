@@ -9,25 +9,34 @@ import { cn } from "@/lib/utils";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const MAX_RECORDING_MS = 60_000;
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+type PhotoPayload = { dataUrl: string; width: number; height: number };
+type VoicePayload = { dataUrl: string; durationMs: number; ext: string };
+type FilePayload = { dataUrl: string; name: string; sizeBytes: number; ext: string };
 
 export function AttachmentSheet({
   open,
   onClose,
   onPhoto,
   onVoice,
+  onFile,
 }: {
   open: boolean;
   onClose: () => void;
-  onPhoto: (image: { dataUrl: string; width: number; height: number }) => void;
-  onVoice: (audio: { dataUrl: string; durationMs: number }) => void;
+  onPhoto: (image: PhotoPayload) => void;
+  onVoice: (audio: VoicePayload) => void;
+  onFile?: (file: FilePayload) => void;
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const docInput = useRef<HTMLInputElement | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const startedAt = useRef(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [busy, setBusy] = useState(false);
+  const [readingDoc, setReadingDoc] = useState(false);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
@@ -54,6 +63,27 @@ export function AttachmentSheet({
       toast.error("Couldn't read that photo");
     } finally {
       setBusy(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
+
+  const handleDoc = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error("Files up to 20 MB");
+      return;
+    }
+    setReadingDoc(true);
+    try {
+      const dataUrl = await blobToDataUrl(file);
+      const ext = (file.name.split(".").pop() || "file").toLowerCase().slice(0, 8);
+      onFile?.({ dataUrl, name: file.name, sizeBytes: file.size, ext });
+      onClose();
+    } catch {
+      toast.error("Couldn't read that file");
+    } finally {
+      setReadingDoc(false);
+      if (docInput.current) docInput.current.value = "";
     }
   };
 
@@ -66,6 +96,7 @@ export function AttachmentSheet({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = pickAudioMime() || undefined;
       const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const ext = (rec.mimeType.split("/")[1] || "webm").split(";")[0];
       chunks.current = [];
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.current.push(e.data);
@@ -79,7 +110,7 @@ export function AttachmentSheet({
         }
         const blob = new Blob(chunks.current, { type: rec.mimeType || "audio/webm" });
         const dataUrl = await blobToDataUrl(blob);
-        onVoice({ dataUrl, durationMs });
+        onVoice({ dataUrl, durationMs, ext });
         onClose();
       };
       recorder.current = rec;
@@ -220,9 +251,9 @@ export function AttachmentSheet({
                 <Tile
                   icon={<FileText className="h-5 w-5" />}
                   label="File"
-                  hint="Coming soon"
-                  disabled
-                  onClick={() => toast("Files land with the storage backend")}
+                  hint="Up to 20 MB"
+                  onClick={() => docInput.current?.click()}
+                  disabled={readingDoc || !onFile}
                 />
               </div>
             )}
@@ -232,11 +263,17 @@ export function AttachmentSheet({
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0])}
+              onChange={(e) => void handleFile(e.target.files?.[0])}
+            />
+            <input
+              ref={docInput}
+              type="file"
+              className="hidden"
+              onChange={(e) => void handleDoc(e.target.files?.[0])}
             />
 
             <p className="mt-4 text-center text-[11px] text-text-muted/60">
-              Photos and voice notes stay on this device until storage is connected.
+              Voice notes up to 60s · files up to 20 MB
             </p>
           </motion.div>
         </div>

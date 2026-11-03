@@ -38,7 +38,7 @@ import { passwordStrength } from "@/lib/password";
 import { useSession } from "@/lib/session";
 import { setPref, usePrefs } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
-import { APP_VERSION } from "@/lib/version";
+import { APP_RELEASE_NAME, APP_VERSION } from "@/lib/version";
 
 const TILES: Record<string, string> = {
   rose: "linear-gradient(150deg,#FF5C7A,#FF8FA3)",
@@ -322,7 +322,9 @@ function SettingsContent() {
                 <div>
                 <p className="text-[14.5px] text-zinc-200">App lock</p>
                 <p className="mt-0.5 text-[12.5px] text-zinc-500">
-                  {account?.hasAppLock ? "On — asked every time Dolemon opens." : "A second lock for your phone."}
+                  {account?.hasAppLock
+                    ? "On — asked when Dolemon opens, and when you've been away."
+                    : "A second lock for your phone."}
                 </p>
                 </div>
               </div>
@@ -583,10 +585,16 @@ function SettingsContent() {
           </div>
         </Section>
 
-        <p className="mt-8 flex items-center gap-1.5 px-1 text-[11.5px] text-zinc-600">
-          <Lock className="h-3 w-3" />
-          Two people per room. No groups, no discovery.
-        </p>
+        <div className="mt-9 flex flex-col items-center gap-1.5">
+          <p className="flex items-center gap-1.5 text-[13px] font-medium tracking-[-0.01em] text-zinc-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#FF5C7A]" aria-hidden />
+            Dolemon
+          </p>
+          <p className="flex items-center gap-1.5 text-[11px] text-zinc-600">
+            <Lock className="h-3 w-3" />
+            Two people per room. No groups, no discovery.
+          </p>
+        </div>
 
         <button
           type="button"
@@ -613,7 +621,9 @@ function SettingsContent() {
           </span>
         </Link>
 
-        <p className="mt-4 text-center text-[10.5px] text-zinc-700">Dolemon · v{APP_VERSION}</p>
+        <p className="mt-3 text-center text-[10.5px] text-zinc-600">
+          v{APP_VERSION} · {APP_RELEASE_NAME}
+        </p>
       </div>
     </main>
   );

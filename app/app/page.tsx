@@ -15,6 +15,8 @@ import { demoConversations, greetingFor } from "@/lib/chat";
 import { useChatMeta } from "@/lib/conversation-meta";
 import { listConversations, openDirectConversation, type DbConversation } from "@/lib/db";
 import { useSession } from "@/lib/session";
+import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
+import type { ChatMessage } from "@/lib/thread";
 
 const REMOTE = authMode === "supabase";
 
@@ -54,16 +56,25 @@ function HomeScreen() {
 
     return demoConversations()
       .filter((c) => !metaMap[c.id]?.deleted)
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-        handle: c.username,
-        avatarId: c.avatarId,
-        preview: c.lastMessage,
-        at: c.lastAt,
-        unread: metaMap[c.id]?.unread ?? c.unread,
-        typing: metaMap[c.id]?.muted ? false : c.typing,
-      }))
+      .map((c) => {
+        const meta = metaMap[c.id];
+        // The list always shows the *actual* last line of the thread — what you
+        // sent, what they sent — not a frozen seed.
+        const last = lastMessageOf(c.id);
+        const unread = meta?.lastReadAt
+          ? unreadSince(c.id, meta.lastReadAt)
+          : (meta?.unread ?? c.unread);
+        return {
+          id: c.id,
+          name: c.name,
+          handle: c.username,
+          avatarId: c.avatarId,
+          preview: previewForConversation(c, last, c.id),
+          at: last?.at ?? c.lastAt,
+          unread,
+          typing: meta?.muted ? false : c.typing,
+        };
+      })
       .sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
   }, [remoteChats, metaMap]);
 
@@ -106,15 +117,21 @@ function HomeScreen() {
 
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-6 safe-t">
         <header className="flex items-center justify-between gap-3 pb-5 pt-9">
-          <motion.h1
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
-          >
-            {greetingFor()},{" "}
-            <span className="text-vibrant font-normal">@{account?.username ?? "you"}</span>
-          </motion.h1>
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#FF5C7A]" aria-hidden />
+              Dolemon
+            </p>
+            <motion.h1
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-1.5 min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
+            >
+              {greetingFor()},{" "}
+              <span className="text-vibrant font-normal">@{account?.username ?? "you"}</span>
+            </motion.h1>
+          </div>
 
           <div className="flex shrink-0 items-center gap-0.5">
             <button
@@ -183,6 +200,20 @@ function previewOf(c: DbConversation) {
   if (c.lastKind === "sticker") return "Sent a reaction";
   if (c.lastKind === "call") return c.lastBody;
   return c.lastBody;
+}
+
+/** Demo rows read the real thread, so the preview is honest about who spoke last. */
+function previewForConversation(
+  c: { lastMessage: string },
+  last: ChatMessage | null,
+  conversationId: string
+): string {
+  if (!last) {
+    // A thread that was opened then cleared reads as empty, not as the old seed.
+    return threadExists(conversationId) ? "Say something. No one else is reading." : c.lastMessage;
+  }
+  const base = previewFor(last);
+  return last.author === "me" && last.kind === "text" ? `You: ${base}` : base;
 }
 
 export default function HomePage() {

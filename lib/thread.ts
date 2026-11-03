@@ -381,6 +381,28 @@ export function isGrouped(prev: ChatMessage | undefined, current: ChatMessage) {
   return current.at - prev.at < 3 * MINUTE;
 }
 
+/** True once this conversation has been touched (seeded, cleared, or messaged). */
+export function threadExists(conversationId: string): boolean {
+  return read(conversationId) !== null;
+}
+
+/** The newest real message in the stored thread (presence moments don't count). */
+export function lastMessageOf(conversationId: string): ChatMessage | null {
+  const stored = read(conversationId);
+  if (!stored) return null;
+  for (let i = stored.length - 1; i >= 0; i--) {
+    if (stored[i].kind !== "presence") return stored[i];
+  }
+  return null;
+}
+
+/** How many of their messages landed after the given read cursor. */
+export function unreadSince(conversationId: string, lastReadAt: number): number {
+  const stored = read(conversationId);
+  if (!stored) return 0;
+  return stored.filter((m) => m.author === "them" && m.at > lastReadAt).length;
+}
+
 export function previewFor(message: ChatMessage) {
   switch (message.kind) {
     case "image":

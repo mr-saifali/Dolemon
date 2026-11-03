@@ -6,8 +6,12 @@ import { ReactionIcon } from "@/components/reactions";
 import type { ReactionType } from "@/lib/reactions";
 import { cn } from "@/lib/utils";
 
-const SPRING = { type: "spring", stiffness: 400, damping: 30 } as const;
+const SPRING = { type: "spring", stiffness: 420, damping: 30 } as const;
 
+/**
+ * A small chip that hugs the corner of the bubble it belongs to — never floating
+ * in the void. `mine` gets a quiet rose rim so it's obvious which face is yours.
+ */
 export function ReactionChip({
   type,
   count,
@@ -42,12 +46,11 @@ export function ReactionChip({
   return (
     <motion.button
       type="button"
-      layout
       initial={{ scale: 0.6, y: 4, opacity: 0 }}
       animate={{ scale: 1, y: 0, opacity: 1 }}
       exit={{ scale: 0.6, opacity: 0 }}
       transition={SPRING}
-      whileTap={{ scale: 0.92 }}
+      whileTap={{ scale: 0.9 }}
       onPointerDown={start}
       onPointerUp={stop}
       onPointerLeave={stop}
@@ -59,17 +62,15 @@ export function ReactionChip({
         }
         onTap();
       }}
-      aria-label={`${label}${count > 1 ? `, ${count}` : ""}${mine ? ", tumhara reaction" : ""}`}
+      aria-label={`${label}${count > 1 ? `, ${count}` : ""}${mine ? ", your reaction" : ""}`}
       aria-pressed={mine}
       className={cn(
-        "flex h-6 items-center gap-1 rounded-full border px-[8px] transition-colors",
-        mine
-          ? "border-[rgba(255,92,122,0.4)] bg-[rgba(255,92,122,0.15)] text-text"
-          : "border-white/[0.08] bg-[#232329] text-text"
+        "flex items-center gap-1 rounded-full border bg-[#1C1C1E] px-1.5 py-0.5 text-[12px] shadow-sm",
+        mine ? "border-[#FF5C7A]/40" : "border-white/10"
       )}
     >
-      <ReactionIcon type={type} size={16} />
-      {count > 1 && <span className="text-[12px] leading-none tabular-nums">{count}</span>}
+      <ReactionIcon type={type} size={15} />
+      {count > 1 && <span className="text-[11px] leading-none tabular-nums text-zinc-400">{count}</span>}
     </motion.button>
   );
 }

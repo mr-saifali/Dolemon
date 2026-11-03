@@ -36,14 +36,14 @@ export function ChatHeader({
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/[0.05] bg-[#09090B]/95 shadow-[0_1px_0_rgba(255,92,122,0.06)]">
+    <header className="sticky top-0 z-30 border-b border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
       <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-1 px-2">
         <Link
           href="/app"
           aria-label="Back to chats"
-          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-5 w-5" strokeWidth={1.8} />
         </Link>
 
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -59,35 +59,36 @@ export function ChatHeader({
           </div>
         </div>
 
-        {onCall && (
-          <div className="ml-0.5 flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
+          {onCall && (
             <button
               type="button"
               onClick={() => onCall("voice")}
               aria-label="Voice call"
-              className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#FF5C7A]/22 bg-[#FF5C7A]/[0.12] text-[#FF8FA3]"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
             >
-              <Phone className="h-[17px] w-[17px]" strokeWidth={1.9} />
+              <Phone className="h-5 w-5" strokeWidth={1.8} />
             </button>
+          )}
+          {onCall && (
             <button
               type="button"
               onClick={() => onCall("video")}
               aria-label="Video call"
-              className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#A78BFA]/25 bg-[#A78BFA]/[0.12] text-[#C4B5FD]"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
             >
-              <Video className="h-[17px] w-[17px]" strokeWidth={1.9} />
+              <Video className="h-5 w-5" strokeWidth={1.8} />
             </button>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onMenu}
-          aria-label="Chat options"
-          className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-        >
-          <MoreHorizontal className="h-5 w-5" />
-        </button>
+          )}
+          <button
+            type="button"
+            onClick={onMenu}
+            aria-label="Chat options"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+          >
+            <MoreHorizontal className="h-5 w-5" strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
     </header>
   );

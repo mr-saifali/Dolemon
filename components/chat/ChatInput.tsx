@@ -43,7 +43,6 @@ export function ChatInput({
 }) {
   const [value, setValue] = useState("");
   const [trayOpen, setTrayOpen] = useState(false);
-  const [focused, setFocused] = useState(false);
   const area = useRef<HTMLTextAreaElement | null>(null);
   const hasText = value.trim().length > 0;
 
@@ -60,12 +59,16 @@ export function ChatInput({
     onSend(text);
     setValue("");
     setTrayOpen(false);
-    requestAnimationFrame(() => area.current?.focus());
+    // Keep the keyboard exactly where it is. Re-focusing an already-focused
+    // field on iOS/Android makes the keyboard dip and come back — the glitch.
+    if (document.activeElement !== area.current) {
+      requestAnimationFrame(() => area.current?.focus());
+    }
   };
 
   return (
-    <div className="relative z-20">
-      <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-1.5">
+    <div className="relative z-20 border-t border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-2">
         {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
 
         <AnimatePresence>
@@ -74,7 +77,7 @@ export function ChatInput({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="hairline mb-2 flex items-center gap-2 rounded-2xl bg-[#18181B] px-3 py-2"
+              className="mb-2 flex items-center gap-2 rounded-2xl bg-[#1C1C1E] px-3 py-2"
             >
               <span className="h-6 w-0.5 rounded-full bg-rose" />
               <div className="min-w-0 flex-1">
@@ -102,7 +105,7 @@ export function ChatInput({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               transition={SPRING}
-              className="mb-2 rounded-[22px] border border-white/[0.06] bg-[#18181B] p-2"
+              className="mb-2 rounded-[22px] border border-white/[0.06] bg-[#1C1C1E] p-2"
             >
               <p className="px-1.5 pb-1.5 text-[10.5px] uppercase tracking-[0.14em] text-zinc-600">
                 Bina shabdon ke
@@ -140,17 +143,12 @@ export function ChatInput({
             onClick={onAttach}
             aria-label="Add attachment"
             whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
           >
-            <Plus className="h-5 w-5" />
+            <Plus className="h-6 w-6" strokeWidth={1.8} />
           </motion.button>
 
-          <div
-            className={cn(
-              "flex flex-1 items-end rounded-full border border-white/[0.06] bg-[#1C1C1E] px-4 py-3 transition-colors",
-              focused && "shadow-[0_0_0_1px_rgba(255,92,122,0.28)]"
-            )}
-          >
+          <div className="flex flex-1 items-end rounded-full bg-[#1C1C1E] px-4 py-3">
             <textarea
               ref={area}
               rows={1}
@@ -161,15 +159,13 @@ export function ChatInput({
                 setValue(e.target.value);
                 if (e.target.value.trim()) onTyping?.();
               }}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   submit();
                 }
               }}
-              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-zinc-200 outline-none placeholder:text-zinc-600"
+              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-zinc-200 outline-none placeholder:text-zinc-500"
             />
           </div>
 
@@ -180,11 +176,11 @@ export function ChatInput({
             aria-expanded={trayOpen}
             whileTap={{ scale: 0.9 }}
             className={cn(
-              "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
-              trayOpen ? "text-rose" : "text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:text-white",
+              trayOpen ? "text-rose" : "text-zinc-400"
             )}
           >
-            <Smile className="h-5 w-5" />
+            <Smile className="h-6 w-6" strokeWidth={1.8} />
           </motion.button>
 
           <div className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center">
@@ -200,7 +196,10 @@ export function ChatInput({
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={SPRING}
                   whileTap={{ scale: 0.9 }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FF5C7A,#FF7E92_55%,#FFA07A)] text-white shadow-[0_8px_22px_-8px_rgba(255,92,122,1)]"
+                  // The tap must not steal focus from the field — that's what
+                  // made the keyboard dip away and come back on send.
+                  onPointerDown={(e) => e.preventDefault()}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(165deg,#FF5C7A_0%,#FF6B8B_100%)] text-white shadow-[0_6px_18px_-8px_rgba(255,92,122,0.7)]"
                 >
                   <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
                 </motion.button>
@@ -215,9 +214,9 @@ export function ChatInput({
                   exit={{ scale: 0.85, opacity: 0 }}
                   transition={SPRING}
                   whileTap={{ scale: 0.9 }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
                 >
-                  <Mic className="h-[19px] w-[19px]" />
+                  <Mic className="h-6 w-6" strokeWidth={1.8} />
                 </motion.button>
               )}
             </AnimatePresence>

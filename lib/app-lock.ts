@@ -2,7 +2,11 @@ const KEY = "dolemon:app-unlocked";
 
 /**
  * App-lock is a soft UI gate for a shared/lost phone — it is not encryption.
- * The unlock is stored with a timestamp so "lock after 1 minute away" can be honest.
+ *
+ * The unlock lives in sessionStorage, so it survives a refresh of the same tab
+ * but is gone when the app is opened fresh — that's exactly when the wall
+ * should show. Re-locking while the app is open is driven by the away
+ * (visibility) timer in AppGuard, not by the age of this record.
  */
 type UnlockRecord = { accountId: string; at: number };
 
@@ -29,14 +33,6 @@ export function markUnlocked(accountId: string) {
 
 export function isUnlocked(accountId: string) {
   return readRecord()?.accountId === accountId;
-}
-
-/** Unlocked and still inside the auto-lock window. */
-export function isUnlockedWithin(accountId: string, timeoutMs: number) {
-  const record = readRecord();
-  if (!record || record.accountId !== accountId) return false;
-  if (timeoutMs === Infinity) return true;
-  return Date.now() - record.at < timeoutMs;
 }
 
 /** Re-arm the wall without signing out. */

@@ -55,7 +55,6 @@ export function MessageBubble({
 
   const [burst, setBurst] = useState(0);
   const [swipe, setSwipe] = useState(0);
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const [tooltip, setTooltip] = useState<string | null>(null);
 
   const chips = reactionChips(message.reactions);
@@ -105,7 +104,7 @@ export function MessageBubble({
     lastTap.current = now;
   };
 
-  // A sticker is a message with no words at all.
+  // A sticker is a message with no words at all — the time sits beside the face, never under it.
   if (message.kind === "sticker" && message.sticker) {
     const enter = animateIn === false ? false : { opacity: 0, y: 10, x: mine ? 10 : -10, scale: 0.9 };
 
@@ -114,15 +113,22 @@ export function MessageBubble({
         initial={enter}
         animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
         transition={SPRING}
-        className={cn("flex w-full", mine ? "justify-end" : "justify-start", grouped ? "mt-1" : "mt-2.5")}
+        className={cn(
+          "flex w-full",
+          mine ? "justify-end" : "justify-start",
+          grouped ? (compact ? "mt-[2px]" : "mt-1") : compact ? "mt-2" : "mt-4"
+        )}
       >
-        <div className="flex flex-col gap-1" style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
+        <div className={cn("flex items-end gap-1.5", mine ? "flex-row-reverse" : "flex-row")}>
+          <span className="pb-0.5 text-[10px] leading-none tabular-nums text-zinc-600">{clockTime(message.at)}</span>
           <ReactionIcon type={message.sticker} size={44} />
-          <span className="px-1 text-[10px] tabular-nums text-zinc-600">{clockTime(message.at)}</span>
         </div>
       </motion.div>
     );
   }
+
+  const isRich = message.kind === "image" || message.kind === "audio";
+  const metaColor = mine ? "text-white/50" : "text-zinc-500";
 
   return (
     <motion.div
@@ -132,12 +138,12 @@ export function MessageBubble({
       className={cn(
         "flex w-full select-none",
         mine ? "justify-end" : "justify-start",
-        grouped ? (compact ? "mt-[2px]" : "mt-[6px]") : compact ? "mt-[7px]" : "mt-[14px]"
+        grouped ? (compact ? "mt-[2px]" : "mt-1") : compact ? "mt-2" : "mt-4"
       )}
     >
       <div
-        className={cn("relative flex max-w-[78%] flex-col", mine ? "items-end" : "items-start")}
-        style={{ marginBottom: chips.length > 0 ? 8 : 0 }}
+        className={cn("relative flex max-w-[80%] flex-col", mine ? "items-end" : "items-start")}
+        style={{ marginBottom: chips.length > 0 ? 10 : 0 }}
       >
         {onSwipeReply && (
           <motion.span
@@ -193,12 +199,12 @@ export function MessageBubble({
               openPicker();
             }}
             className={cn(
-              "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-rose/60",
-              message.kind === "image" || message.kind === "audio" ? "p-1.5" : "px-4 py-2.5",
-              "rounded-[24px]",
+              "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-rose/50",
+              isRich ? "p-1.5" : "px-4 py-2.5",
+              "rounded-[20px]",
               mine
-                ? "rounded-br-[4px] bg-[linear-gradient(135deg,#FF5C7A_0%,#FF7E8F_52%,#FF9D7E_100%)] text-white shadow-[0_6px_20px_-8px_rgba(255,92,122,0.65)]"
-                : "rounded-bl-[4px] border border-white/[0.055] bg-[#1C1C1E] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                ? "rounded-br-[4px] bg-[linear-gradient(165deg,#FF5C7A_0%,#FF6B8B_100%)] text-white shadow-[0_4px_16px_-8px_rgba(255,92,122,0.4)]"
+                : "rounded-bl-[4px] bg-[#1C1C1E] text-zinc-100"
             )}
           >
             {message.replyTo && (
@@ -219,40 +225,45 @@ export function MessageBubble({
             )}
 
             {message.kind === "image" && message.media ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenImage?.(message.media!.url);
-                }}
-                className="block overflow-hidden rounded-[15px]"
-                aria-label="Open photo"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={message.media.url}
-                  alt="Shared photo"
-                  className="max-h-[300px] w-full max-w-[248px] object-cover"
-                />
-              </button>
+              <div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenImage?.(message.media!.url);
+                  }}
+                  className="block overflow-hidden rounded-[15px]"
+                  aria-label="Open photo"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={message.media.url}
+                    alt="Shared photo"
+                    className="max-h-[300px] w-full max-w-[248px] object-cover"
+                  />
+                </button>
+                {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
+              </div>
             ) : message.kind === "audio" && message.media ? (
-              <AudioBubble url={message.media.url} durationMs={message.media.durationMs ?? 0} mine={mine} />
+              <div>
+                <AudioBubble url={message.media.url} durationMs={message.media.durationMs ?? 0} mine={mine} />
+                {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
+              </div>
             ) : (
-              <span className="block whitespace-pre-wrap break-words text-[15px] leading-[1.45]">
-                {message.text}
-              </span>
-            )}
-
-            {tail && (
-              <span
-                className={cn(
-                  "float-right ml-2 mt-1 flex select-none items-center gap-1 text-[10px] leading-none opacity-50"
+              // The time floats beside the last line of text, exactly like iMessage:
+              // room on the last line → it sits right there, no room → it drops to its own line.
+              <>
+                <span className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+                  {message.text}
+                </span>
+                {tail && (
+                  <span className={cn("float-right ml-1.5 mt-[3px] flex items-center gap-1 text-[10px] leading-none", metaColor)}>
+                    <span className="tabular-nums">{clockTime(message.at)}</span>
+                    {message.editedAt ? <span className="italic">edited</span> : null}
+                    {mine && showReceipts && <Ticks status={message.status} />}
+                  </span>
                 )}
-              >
-                <span className="tabular-nums">{clockTime(message.at)}</span>
-                {message.editedAt ? <span className="italic">edited</span> : null}
-                {mine && showReceipts && <Ticks status={message.status} />}
-              </span>
+              </>
             )}
 
             <AnimatePresence>
@@ -285,13 +296,9 @@ export function MessageBubble({
           )}
         </motion.div>
 
+        {/* Reaction chips hug the bubble's bottom corner, overlapping it slightly. */}
         {chips.length > 0 && (
-          <div
-            className={cn(
-              "-mt-2 flex flex-wrap items-center gap-1",
-              mine ? "justify-end pr-2" : "justify-start pl-2"
-            )}
-          >
+          <div className={cn("absolute -bottom-2 z-10 flex items-center gap-1", mine ? "right-1" : "left-1")}>
             <AnimatePresence initial={false}>
               {chips.map((chip) => (
                 <ReactionChip
@@ -311,72 +318,65 @@ export function MessageBubble({
                   onLongPress={
                     chip.mine
                       ? () => {
-                          setConfirmRemove(true);
-                          window.setTimeout(() => setConfirmRemove(false), 2600);
+                          setTooltip("Tap to remove your reaction");
+                          window.setTimeout(() => setTooltip(null), 1800);
                         }
                       : undefined
                   }
                 />
               ))}
             </AnimatePresence>
+
+            <AnimatePresence>
+              {tooltip && (
+                <motion.span
+                  role="status"
+                  initial={{ opacity: 0, y: 3 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 3 }}
+                  className={cn(
+                    "absolute bottom-full mb-1.5 whitespace-nowrap rounded-full border border-white/10 bg-[#1C1C1E] px-2.5 py-1 text-[11px] text-zinc-200 shadow-sm",
+                    mine ? "right-0" : "left-0"
+                  )}
+                >
+                  {tooltip}
+                </motion.span>
+              )}
+            </AnimatePresence>
           </div>
         )}
-
-        <AnimatePresence>
-          {confirmRemove && (
-            <motion.button
-              type="button"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              onClick={() => {
-                onRemoveMyReaction(message);
-                setConfirmRemove(false);
-              }}
-              className={cn(
-                "mt-1 rounded-full border border-white/[0.08] bg-[#18181B] px-2.5 py-1 text-[11px] text-zinc-200",
-                mine ? "self-end" : "self-start"
-              )}
-            >
-              Remove reaction
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {tooltip && (
-            <motion.span
-              role="status"
-              initial={{ opacity: 0, y: -3 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -3 }}
-              className={cn(
-                "mt-1 rounded-full border border-white/[0.08] bg-[#18181B] px-2.5 py-1 text-[11px] text-zinc-200",
-                mine ? "self-end" : "self-start"
-              )}
-            >
-              {tooltip}
-            </motion.span>
-          )}
-        </AnimatePresence>
       </div>
     </motion.div>
   );
 }
 
-function Ticks({ status }: { status?: ChatMessage["status"] }) {
-  if (status === "failed") return <AlertCircle className="h-[11px] w-[11px] text-red-300" aria-label="Not sent" />;
-  if (status === "sending" || !status)
-    return <Clock className="h-[11px] w-[11px] opacity-60" aria-label="Sending" />;
-  if (status === "sent") return <Check className="h-[13px] w-[13px]" aria-label="Sent" />;
-  if (status === "delivered")
-    return <CheckCheck className="h-[13px] w-[13px] text-white/75" aria-label="Delivered" />;
+/** The quiet time + ticks line for photos / voice notes, kept inside the bubble. */
+function BubbleMeta({
+  message,
+  mine,
+  showReceipts,
+  metaColor,
+}: {
+  message: ChatMessage;
+  mine: boolean;
+  showReceipts: boolean;
+  metaColor: string;
+}) {
   return (
-    <CheckCheck
-      className="h-[13px] w-[13px] text-white drop-shadow-[0_0_5px_rgba(255,92,122,0.9)]"
-      aria-label="Read"
-    />
+    <span className={cn("mt-1.5 flex items-center justify-end gap-1 text-[10px] leading-none", metaColor)}>
+      <span className="tabular-nums">{clockTime(message.at)}</span>
+      {message.editedAt ? <span className="italic">edited</span> : null}
+      {mine && showReceipts && <Ticks status={message.status} />}
+    </span>
   );
+}
+
+function Ticks({ status }: { status?: ChatMessage["status"] }) {
+  if (status === "failed") return <AlertCircle className="h-3 w-3 text-red-300" aria-label="Not sent" />;
+  if (status === "sending" || !status) return <Clock className="h-3 w-3 text-white/40" aria-label="Sending" />;
+  if (status === "sent") return <Check className="h-3 w-3 text-white/70" aria-label="Sent" />;
+  if (status === "delivered") return <CheckCheck className="h-3 w-3 text-white/70" aria-label="Delivered" />;
+  return <CheckCheck className="h-3 w-3 text-white" aria-label="Read" />;
 }
 
 function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: number; mine: boolean }) {

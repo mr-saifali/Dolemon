@@ -94,6 +94,18 @@ function ThreadScreen() {
     }
   }, [messages, prefs.sounds, prefs.haptics]);
 
+  // Their line lands while you're looking at it → advance the read cursor, so
+  // the home list never shows a badge for a message you already saw.
+  const themCursor = useRef<string | null>(null);
+  useEffect(() => {
+    if (REMOTE) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.author !== "them" || last.kind === "presence") return;
+    if (themCursor.current === last.id) return;
+    themCursor.current = last.id;
+    if (document.visibilityState === "visible") markRead(conversationId);
+  }, [messages, conversationId]);
+
   // Swipe in from the left edge to go back to the inbox (the gesture every phone app has).
   const edge = useRef<{ x: number; y: number; id: number } | null>(null);
   const [edgePull, setEdgePull] = useState(0);

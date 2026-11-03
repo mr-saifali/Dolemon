@@ -187,10 +187,10 @@ export function CallMoment({ message }: { message: ChatMessage }) {
   const label = message.text.replace(" · ", " - ");
 
   return (
-    <div className={missed ? "text-[#FF6B6B]/80" : undefined}>
-      <SystemPill icon={<Icon className="h-3 w-3" strokeWidth={2} />}>
-        {label} · {clockTime(message.at)}
-      </SystemPill>
-    </div>
+    <SystemPill
+      icon={<Icon className={cn("h-3 w-3 shrink-0", missed ? "text-[#FF8FA3]" : "text-zinc-500")} strokeWidth={1.8} />}
+    >
+      {label} · {clockTime(message.at)}
+    </SystemPill>
   );
 }

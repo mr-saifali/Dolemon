@@ -9,13 +9,11 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { auth } from "@/lib/auth";
 import { useSession } from "@/lib/session";
-import { autoLockMs, isUnlockedWithin, markUnlocked } from "@/lib/app-lock";
-import { usePrefs } from "@/lib/prefs";
+import { isUnlocked, markUnlocked } from "@/lib/app-lock";
 
 export default function UnlockPage() {
   const router = useRouter();
   const { account, loading, signOut } = useSession();
-  const { autoLock } = usePrefs();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -26,8 +24,9 @@ export default function UnlockPage() {
       router.replace("/signin");
       return;
     }
-    if (!account.hasAppLock || isUnlockedWithin(account.id, autoLockMs(autoLock))) router.replace("/app");
-  }, [account, loading, router, autoLock]);
+    // already unlocked in this session — straight back in
+    if (!account.hasAppLock || isUnlocked(account.id)) router.replace("/app");
+  }, [account, loading, router]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,6 +7,7 @@ import { SystemPill } from "./SystemPill";
 import { MessageBubble } from "./MessageBubble";
 import { TypingIndicator } from "./TypingIndicator";
 import { PresenceMoment } from "./presence-moment";
+import { DoremonBubble, DoremonThinking, type DoremonMessageView } from "./doremon";
 import type { BubbleAnchor } from "./ReactionPicker";
 import { groupByDay, isGrouped, clockTime, type ChatMessage } from "@/lib/thread";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,8 @@ export function MessageList({
   showReceipts,
   dividerId,
   compact = false,
+  doremon = [],
+  doremonThinking = false,
   onLongPress,
   onDoubleTap,
   onRemoveMyReaction,
@@ -32,6 +35,9 @@ export function MessageList({
   dividerId: string | null;
   /** tighter bubbles — set from Settings → Feel */
   compact?: boolean;
+  /** Doremon's ephemeral lines — rendered after the thread, in his own skin */
+  doremon?: DoremonMessageView[];
+  doremonThinking?: boolean;
   onLongPress: (message: ChatMessage, anchor: BubbleAnchor) => void;
   onDoubleTap: (message: ChatMessage) => void;
   onRemoveMyReaction: (message: ChatMessage) => void;
@@ -78,6 +84,14 @@ export function MessageList({
       setNewCount((n) => n + added);
     }
   }, [messages.length, atBottom, scrollToBottom]);
+
+  // Doremon speaks *into* the chat — a new line of his pulls the view down.
+  useEffect(() => {
+    if (doremon.length > 0 || doremonThinking) {
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doremon.length, doremonThinking]);
 
   return (
     <div className="relative flex-1 overflow-hidden">
@@ -144,6 +158,11 @@ export function MessageList({
           ))}
 
           <TypingIndicator active={typing} />
+
+          {doremon.map((m) => (
+            <DoremonBubble key={m.id} message={m} />
+          ))}
+          {doremonThinking && <DoremonThinking />}
           <div className="h-1" />
         </div>
       </div>

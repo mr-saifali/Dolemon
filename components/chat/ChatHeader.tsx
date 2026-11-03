@@ -4,10 +4,12 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, MoreHorizontal, Phone, Video } from "lucide-react";
 import { ChatAvatar } from "@/components/home/chat-row";
+import { DoremonPresence } from "./doremon";
+import type { DoremonMemory } from "@/lib/doremon/types";
 
 /**
  * 56px, blurred, and quiet: the name and one honest line about where the other person is.
- * Everything else lives behind the single "…" so the room keeps its air.
+ * Doremon keeps an eye on the room from the corner. Everything else lives behind the "…".
  */
 export function ChatHeader({
   name,
@@ -19,6 +21,9 @@ export function ChatHeader({
   hidden,
   onMenu,
   onCall,
+  doremonStatus,
+  doremonMemory,
+  onDoremon,
 }: {
   name: string;
   avatarId: string | null;
@@ -32,6 +37,9 @@ export function ChatHeader({
   onMenu: () => void;
   /** live calls only — hidden in the local demo */
   onCall?: (type: "voice" | "video") => void;
+  doremonStatus?: "idle" | "watching" | "thinking";
+  doremonMemory?: DoremonMemory | null;
+  onDoremon?: () => void;
 }) {
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
@@ -79,6 +87,9 @@ export function ChatHeader({
             >
               <Video className="h-5 w-5" strokeWidth={1.8} />
             </button>
+          )}
+          {onDoremon && (
+            <DoremonPresence status={doremonStatus ?? "idle"} memory={doremonMemory ?? null} onTap={onDoremon} />
           )}
           <button
             type="button"

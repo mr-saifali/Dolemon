@@ -1,3 +1,4 @@
+import type { BrainMessage } from "./local-brain";
 import type { DoremonMemory, DoremonStats, DoremonUserStats } from "./types";
 
 /**
@@ -441,6 +442,65 @@ export function localRoomAsk(
       bits ? "Abhi tak ka record: " + bits + ". " : "Record abhi banta hai."
     } Ek suggestion: aaj ka ek best moment unhe bhejo. Aise chhote messages hi future banate hain. 😌`,
   ]);
+}
+
+/**
+ * The local (offline) version of the daily briefing — the same three labelled
+ * lines (YESTERDAY / NOW / TOMORROW) the Gemini brain is asked for, built from
+ * the same facts. Used when Gemini is unreachable so the day-by-day evolution
+ * never stalls.
+ */
+export function localDailyBriefing(
+  view: StatsView,
+  memory: DoremonMemory | null,
+  partnerName: string,
+  yesterday: BrainMessage[]
+): string {
+  const v = view;
+
+  // ---- YESTERDAY: what happened in the last 24 hours
+  let yesterdayLine: string;
+  if (yesterday.length === 0) {
+    yesterdayLine = `pichhle 24 ghante mein khamoshi thi — ek line bhi nahi aayi.`;
+  } else {
+    let heavy = 0;
+    let warm = 0;
+    for (const m of yesterday) {
+      if (/(angry|gussa|gusse|ladai|lad|fight|hate|ignoring|ignore|chup|shut up|quit|nafrat|kya problem|kyu kyu|whatever|💔|😡|😠|🙄)/i.test(m.text)) heavy += 1;
+      if (/(love|luv|pyaar|pyar|miss|yaad|cute|sweet|apna|apni|good night|gud night|❤️|😘|😊|😍|🥰)/i.test(m.text)) warm += 1;
+    }
+    const tone =
+      heavy > warm
+        ? `thoda gussa bhi nazar aaya (${heavy} heavy lines)`
+        : warm > 0
+          ? `baaton mein pyaar tha (${warm} warm lines)`
+          : "seedhi baatein, koi toofan nahi";
+    yesterdayLine = `${yesterday.length} lines pichhle 24 ghante mein — ${tone}.`;
+  }
+
+  // ---- NOW: the current temperature
+  let nowLine: string;
+  const t = memory?.tension ?? null;
+  if (t != null && t >= 6) {
+    const hot = memory?.conflictTopics[0] ?? null;
+    nowLine = `ab tension ${t}/10 hai${hot ? ` — "${hot}" wala point abhi garam hai` : ""}.`;
+  } else if (t != null && t >= 3) {
+    nowLine = `mood thoda heavy hai (${t}/10). ${
+      memory?.moodMine ? `Tu "${memory.moodMine}", ` : ""
+    }${memory?.moodTheirs ? `${partnerName} "${memory.moodTheirs}".` : "Dono thode udas."}`;
+  } else {
+    nowLine = memory?.summary
+      ? `scene abhi shant hai — ${memory.summary}`
+      : `scene abhi shant hai, dono normal. Koi bada toofan nahi.`;
+  }
+  if (v.silentFor != null && v.silentFor > MS_DAY) {
+    nowLine += ` Lekin ${silenceLabel(v.silentFor)} se koi naya message nahi.`;
+  }
+
+  // ---- TOMORROW: the one honest prediction
+  const tomorrowLine = predictNext(v, memory, partnerName);
+
+  return `YESTERDAY — ${yesterdayLine}\nNOW — ${nowLine}\nTOMORROW — ${tomorrowLine}`;
 }
 
 /* ---------------------------------------------------------------- finalize */

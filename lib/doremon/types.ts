@@ -45,6 +45,10 @@ export type DoremonMemory = {
   endedNote?: string | null;
   /** this user's private Q&A with Doremon in his room (last 40) */
   chat?: RoomTurn[];
+  /** local date "YYYY-MM-DD" of the stored daily briefing — one per day */
+  dailyDay?: string | null;
+  /** Doremon's daily briefing for `dailyDay` — yesterday / now / tomorrow */
+  dailyBriefing?: string | null;
 };
 
 /** One exchange in Doremon's room — private to the user who asked. */

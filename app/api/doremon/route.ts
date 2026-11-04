@@ -347,6 +347,7 @@ function isModelLevelError(err: unknown): boolean {
   if (err instanceof GeminiModelError) return true;
   if (err instanceof Error) {
     if (/^gemini 429/.test(err.message)) return true; // per-model quota
+    if (/^gemini 5\d{2}/.test(err.message)) return true; // 5xx: this model is down/overloaded
     if (/^empty completion/.test(err.message)) return true; // 200 but nothing visible
   }
   return false;

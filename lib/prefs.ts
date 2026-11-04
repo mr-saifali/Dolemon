@@ -25,6 +25,8 @@ export type Prefs = {
   compactChat: boolean;
   /** a soft tone when their message lands */
   sounds: boolean;
+  /** the short opening jingle when the app opens */
+  introMusic: boolean;
 };
 
 const KEY = "dolemon:prefs";
@@ -40,6 +42,7 @@ const DEFAULT: Prefs = {
   reduceMotion: false,
   compactChat: false,
   sounds: true,
+  introMusic: true,
 };
 
 let cache: Prefs = DEFAULT;

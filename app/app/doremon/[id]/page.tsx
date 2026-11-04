@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Send } from "lucide-react";
+import { ChevronLeft, Play, Send, Volume2, VolumeX } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { DoremonFace } from "@/components/chat/doremon";
 import { authMode } from "@/lib/auth";
@@ -48,6 +48,174 @@ type Loaded = {
   alive: boolean;
 };
 
+/* ------------------------------------------------------------------ */
+/* Room music — the full track, on loop, stopped from the header.      */
+/* Played through the official YouTube IFrame player: the audio of the */
+/* real track, the video hidden. Needs the device's internet.          */
+/* ------------------------------------------------------------------ */
+
+const ROOM_MUSIC_VIDEO_ID = "5ozrYtnqgDo";
+
+type YtPlayer = {
+  playVideo(): void;
+  pauseVideo(): void;
+  destroy(): void;
+};
+
+type YtNamespace = {
+  Player: new (el: HTMLElement, options: Record<string, unknown>) => YtPlayer;
+};
+
+declare global {
+  interface Window {
+    YT?: YtNamespace;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+let ytApiPromise: Promise<YtNamespace> | null = null;
+
+function loadYouTubeApi(): Promise<YtNamespace> {
+  const w = window as Window;
+  if (w.YT?.Player) return Promise.resolve(w.YT);
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise<YtNamespace>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      ytApiPromise = null;
+      reject(new Error("YouTube player took too long to load"));
+    }, 12000);
+    const previous = w.onYouTubeIframeAPIReady;
+    w.onYouTubeIframeAPIReady = () => {
+      window.clearTimeout(timer);
+      previous?.();
+      if (w.YT?.Player) resolve(w.YT);
+      else {
+        ytApiPromise = null;
+        reject(new Error("YouTube player unavailable"));
+      }
+    };
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+    script.onerror = () => {
+      window.clearTimeout(timer);
+      ytApiPromise = null;
+      reject(new Error("Could not reach YouTube — music needs internet"));
+    };
+    document.head.appendChild(script);
+  });
+  return ytApiPromise;
+}
+
+type RoomMusicState = "loading" | "playing" | "paused" | "needs-tap" | "blocked";
+
+type RoomMusic = {
+  state: RoomMusicState;
+  /** Hidden player host — render this container exactly once. */
+  containerRef: RefObject<HTMLDivElement | null>;
+  /** Play or stop the track from the header. */
+  toggle(): void;
+};
+
+/**
+ * The room's looping track. The YouTube player replaces its host element with
+ * an <iframe>, so the host is created imperatively inside a stable
+ * React-managed container that React never renders children into.
+ */
+function useRoomMusic(): RoomMusic {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<YtPlayer | null>(null);
+  const autoplayTimer = useRef<number | null>(null);
+  const [state, setState] = useState<RoomMusicState>("loading");
+
+  const creatingRef = useRef<Promise<YtPlayer | null> | null>(null);
+
+  const ensurePlayer = useCallback(async (): Promise<YtPlayer | null> => {
+    if (playerRef.current) return playerRef.current;
+    if (creatingRef.current) return creatingRef.current;
+    const creating = (async (): Promise<YtPlayer | null> => {
+      const container = containerRef.current;
+      if (!container) return null;
+      let yt: YtNamespace;
+      try {
+        yt = await loadYouTubeApi();
+      } catch {
+        setState("blocked");
+        return null;
+      }
+      if (playerRef.current) return playerRef.current;
+      const host = document.createElement("div");
+      container.appendChild(host);
+      const player = new yt.Player(host, {
+        width: "1",
+        height: "1",
+        videoId: ROOM_MUSIC_VIDEO_ID,
+        playerVars: {
+          autoplay: 1,
+          loop: 1,
+          playlist: ROOM_MUSIC_VIDEO_ID,
+          controls: 0,
+          playsinline: 1,
+          rel: 0,
+          iv_load_policy: 3,
+        },
+        events: {
+          onReady: () => {
+            player.playVideo();
+          },
+          onStateChange: (event: { data: number }) => {
+            if (event.data === 1) {
+              if (autoplayTimer.current !== null) {
+                window.clearTimeout(autoplayTimer.current);
+                autoplayTimer.current = null;
+              }
+              setState("playing");
+            }
+          },
+        },
+      });
+      playerRef.current = player;
+      // If the player has not started within 4s, the browser is almost
+      // certainly holding the autoplay (no user gesture on this page yet).
+      autoplayTimer.current = window.setTimeout(() => {
+        setState((s) => (s === "loading" ? "needs-tap" : s));
+      }, 4000);
+      return player;
+    })();
+    creatingRef.current = creating;
+    const result = await creating;
+    if (result === null) creatingRef.current = null; // allow a retry
+    return result;
+  }, []);
+
+  useEffect(() => {
+    void ensurePlayer();
+    const container = containerRef.current;
+    return () => {
+      if (autoplayTimer.current !== null) window.clearTimeout(autoplayTimer.current);
+      playerRef.current?.destroy();
+      playerRef.current = null;
+      container?.replaceChildren();
+    };
+  }, [ensurePlayer]);
+
+  const toggle = useCallback(() => {
+    const player = playerRef.current;
+    if (!player) {
+      void ensurePlayer().then((p) => p?.playVideo());
+      return;
+    }
+    if (state === "playing") {
+      player.pauseVideo();
+      setState("paused");
+    } else {
+      player.playVideo();
+    }
+  }, [ensurePlayer, state]);
+
+  return { state, containerRef, toggle };
+}
+
 export default function DoremonRoomPage({ params }: { params: { id: string } }) {
   return (
     <AppGuard>
@@ -55,6 +223,26 @@ export default function DoremonRoomPage({ params }: { params: { id: string } }) 
     </AppGuard>
   );
 }
+
+type BrainState = "unknown" | "online" | "no-key" | "bad-key" | "offline" | "demo";
+
+const BRAIN_LABEL: Record<BrainState, string> = {
+  unknown: "",
+  online: "online",
+  "no-key": "no key · local",
+  "bad-key": "key rejected · local",
+  offline: "offline · local",
+  demo: "demo · local",
+};
+
+const BRAIN_DETAIL: Record<BrainState, string> = {
+  unknown: "",
+  online: "Gemini is answering live.",
+  "no-key": "GEMINI_API_KEY is not set, so Doremon answers from his pocket (local) brain.",
+  "bad-key": "Google rejected the API key. Valid keys start with “AIza” — set the right one and this turns green.",
+  offline: "The server could not reach Gemini (network). Doremon answers from his pocket (local) brain.",
+  demo: "Demo mode has no backend, so Doremon runs on his pocket (local) brain.",
+};
 
 function Room({ conversationId }: { conversationId: string }) {
   const router = useRouter();
@@ -65,7 +253,14 @@ function Room({ conversationId }: { conversationId: string }) {
   const [turns, setTurns] = useState<RoomTurn[]>([]);
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
+  const [brainState, setBrainState] = useState<BrainState>("unknown");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const music = useRoomMusic();
+
+  // Demo mode never calls the API — his brain is the local one, by design.
+  useEffect(() => {
+    if (!REMOTE) setBrainState("demo");
+  }, []);
 
   /* ------------------------------------------------------------ load room */
   useEffect(() => {
@@ -183,10 +378,19 @@ function Room({ conversationId }: { conversationId: string }) {
             signal: controller.signal,
           });
           clearTimeout(timeout);
-          const out = (await res.json()) as { ok?: boolean; answer?: string };
-          if (res.ok && out.ok && out.answer) answer = out.answer;
+          const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string };
+          if (res.ok && out.ok && out.answer) {
+            answer = out.answer;
+            setBrainState("online");
+          } else if (out.error === "NO_KEY") {
+            setBrainState("no-key");
+          } else if (out.error === "BAD_KEY") {
+            setBrainState("bad-key");
+          } else {
+            setBrainState("offline");
+          }
         } catch {
-          answer = null;
+          setBrainState("offline");
         }
       }
       if (!answer) answer = localRoomAsk(q, view, data.memory, partner);
@@ -231,8 +435,63 @@ function Room({ conversationId }: { conversationId: string }) {
               </p>
             </div>
           </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {brainState !== "unknown" && (
+              <span
+                title={BRAIN_DETAIL[brainState]}
+                className={`flex items-center gap-1.5 rounded-full border px-2 py-[3px] text-[10.5px] font-medium ${
+                  brainState === "online"
+                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+                    : "border-amber-400/25 bg-amber-400/10 text-amber-200"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    brainState === "online" ? "bg-emerald-400" : "animate-pulse bg-amber-400"
+                  }`}
+                />
+                {BRAIN_LABEL[brainState]}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={music.toggle}
+              aria-label={music.state === "playing" ? "Stop room music" : "Play room music"}
+              title={music.state === "playing" ? "Stop the room music" : "Play the room music on loop"}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/5 hover:text-[#8FD9F8] active:scale-90"
+            >
+              {music.state === "playing" ? (
+                <VolumeX className="h-[18px] w-[18px]" strokeWidth={1.8} />
+              ) : (
+                <Volume2 className="h-[18px] w-[18px]" strokeWidth={1.8} />
+              )}
+            </button>
+          </div>
         </div>
       </header>
+
+      {/* the room track — autoplay was blocked or YouTube is unreachable */}
+      {(music.state === "needs-tap" || music.state === "blocked") && (
+        <div className="mx-auto w-full max-w-2xl px-3 pt-2">
+          {music.state === "needs-tap" ? (
+            <button
+              type="button"
+              onClick={music.toggle}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-[#29ABE2]/30 bg-[#29ABE2]/10 px-3 py-2 text-[12.5px] font-medium text-[#8FD9F8] transition active:scale-[0.99]"
+            >
+              <Play className="h-3.5 w-3.5" /> Tap to start the room music
+            </button>
+          ) : (
+            <p className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-[12px] text-zinc-500">
+              Room music plays through YouTube — it needs internet.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* hidden YouTube host — the player lives outside React's render tree */}
+      <div ref={music.containerRef} aria-hidden className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0" />
 
       {/* body */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">

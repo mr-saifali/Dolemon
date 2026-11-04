@@ -418,15 +418,29 @@ export function localRoomAsk(
     return `Avoid ka pattern abhi nahi dikhta — numbers clean hain. Future mein bhi yahi dikha. 😌`;
   }
 
-  // fallback — offer what he knows
+  // fallback — answer from what he actually knows, in a fresh phrasing each time
   const known: string[] = [];
   if (memory?.summary) known.push(memory.summary);
   if (v.me && v.them) known.push(`tum ${Math.round((v.meShare ?? 0) * 100)}% baatein, ${partnerName} ${100 - Math.round((v.meShare ?? 0) * 100)}%`);
-  return (
-    `Arre, main is chat ka 4D memory mein poora record rakhta hoon — memories, timing, moods, ladaiyan, sab. ${
-      known.length ? "Abhi tak: " + known.join(" · ") + ". " : ""
-    }Mujhse kuch bhi poochh: "kab zyada bolta hai", "who talks more", "what happens next". Future-grade answers, guaranteed. 🐱`
-  );
+  const usualConflict = memory?.conflictTopics[0] ?? null;
+  if (usualConflict) known.push(`tension ka usual point: ${usualConflict}`);
+  const bits = known.join(" · ");
+  return pick([
+    `${bits ? bits + ". " : ""}Main is chat ka poora record 4D memory mein rakhta hoon. Ek direct sawaal try karo — "kab zyada bolta hai", "who talks more", ya "what happens next"? 🐱`,
+    `Sawaal samajh gaya, Nobita. ${
+      bits ? "Meri pocket se jo milta hai: " + bits + ". " : ""
+    }Agla kadam chhota rakho — ek photo, ek "yaad aaya tum", bas. Main aage se dekh raha hoon. 😌`,
+    `Time Machine mein aaj ka scene: ${
+      v.silentFor != null && v.silentFor > MS_DAY
+        ? `last ${silenceLabel(v.silentFor)} se khamoshi hai`
+        : "baatein abhi fresh hain"
+    }. ${
+      bits ? "Pura hisaab: " + bits + ". " : ""
+    }Kuch specific poochhna ho toh seedha bolo — main yaad nahi bhoolta. 🐱`,
+    `Dekha maine. ${
+      bits ? "Abhi tak ka record: " + bits + ". " : "Record abhi banta hai."
+    } Ek suggestion: aaj ka ek best moment unhe bhejo. Aise chhote messages hi future banate hain. 😌`,
+  ]);
 }
 
 /* ---------------------------------------------------------------- finalize */

@@ -21,6 +21,7 @@ import {
   type DbConversation,
 } from "@/lib/db";
 import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
+import { playIntroJingle } from "@/lib/sound";
 import { useSession } from "@/lib/session";
 import { usePrefs } from "@/lib/prefs";
 import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
@@ -33,7 +34,7 @@ function HomeScreen() {
   const router = useRouter();
   const { account } = useSession();
   const metaMap = useChatMeta();
-  const { readReceipts } = usePrefs();
+  const { readReceipts, introMusic } = usePrefs();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -51,6 +52,19 @@ function HomeScreen() {
       alive = false;
     };
   }, []);
+
+  // The little opening jingle — once per app session, not per visit.
+  useEffect(() => {
+    if (!introMusic) return;
+    try {
+      const seen = window.sessionStorage.getItem("dolemon:intro-played");
+      if (seen) return;
+      window.sessionStorage.setItem("dolemon:intro-played", "1");
+    } catch {
+      // storage unavailable — fall through, the jingle is harmless to play
+    }
+    playIntroJingle();
+  }, [introMusic]);
 
   // When the list changes, learn where each partner's read cursor sits.
   useEffect(() => {

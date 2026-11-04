@@ -16,6 +16,7 @@ import {
   Loader2,
   Lock,
   MessageSquareDashed,
+  Music,
   Radio,
   ShieldCheck,
   Sparkles,
@@ -600,6 +601,15 @@ function SettingsContent() {
               description="A quiet chime when their message lands."
               checked={prefs.sounds}
               onChange={(v) => setPref("sounds", v)}
+            />
+          </div>
+          <div className="py-3.5">
+            <Switch
+              icon={<Tile tone="sky"><Music className="h-[15px] w-[15px]" /></Tile>}
+              label="Intro music"
+              description="A short jingle when you open Dolemon."
+              checked={prefs.introMusic}
+              onChange={(v) => setPref("introMusic", v)}
             />
           </div>
         </Section>

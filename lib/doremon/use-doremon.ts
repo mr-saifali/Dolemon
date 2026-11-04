@@ -13,7 +13,7 @@ import {
 } from "./memory";
 import { localFinalize, viewStats } from "./insights";
 import { OFFLINE_NOTICE } from "./offline";
-import type { DoremonAnalysis, DoremonMemory, DoremonMessage } from "./types";
+import type { DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
 
 const uid = () => `dm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -22,15 +22,6 @@ const uid = () => `dm_${Date.now().toString(36)}${Math.random().toString(36).sli
 const RETRY_AFTER_MS = 10 * 60_000;
 
 let geminiState: { down: boolean; since: number } = { down: false, since: 0 };
-
-/**
- * The REAL (Gemini) analysis may run at most once per conversation per gap.
- * The free tier's daily budget (~20 requests) must survive a whole day of
- * chatting — between real analyses the local brain keeps the record fresh
- * for free (silently, same as always).
- */
-const ANALYZE_MIN_GAP_MS = 30 * 60_000;
-const lastGeminiAnalyze: Record<string, number> = {};
 
 export type DoremonStatus = "idle" | "watching" | "thinking";
 
@@ -146,31 +137,10 @@ export function useDoremon(
       void (async () => {
         const stats = await loadDoremonStats(conversation, true).catch(() => null);
         const view = viewStats(stats, meId, partnerId);
-        let final: { summary: string; note: string } | null = null;
-        if (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS) {
-          try {
-            const res = await fetch("/api/doremon", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "finalize",
-                me,
-                partner: partnerName,
-                meId,
-                partnerId,
-                recent: recentRef.current,
-                memory: mem,
-                stats,
-              }),
-            });
-            const data = (await res.json()) as { ok?: boolean; final?: { summary: string; note: string } };
-            if (res.ok && data.ok && data.final) final = data.final;
-            else if (res.status === 503) geminiState = { down: true, since: Date.now() };
-          } catch {
-            geminiState = { down: true, since: Date.now() };
-          }
-        }
-        if (!final) final = localFinalize(view, mem, partnerName);
+        // NO hidden API calls: the closing record is written by the local
+        // brain (free, client-side). Gemini only ever runs when the person
+        // explicitly messages Doremon.
+        const final = localFinalize(view, mem, partnerName);
         const next: DoremonMemory = {
           ...mem,
           finalSummary: final.summary,
@@ -187,54 +157,14 @@ export function useDoremon(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  async function geminiAnalyze(recent: BrainMessage[]): Promise<DoremonAnalysis | null> {
-    try {
-      const res = await fetch("/api/doremon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "analyze",
-          me,
-          partner,
-          recent,
-          memory: memoryRef.current,
-        }),
-      });
-      if (res.status === 503) {
-        geminiState = { down: true, since: Date.now() };
-        return null;
-      }
-      const data = (await res.json()) as { ok?: boolean; analysis?: GemAnalysis };
-      if (!res.ok || !data.ok || !data.analysis) {
-        geminiState = { down: true, since: Date.now() };
-        return null;
-      }
-      return normalizeAnalysis(data.analysis, memoryRef.current);
-    } catch {
-      geminiState = { down: true, since: Date.now() };
-      return null;
-    }
-  }
-
   const runAnalysis = async () => {
     const recent = brainMessages();
     if (recent.length === 0) return;
 
-    let analysis: DoremonAnalysis | null = null;
-    // Budget discipline: one real analysis per gap — the rest of the time
-    // the local brain does the (silent) work for free.
-    const lastReal = lastGeminiAnalyze[conversationId] ?? 0;
-    if (
-      remote &&
-      (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS) &&
-      Date.now() - lastReal > ANALYZE_MIN_GAP_MS
-    ) {
-      analysis = await geminiAnalyze(recent);
-      if (analysis) lastGeminiAnalyze[conversationId] = Date.now();
-    }
-    if (!analysis) {
-      analysis = localAnalyze(recent, memoryRef.current);
-    }
+    // NO hidden API calls: the record is kept by the local brain — free,
+    // client-side, silent. Gemini only runs when the person explicitly
+    // messages Doremon (ask below).
+    const analysis = localAnalyze(recent, memoryRef.current);
 
     // He only *listens* now: the record updates silently so a later /doremon
     // is still sharp. He no longer speaks up on his own — ever.
@@ -301,61 +231,4 @@ export function useDoremon(
   const status: DoremonStatus = thinking ? "thinking" : watching ? "watching" : "idle";
 
   return { doremonMessages, memory, thinking, status, ask };
-}
-
-/** The loose JSON shape Gemini is asked to return. */
-type GemAnalysis = {
-  summary?: unknown;
-  moodMine?: unknown;
-  moodTheirs?: unknown;
-  tension?: unknown;
-  fight?: unknown;
-  boring?: unknown;
-  conflictTopic?: unknown;
-  deepTopic?: unknown;
-  memoryNote?: unknown;
-  interventionLine?: unknown;
-};
-
-/** Gemini returns loose JSON — coerce it into a sane, complete memory. */
-function normalizeAnalysis(raw: GemAnalysis | null | undefined, previous: DoremonMemory | null): DoremonAnalysis | null {
-  if (!raw) return null;
-  const now = Date.now();
-  const base: DoremonMemory = previous ?? emptyMemory(now);
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v.trim() ? v.trim().slice(0, 220) : null;
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(10, Math.round(v))) : null;
-
-  const note = str(raw.memoryNote);
-  const topic = str(raw.conflictTopic);
-  const deep = str(raw.deepTopic);
-  const fight = raw.fight === true;
-  const topicSeen = topic != null && base.conflictTopics.includes(topic);
-  const deepSeen = deep != null && base.deepTopics.includes(deep);
-
-  const memory: DoremonMemory = {
-    ...base,
-    summary: str(raw.summary) ?? base.summary,
-    notes: note && !base.notes.includes(note) ? [note, ...base.notes].slice(0, 20) : base.notes,
-    conflictTopics:
-      topic && !base.conflictTopics.includes(topic) ? [topic, ...base.conflictTopics].slice(0, 8) : base.conflictTopics,
-    deepTopics:
-      deep && !base.deepTopics.includes(deep) ? [deep, ...base.deepTopics].slice(0, 8) : base.deepTopics,
-    moodMine: str(raw.moodMine) ?? base.moodMine,
-    moodTheirs: str(raw.moodTheirs) ?? base.moodTheirs,
-    tension: num(raw.tension) ?? base.tension,
-    fightCount: fight && !topicSeen ? base.fightCount + 1 : base.fightCount,
-    deepTalkCount: !fight && deep && !deepSeen ? base.deepTalkCount + 1 : base.deepTalkCount,
-    lastInterventionAt: base.lastInterventionAt,
-    watchedSince: base.watchedSince,
-    updatedAt: now,
-  };
-
-  return {
-    memory,
-    fight,
-    boring: raw.boring === true,
-    interventionLine: str(raw.interventionLine),
-  };
 }

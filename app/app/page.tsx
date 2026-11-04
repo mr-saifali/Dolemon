@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
+import { DoremonFace } from "@/components/chat/doremon";
 import { ChatAvatar, ChatRow, type ChatRowData } from "@/components/home/chat-row";
 import { HomeEmptyState } from "@/components/home/empty-state";
 import { PeopleSearch } from "@/components/home/people-search";
@@ -19,6 +20,7 @@ import {
   openDirectConversation,
   type DbConversation,
 } from "@/lib/db";
+import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
 import { useSession } from "@/lib/session";
 import { usePrefs } from "@/lib/prefs";
 import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
@@ -71,6 +73,23 @@ function HomeScreen() {
       alive = false;
     };
   }, [remoteChats]);
+
+  // Doremon's memory — the records he keeps, including chats that are deleted.
+  const [doremonRecords, setDoremonRecords] = useState<DoremonRecord[]>([]);
+  useEffect(() => {
+    if (!REMOTE) return;
+    let alive = true;
+    loadDoremonRecords(REMOTE)
+      .then((records) => {
+        if (alive) setDoremonRecords(records);
+      })
+      .catch(() => {
+        if (alive) setDoremonRecords([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const rows = useMemo<ChatRowData[]>(() => {
     if (REMOTE) {
@@ -222,6 +241,44 @@ function HomeScreen() {
               {rows.map((chat, i) => (
                 <ChatRow key={chat.id} chat={chat} index={i} />
               ))}
+            </div>
+          )}
+
+          {/* Doremon's memory — his private records, including deleted chats */}
+          {doremonRecords.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-1 flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                <DoremonFace size={16} /> Doremon&apos;s memory
+              </p>
+              <div className="flex flex-col">
+                {doremonRecords.slice(0, 6).map((rec) => {
+                  const name = rec.memory.partnerUsername || "a deleted chat";
+                  return (
+                    <Link
+                      key={rec.conversationId}
+                      href={`/app/doremon/${rec.conversationId}`}
+                      className="flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-white/[0.04]"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(41,171,226,0.12)" }}>
+                        <DoremonFace size={30} />
+                      </div>
+                      <div className="min-w-0 flex-1 leading-tight">
+                        <p className="truncate text-[14px] font-medium text-zinc-200">
+                          {name}
+                          {!rec.alive && (
+                            <span className="ml-2 rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                              deleted
+                            </span>
+                          )}
+                        </p>
+                        <p className="truncate text-[12.5px] text-zinc-500">
+                          {rec.memory.summary || rec.memory.finalSummary || "keeps watching…"}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

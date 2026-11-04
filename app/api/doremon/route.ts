@@ -3,16 +3,22 @@ import {
   ANALYZE_INSTRUCTIONS,
   ASK_INSTRUCTIONS,
   DOREMON_PERSONA,
+  FINALIZE_INSTRUCTIONS,
+  ROOM_ANALYST_INSTRUCTIONS,
   memoryForPrompt,
 } from "@/lib/doremon/persona";
+import { statsForPrompt, viewStats } from "@/lib/doremon/insights";
+import type { DoremonMemory, DoremonStats } from "@/lib/doremon/types";
 
 /**
  * Doremon's mind, server-side — the Gemini key never reaches the browser.
  *
- *   POST /api/doremon  { action: "analyze" | "ask", ... }
+ *   POST /api/doremon  { action: "analyze" | "ask" | "roomAsk" | "finalize", ... }
  *
- *   analyze → the compressed record update + fight/boring signals (JSON out)
- *   ask     → Doremon's chat answer to a /doremon message (text out)
+ *   analyze   → the compressed record update + fight/boring signals (JSON out)
+ *   ask       → Doremon's chat answer to a /doremon message (text out)
+ *   roomAsk   → his private-room answer: memories, census, prediction (text out)
+ *   finalize  → the closing record when a conversation pauses (JSON out)
  *
  * Model: GEMINI_MODEL (default gemini-2.5-flash — bump it to the newest
  * flash release whenever Google ships one).
@@ -22,11 +28,16 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 type RequestBody = {
-  action: "analyze" | "ask";
+  action: "analyze" | "ask" | "roomAsk" | "finalize";
   me: string;
   partner: string;
+  /** user ids — needed to give the census a perspective (me vs them) */
+  meId?: string | null;
+  partnerId?: string | null;
   recent: { who: "me" | "them"; text: string }[];
   memory: unknown;
+  /** the raw talking census from doremon_stats() (may be null post-deletion) */
+  stats?: DoremonStats | null;
   question?: string;
 };
 
@@ -46,20 +57,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "BAD_BODY" }, { status: 400 });
   }
 
-  if (body.action !== "analyze" && body.action !== "ask") {
+  const actions = ["analyze", "ask", "roomAsk", "finalize"] as const;
+  if (!(actions as readonly string[]).includes(body.action)) {
     return NextResponse.json({ ok: false, error: "BAD_ACTION" }, { status: 400 });
   }
 
   const { system, user } = promptsFor(body);
 
   try {
-    const raw = await generateContent(key, model, system, user, body.action === "analyze");
+    const wantJson = body.action === "analyze" || body.action === "finalize";
+    const raw = await generateContent(key, model, system, user, wantJson);
     if (body.action === "analyze") {
       const parsed = parseJson(raw);
       if (!parsed) throw new Error("unparseable analysis");
       return ok({ ok: true, analysis: parsed });
     }
-    return ok({ ok: true, answer: raw.slice(0, 1200) });
+    if (body.action === "finalize") {
+      const parsed = parseJson(raw);
+      if (!parsed) throw new Error("unparseable finalize");
+      const summary = typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 800) : "";
+      const note = typeof parsed.note === "string" ? parsed.note.trim().slice(0, 400) : "";
+      if (!summary) throw new Error("empty final summary");
+      return ok({ ok: true, final: { summary, note } });
+    }
+    return ok({ ok: true, answer: raw.slice(0, 1400) });
   } catch (error) {
     console.error("[doremon] gemini failure:", error instanceof Error ? error.message : error);
     return NextResponse.json({ ok: false, error: "GEMINI" }, { status: 502 });
@@ -76,10 +97,31 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
     body.memory as Parameters<typeof memoryForPrompt>[0]
   );
 
+  const census = statsForPrompt(viewStats(body.stats ?? null, body.meId ?? null, body.partnerId ?? null), body.partner);
+
   if (body.action === "analyze") {
     return {
       system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon working for the pair "${body.me}" and "${body.partner}".\n\n${ANALYZE_INSTRUCTIONS}`,
-      user: `YOUR MEMORY SO FAR:\n${memoryBlock}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation is empty)"}`,
+      user: `YOUR MEMORY SO FAR:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation is empty)"}`,
+    };
+  }
+
+  if (body.action === "roomAsk") {
+    const question = body.question?.trim() || "";
+    return {
+      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon in his private room, talking one-to-one with "${body.me}" about their relationship with "${body.partner}".\n\n${ROOM_ANALYST_INSTRUCTIONS}`,
+      user: `YOUR PRIVATE MEMORY OF THEM:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation has no recent messages — answer from memory and the census)"}\n\n${
+        question
+          ? `THE QUESTION: ${question}`
+          : "They opened your room without a question — give a short opening: the current state of their relationship in one or two lines, plus the most interesting thing you noticed."
+      }`,
+    };
+  }
+
+  if (body.action === "finalize") {
+    return {
+      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon, the private observer of the pair "${body.me}" and "${body.partner}".\n\n${FINALIZE_INSTRUCTIONS}`,
+      user: `YOUR MEMORY SO FAR:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation has no messages)"}`,
     };
   }
 

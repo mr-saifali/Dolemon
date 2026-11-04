@@ -67,11 +67,13 @@ function ThreadScreen() {
     : conversation?.name ?? "Them";
   const partnerAvatar = REMOTE ? remote.partnerAvatar : conversation?.avatarId ?? null;
 
-  // Doremon — watches the room, keeps the record, speaks when he should.
+  // Doremon — watches the room, keeps the record, and speaks only in his room.
   const doremon = useDoremon(conversationId, messages, {
     remote: REMOTE,
     me: myHandle,
     partner: partnerName.replace(/^@/, ""),
+    meId: account?.id ?? null,
+    partnerId: REMOTE ? remote.partnerId : null,
   });
 
   const { together, partner, lastSeenAt, setPresence } = usePresence({
@@ -449,6 +451,9 @@ function ThreadScreen() {
         hidden={!prefs.showPresence}
         onMenu={() => setMenuOpen(true)}
         onCall={REMOTE ? (type) => void live.start(conversationId, type) : undefined}
+        doremonStatus={doremon.status}
+        doremonMemory={doremon.memory}
+        onDoremon={() => router.push(`/app/doremon/${conversationId}`)}
       />
 
       <MessageList

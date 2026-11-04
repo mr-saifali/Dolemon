@@ -495,6 +495,7 @@ export function useRemoteThread(
     online,
     partnerReadAt,
     partnerName: partner?.partnerUsername ?? null,
+    partnerId: partner?.partnerId ?? null,
     partnerAvatar: partner?.partnerAvatar ?? null,
     partnerAvatarUrl: partner?.partnerAvatarUrl ?? null,
     partnerLastAt: partner?.lastAt ?? null,

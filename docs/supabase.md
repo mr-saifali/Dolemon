@@ -334,6 +334,7 @@ but each unlocks a feature. Run them in the Supabase SQL editor, in order:
 | `docs/migrations/005_read_receipts.sql` | Telegram-style read ticks + exact read time (live) |
 | `docs/migrations/006_revoke_self_deletion.sql` | Drops `delete_my_account()` — accounts can't self-delete |
 | `docs/migrations/009_reply_to.sql` | Replies — a message can quote another (the `reply_to_id` column) |
+| `docs/migrations/010_doremon_room.sql` | Doremon's room — private per-user records that survive chat deletion + the talking census (`doremon_stats`) + the record list (`doremon_records`) |
 
 Notes:
 - **004 contains `delete_my_account()`.** If you already ran 004, just run 006 —
@@ -343,27 +344,41 @@ Notes:
 - An account is only ever removed by an admin: Supabase → Authentication → Users
   → Delete user.
 
-## 9. Doremon — the resident AI
+## 9. Doremon — the private observer
 
-Doremon watches every chat quietly and keeps a compressed record per
-conversation (moods, fight patterns, deep-talk moments). He **never speaks on
-his own** — no greetings, no interventions — and only answers when summoned
-with `/doremon <anything>` in chat (or a tap on his face in the header).
+Doremon quietly observes every chat like a relationship reviewer who was paid
+to watch it: who talks more, how much per day, at which hours, who starts,
+when they go quiet, moods, fight/deep-talk patterns. He **never speaks in the
+chat on his own** — he has his own **room** (`/app/doremon/<conversationId>`),
+reached from his face in the chat header (left of the ⋮) or from the
+"Doremon's memory" section on the home screen. In his room a user can ask
+anything: memories, summaries, timing, willingness, avoidance, and a
+prediction of what the next conversation will be like.
+
+When a conversation ends (the user leaves the chat), Doremon writes a closing
+summary + a warm note into his record. **When a chat is deleted, the record
+survives** — the room keeps working from his pocket, and deleted chats still
+appear under "Doremon's memory" with a `deleted` badge.
 
 **Setup**
 
 1. Env (Vercel → project → Environment Variables, or `.env.local` locally):
    - `GEMINI_API_KEY` — from https://aistudio.google.com/apikey (server-side only)
    - `GEMINI_MODEL` — optional, default `gemini-2.5-flash` (bump to the newest flash)
-2. Run `docs/migrations/008_doremon_memory.sql` in the SQL editor — the
-   `doremon_memory` table (jsonb record, member RLS, on-delete cascade).
+2. Run `docs/migrations/008_doremon_memory.sql` then
+   `docs/migrations/010_doremon_room.sql` in the SQL editor. 008 creates the
+   `doremon_memory` table; 010 makes it **per-user + private** (each member's
+   Doremon keeps their own copy, the other person never sees it), makes it
+   **survive chat deletion**, and adds the two read-only functions
+   `doremon_stats()` and `doremon_records()`.
 
 **Behaviour**
 
-- No key / table not run: Doremon still works — his local brain (heuristics +
-  persona templates) keeps him alive; the compressed record just lives in the
-  browser until the table exists.
-- The Gemini key never reaches the browser — all calls go through
-  `POST /api/doremon`.
-- His chat lines are ephemeral (like system moments); the *record* is what
-  persists, shared by both members.
+- No key / table not run: Doremon still works — his local brain (heuristics
+  over the same census + persona templates) keeps him alive; the record just
+  lives in the browser until the tables exist.
+- The Gemini key never reaches the browser — every call goes through
+  `POST /api/doremon` (`roomAsk` for the room, `finalize` for closing
+  summaries; `analyze`/`ask` remain for the in-chat watcher and `/doremon`).
+- The room's Q&A is stored in the private record itself — only the user who
+  asked can see it (row-level security on `user_id = auth.uid()`).

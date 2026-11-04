@@ -293,6 +293,8 @@ function Room({ conversationId }: { conversationId: string }) {
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
   const [brainState, setBrainState] = useState<BrainState>("unknown");
+  /** Google's own words when the brain is down — shown in the chip tooltip */
+  const [brainDetail, setBrainDetail] = useState("");
   const [dailyBusy, setDailyBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const music = useRoomMusic();
@@ -303,6 +305,32 @@ function Room({ conversationId }: { conversationId: string }) {
   useEffect(() => {
     if (!REMOTE) setBrainState("demo");
   }, []);
+
+  // Ask the brain itself how it's doing the moment the room opens, so the
+  // header chip is true BEFORE the first question (the first answer still
+  // overrides it with ground truth).
+  useEffect(() => {
+    if (!REMOTE) return;
+    let alive = true;
+    fetch("/api/doremon")
+      .then((r) => r.json() as Promise<{ ok?: boolean; error?: string; detail?: string }>)
+      .then((out) => {
+        if (!alive) return;
+        setBrainState((s) => {
+          if (s !== "unknown") return s;
+          if (out.ok) return "online";
+          if (out.error === "NO_KEY") return "no-key";
+          if (out.error === "BAD_KEY") return "bad-key";
+          return "offline";
+        });
+        if (out.ok) setBrainDetail("");
+        else if (out.detail) setBrainDetail(out.detail);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [conversationId]);
 
   /* ------------------------------------------------------------ load room */
   useEffect(() => {
@@ -483,10 +511,12 @@ function Room({ conversationId }: { conversationId: string }) {
             signal: controller.signal,
           });
           clearTimeout(timeout);
-          const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string };
+          const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string };
+          if (out.detail) setBrainDetail(out.detail);
           if (res.ok && out.ok && out.answer) {
             answer = out.answer;
             setBrainState("online");
+            setBrainDetail("");
           } else if (out.error === "NO_KEY") {
             setBrainState("no-key");
           } else if (out.error === "BAD_KEY") {
@@ -543,7 +573,7 @@ function Room({ conversationId }: { conversationId: string }) {
           <div className="flex shrink-0 items-center gap-1.5">
             {brainState !== "unknown" && (
               <span
-                title={BRAIN_DETAIL[brainState]}
+                title={brainDetail || BRAIN_DETAIL[brainState]}
                 className={`flex items-center gap-1.5 rounded-full border px-2 py-[3px] text-[10.5px] font-medium ${
                   brainState === "online"
                     ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"

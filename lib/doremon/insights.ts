@@ -62,24 +62,36 @@ export function viewStats(
     themPeak: [],
     lastSpeaker: null,
   };
-  if (!stats || !stats.total) return empty;
+  if (!stats || typeof stats.total !== "number" || !stats.total) return empty;
 
-  const me = meId ? stats.users?.[meId] ?? null : null;
-  const them = partnerId ? stats.users?.[partnerId] ?? null : null;
+  const cleanUser = (raw: unknown): DoremonUserStats | null => {
+    const u = raw as DoremonUserStats | null;
+    if (!u || typeof u !== "object" || typeof u.total !== "number") return null;
+    return {
+      total: u.total,
+      lastAt: typeof u.lastAt === "string" ? u.lastAt : "",
+      perDay: u.perDay && typeof u.perDay === "object" ? u.perDay : undefined,
+      hours: u.hours && typeof u.hours === "object" ? u.hours : undefined,
+    };
+  };
+
+  const me = meId ? cleanUser(stats.users?.[meId]) : null;
+  const them = partnerId ? cleanUser(stats.users?.[partnerId]) : null;
   const total = stats.total || 1;
 
   const avg = (u: DoremonUserStats | null): number | null => {
     if (!u?.perDay) return null;
     const days = Object.keys(u.perDay);
     if (days.length === 0) return null;
-    const sum = days.reduce((acc, d) => acc + (u.perDay![d] ?? 0), 0);
+    const sum = days.reduce((acc, d) => acc + (typeof u.perDay![d] === "number" ? u.perDay![d] : 0), 0);
     return sum / Math.max(days.length, 1);
   };
 
   const peak = (u: DoremonUserStats | null): { hour: number; count: number }[] => {
     if (!u?.hours) return [];
     return Object.entries(u.hours)
-      .map(([h, c]) => ({ hour: Number(h), count: c }))
+      .map(([h, c]) => ({ hour: Number(h), count: Number(c) }))
+      .filter((x) => Number.isFinite(x.hour) && Number.isFinite(x.count))
       .sort((a, b) => b.count - a.count)
       .slice(0, 3);
   };
@@ -88,7 +100,10 @@ export function viewStats(
   for (const u of [me, them]) {
     if (!u?.hours) continue;
     for (const [h, c] of Object.entries(u.hours)) {
-      mergedHours.set(Number(h), (mergedHours.get(Number(h)) ?? 0) + c);
+      const hour = Number(h);
+      const count = Number(c);
+      if (!Number.isFinite(hour) || !Number.isFinite(count)) continue;
+      mergedHours.set(hour, (mergedHours.get(hour) ?? 0) + count);
     }
   }
 

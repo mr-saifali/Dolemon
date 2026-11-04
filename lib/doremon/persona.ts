@@ -65,18 +65,43 @@ Respond with ONLY a valid JSON object — no code fences, no commentary — with
 }
 Base it on the census numbers, the memory, and the recent transcript. The summary must be specific to THIS pair — no generic relationship advice.`;
 
+/** Coerce an untrusted client payload into a safe, complete memory shape. */
+function safeMemory(raw: DoremonMemory | null): DoremonMemory {
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return {
+    summary: str(raw?.summary) ?? "",
+    notes: arr(raw?.notes),
+    conflictTopics: arr(raw?.conflictTopics),
+    deepTopics: arr(raw?.deepTopics),
+    moodMine: str(raw?.moodMine),
+    moodTheirs: str(raw?.moodTheirs),
+    tension: typeof raw?.tension === "number" ? raw.tension : null,
+    fightCount: typeof raw?.fightCount === "number" ? raw.fightCount : 0,
+    deepTalkCount: typeof raw?.deepTalkCount === "number" ? raw.deepTalkCount : 0,
+    lastInterventionAt: null,
+    watchedSince: Date.now(),
+    updatedAt: Date.now(),
+    partnerUsername: str(raw?.partnerUsername),
+    finalSummary: str(raw?.finalSummary),
+    endedAt: null,
+    endedNote: str(raw?.endedNote),
+  };
+}
+
 /** Renders the compressed memory as a block Gemini can reason over. */
 export function memoryForPrompt(memory: DoremonMemory | null): string {
-  if (!memory || (!memory.summary && memory.notes.length === 0)) {
+  const m = safeMemory(memory);
+  if (!m.summary && m.notes.length === 0) {
     return "(no memory yet — you just started watching this conversation)";
   }
   const lines = [
-    memory.summary ? `SUMMARY: ${memory.summary}` : null,
-    memory.notes.length ? `NOTES: ${memory.notes.join(" | ")}` : null,
-    memory.conflictTopics.length ? `FIGHT PATTERNS: ${memory.conflictTopics.join(", ")}` : null,
-    memory.deepTopics.length ? `DEEP TALKS: ${memory.deepTopics.join(", ")}` : null,
-    `LAST MOODS: me=${memory.moodMine ?? "?"} partner=${memory.moodTheirs ?? "?"} tension=${memory.tension ?? "?"}/10`,
-    `COUNTS: fights=${memory.fightCount} deepTalks=${memory.deepTalkCount}`,
+    m.summary ? `SUMMARY: ${m.summary}` : null,
+    m.notes.length ? `NOTES: ${m.notes.join(" | ")}` : null,
+    m.conflictTopics.length ? `FIGHT PATTERNS: ${m.conflictTopics.join(", ")}` : null,
+    m.deepTopics.length ? `DEEP TALKS: ${m.deepTopics.join(", ")}` : null,
+    `LAST MOODS: me=${m.moodMine ?? "?"} partner=${m.moodTheirs ?? "?"} tension=${m.tension ?? "?"}/10`,
+    `COUNTS: fights=${m.fightCount} deepTalks=${m.deepTalkCount}`,
   ];
   return lines.filter(Boolean).join("\n");
 }

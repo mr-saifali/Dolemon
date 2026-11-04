@@ -131,7 +131,7 @@ export function DoremonThinking() {
 
 /**
  * The header presence: Doremon keeps an eye on the room.
- * Dot: mint = watching · amber pulse = thinking.
+ * Dot: mint = watching · amber pulse = thinking. Tap opens his private room.
  */
 export function DoremonPresence({
   status,
@@ -147,8 +147,8 @@ export function DoremonPresence({
     status === "thinking"
       ? "Doremon: soch raha hai"
       : hot
-        ? "Doremon: tension padh raha hai"
-        : "Doremon: conversation de raha hai";
+        ? "Doremon: tension padh raha hai — tap karo, poochh lo"
+        : "Doremon: har baat dekh raha hai — tap karo, uski room kholo";
   return (
     <button
       type="button"

@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { previewFor, type ChatMessage } from "@/lib/thread";
 import type { BrainMessage } from "./local-brain";
 import { localAnalyze, localAsk } from "./local-brain";
-import { loadDoremonMemory, loadDoremonMessages, saveDoremonMemory, saveDoremonMessages } from "./memory";
+import {
+  loadDoremonMemory,
+  loadDoremonMessages,
+  loadDoremonStats,
+  saveDoremonMemory,
+  saveDoremonMessages,
+} from "./memory";
+import { localFinalize, viewStats } from "./insights";
 import type { DoremonAnalysis, DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
 
@@ -20,7 +27,20 @@ export type DoremonStatus = "idle" | "watching" | "thinking";
 export function useDoremon(
   conversationId: string,
   messages: ChatMessage[],
-  { remote, me, partner }: { remote: boolean; me: string; partner: string }
+  {
+    remote,
+    me,
+    partner,
+    meId = null,
+    partnerId = null,
+  }: {
+    remote: boolean;
+    me: string;
+    partner: string;
+    /** user ids — let the closing summary read the talking census */
+    meId?: string | null;
+    partnerId?: string | null;
+  }
 ) {
   const [memory, setMemory] = useState<DoremonMemory | null>(null);
   const [doremonMessages, setDoremonMessages] = useState<DoremonMessage[]>([]);
@@ -30,7 +50,6 @@ export function useDoremon(
   const memoryRef = useRef<DoremonMemory | null>(null);
   const lastAnalyzedId = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const loaded = useRef(false);
 
   const pushDoremon = useCallback(
     (kind: DoremonMessage["kind"], text: string) => {
@@ -45,23 +64,26 @@ export function useDoremon(
 
   const commitMemory = useCallback(
     (next: DoremonMemory) => {
-      memoryRef.current = next;
-      setMemory(next);
-      void saveDoremonMemory(conversationId, next, remote);
+      // keep the partner's handle in the record — so even a DELETED chat is
+      // still nameable in Doremon's room
+      const withPartner = next.partnerUsername === partner ? next : { ...next, partnerUsername: partner };
+      memoryRef.current = withPartner;
+      setMemory(withPartner);
+      void saveDoremonMemory(conversationId, withPartner, remote);
     },
-    [conversationId, remote]
+    [conversationId, remote, partner]
   );
 
   /* ------------------------------------------------ load memory + old messages */
   useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
     setDoremonMessages(loadDoremonMessages(conversationId));
     void loadDoremonMemory(conversationId, remote).then((mem) => {
       memoryRef.current = mem;
       setMemory(mem);
+      // keep the partner's handle in the record, even before the first analysis
+      if (mem && mem.partnerUsername !== partner) commitMemory(mem);
     });
-  }, [conversationId, remote]);
+  }, [conversationId, remote, partner, commitMemory]);
 
   /* --------------------------------------------------------- the watcher */
   const humanMessages = messages.filter((m) => m.author === "me" || m.author === "them");
@@ -91,6 +113,69 @@ export function useDoremon(
       .map((m) => ({ who: m.author === "me" ? ("me" as const) : ("them" as const), text: previewFor(m) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+
+  // a live mirror of the transcript, so the closing summary (which runs from
+  // an effect cleanup) always sees the FRESHEST lines, not a stale closure
+  const recentRef = useRef<BrainMessage[]>([]);
+  recentRef.current = brainMessages();
+
+  /* --------------------------- the conversation just ended — close it out */
+  // NOTE: deps are deliberately just [conversationId]. This cleanup must fire
+  // ONLY when the user actually leaves the conversation (or the app) — not
+  // when the partner's display name resolves, which happens a beat later.
+  const finalizing = useRef(false);
+  useEffect(() => {
+    const conversation = conversationId;
+    return () => {
+      if (!remote || finalizing.current) return;
+      const mem = memoryRef.current;
+      if (!mem || !mem.summary) return; // nothing worth closing yet
+      if (Date.now() - (mem.endedAt ?? 0) < 10 * 60_000) return; // already closed recently
+      const partnerName = mem.partnerUsername ?? partner;
+      finalizing.current = true;
+      void (async () => {
+        const stats = await loadDoremonStats(conversation, true).catch(() => null);
+        const view = viewStats(stats, meId, partnerId);
+        let final: { summary: string; note: string } | null = null;
+        if (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS) {
+          try {
+            const res = await fetch("/api/doremon", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "finalize",
+                me,
+                partner: partnerName,
+                meId,
+                partnerId,
+                recent: recentRef.current,
+                memory: mem,
+                stats,
+              }),
+            });
+            const data = (await res.json()) as { ok?: boolean; final?: { summary: string; note: string } };
+            if (res.ok && data.ok && data.final) final = data.final;
+            else if (res.status === 503) geminiState = { down: true, since: Date.now() };
+          } catch {
+            geminiState = { down: true, since: Date.now() };
+          }
+        }
+        if (!final) final = localFinalize(view, mem, partnerName);
+        const next: DoremonMemory = {
+          ...mem,
+          finalSummary: final.summary,
+          endedAt: Date.now(),
+          endedNote: final.note || null,
+          updatedAt: Date.now(),
+        };
+        memoryRef.current = next;
+        setMemory(next);
+        await saveDoremonMemory(conversation, next, true).catch(() => undefined);
+        finalizing.current = false;
+      })();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
 
   async function geminiAnalyze(recent: BrainMessage[]): Promise<DoremonAnalysis | null> {
     try {

@@ -1,15 +1,20 @@
 /**
  * Doremon — the resident AI friend of Dolemon.
  *
- * He watches every conversation, keeps a *compressed* record of each one
- * (moods, fight patterns, deep-talk moments), steps in when a fight starts or
- * the talk goes dry, and can be summoned anytime with `/doremon`.
+ * He quietly observes every conversation and keeps a *compressed, private*
+ * record of each one (moods, fight patterns, deep-talk moments, who talks
+ * more and when). He never speaks in the chat on his own — he has his own
+ * ROOM (app/doremon/<conversationId>) where a user can ask him anything:
+ * memories, summaries, timing, willingness, and where the conversation is
+ * heading. When a chat ends or is deleted, his record survives — even a
+ * deleted chat keeps its summary in his pocket.
  *
  * Live mode: analysis + answers come from Gemini Flash via /api/doremon.
  * Demo mode (or no API key): a local heuristic brain keeps Doremon alive.
  */
 
-/** The compressed, long-lived record Doremon keeps for one conversation. */
+/** The compressed, long-lived record Doremon keeps for one conversation.
+ *  One per (conversation, user) — private to its owner. */
 export type DoremonMemory = {
   /** max ~2 sentences, present tense — the state of this relationship */
   summary: string;
@@ -30,6 +35,44 @@ export type DoremonMemory = {
   /** epoch ms — when Doremon started watching this conversation */
   watchedSince: number;
   updatedAt: number;
+  /** partner's username — survives even after the chat itself is deleted */
+  partnerUsername?: string | null;
+  /** the closing summary Doremon wrote when the conversation last ended */
+  finalSummary?: string | null;
+  /** epoch ms — when the conversation last ended (user left the chat) */
+  endedAt?: number | null;
+  /** Doremon's warm closing note (Hinglish) when the conversation ended */
+  endedNote?: string | null;
+  /** this user's private Q&A with Doremon in his room (last 40) */
+  chat?: RoomTurn[];
+};
+
+/** One exchange in Doremon's room — private to the user who asked. */
+export type RoomTurn = {
+  id: string;
+  q: string;
+  a: string;
+  at: number;
+};
+
+/** The talking census of a conversation — output of `doremon_stats()`. */
+export type DoremonUserStats = {
+  total: number;
+  lastAt: string;
+  /** last 14 days: "YYYY-MM-DD" -> message count */
+  perDay?: Record<string, number>;
+  /** 24 buckets: hour -> message count */
+  hours?: Record<string, number>;
+};
+
+export type DoremonStats = {
+  total: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  /** keyed by user id (perspective-neutral — the app maps to me/them) */
+  users?: Record<string, DoremonUserStats> | null;
+  /** of the last 14 days, which user opened the day: user id -> days */
+  whoStarts?: Record<string, number> | null;
 };
 
 export type DoremonMessageKind = "greeting" | "intervention" | "answer" | "note";

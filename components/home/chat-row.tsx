@@ -23,13 +23,12 @@ export type ChatRowData = {
   lastStatus?: "sending" | "sent" | "delivered" | "read" | "failed" | null;
 };
 
-/** The tick ladder at list scale. */
+/** The tick ladder at list scale: one tick = delivered, two (accent) = seen. */
 function HomeTicks({ status }: { status: NonNullable<ChatRowData["lastStatus"]> }) {
   if (status === "failed") return <AlertCircle className="h-3.5 w-3.5 text-red-400" aria-label="Not sent" />;
   if (status === "sending") return <Clock className="h-3.5 w-3.5 text-zinc-500" aria-label="Sending" />;
-  if (status === "sent") return <Check className="h-3.5 w-3.5 text-zinc-400" aria-label="Sent" />;
-  if (status === "delivered") return <CheckCheck className="h-3.5 w-3.5 text-zinc-400" aria-label="Delivered" />;
-  return <CheckCheck className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} aria-label="Read" />;
+  if (status === "read") return <CheckCheck className="h-3.5 w-3.5" style={{ color: "var(--accent)" }} aria-label="Seen" />;
+  return <Check className="h-3.5 w-3.5 text-zinc-400" aria-label="Delivered" />;
 }
 
 /** A 56px gradient avatar — no card, no border, just the person. */

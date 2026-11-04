@@ -4,14 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { previewFor, type ChatMessage } from "@/lib/thread";
 import type { BrainMessage } from "./local-brain";
 import { localAnalyze, localAsk } from "./local-brain";
-import {
-  doremonGreeted,
-  loadDoremonMemory,
-  loadDoremonMessages,
-  markDoremonGreeted,
-  saveDoremonMemory,
-  saveDoremonMessages,
-} from "./memory";
+import { loadDoremonMemory, loadDoremonMessages, saveDoremonMemory, saveDoremonMessages } from "./memory";
 import type { DoremonAnalysis, DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
 
@@ -21,9 +14,6 @@ const uid = () => `dm_${Date.now().toString(36)}${Math.random().toString(36).sli
 const RETRY_AFTER_MS = 10 * 60_000;
 
 let geminiState: { down: boolean; since: number } = { down: false, since: 0 };
-
-const GREETING =
-  "Arre, main Doremon — yahan naya sa member. 🐱 Aapki har baat sununga, dono ke moods, ladaiyaan, deep baatein — sab pocket mein record karunga. Kuch poochhna ho toh /doremon likh de, kabhi bhi. 😌";
 
 export type DoremonStatus = "idle" | "watching" | "thinking";
 
@@ -62,7 +52,7 @@ export function useDoremon(
     [conversationId, remote]
   );
 
-  /* ------------------------------------------------ load memory + greeting */
+  /* ------------------------------------------------ load memory + old messages */
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
@@ -70,13 +60,8 @@ export function useDoremon(
     void loadDoremonMemory(conversationId, remote).then((mem) => {
       memoryRef.current = mem;
       setMemory(mem);
-      if (!doremonGreeted(conversationId)) {
-        markDoremonGreeted(conversationId);
-        // a beat of silence, then Doremon introduces himself
-        window.setTimeout(() => pushDoremon("greeting", GREETING), 1600);
-      }
     });
-  }, [conversationId, remote, pushDoremon]);
+  }, [conversationId, remote]);
 
   /* --------------------------------------------------------- the watcher */
   const humanMessages = messages.filter((m) => m.author === "me" || m.author === "them");
@@ -148,13 +133,9 @@ export function useDoremon(
       analysis = localAnalyze(recent, memoryRef.current);
     }
 
+    // He only *listens* now: the record updates silently so a later /doremon
+    // is still sharp. He no longer speaks up on his own — ever.
     commitMemory(analysis.memory);
-
-    if (analysis.interventionLine) {
-      pushDoremon("intervention", analysis.interventionLine);
-      const stamped: DoremonMemory = { ...analysis.memory, lastInterventionAt: Date.now() };
-      commitMemory(stamped);
-    }
     setWatching(false);
   };
 

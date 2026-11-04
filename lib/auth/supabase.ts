@@ -53,11 +53,21 @@ function mapError(message: string): AuthFailure {
  * account simply reads as public.
  */
 async function loadProfile(userId: string, email: string): Promise<Account> {
-  const { data, error } = await client()
-    .from("profiles")
-    .select("id, username, avatar_id, avatar_url, app_lock_hash")
-    .eq("id", userId)
-    .maybeSingle<ProfileRow>();
+  // Both queries fly in parallel — one network round-trip total, and the
+  // visibility one failing (migration 004 pending) can never break login.
+  const [main, vis] = await Promise.all([
+    client()
+      .from("profiles")
+      .select("id, username, avatar_id, avatar_url, app_lock_hash")
+      .eq("id", userId)
+      .maybeSingle<ProfileRow>(),
+    client()
+      .from("profiles")
+      .select("visibility")
+      .eq("id", userId)
+      .maybeSingle<{ visibility?: string | null }>(),
+  ]);
+  const { data, error } = main;
 
   if (error) throw mapError(error.message);
 
@@ -69,13 +79,7 @@ async function loadProfile(userId: string, email: string): Promise<Account> {
       .then(() => undefined, () => undefined);
   }
 
-  let visibility: string | null = null;
-  const vis = await client()
-    .from("profiles")
-    .select("visibility")
-    .eq("id", userId)
-    .maybeSingle<{ visibility?: string | null }>();
-  if (!vis.error) visibility = vis.data?.visibility ?? null;
+  const visibility: string | null = vis.error ? null : vis.data?.visibility ?? null;
 
   return {
     id: userId,

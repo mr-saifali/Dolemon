@@ -1,6 +1,6 @@
 /* Dolemon service worker — app shell cache so the app opens instantly and survives a dead network. */
 
-const VERSION = "dolemon-v0.1.0";
+const VERSION = "dolemon-v0.2.0";
 const SHELL = ["/", "/app", "/signin", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -36,19 +36,23 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
 
-  // pages: network first, cached copy when offline
+  // pages: STALE-WHILE-REVALIDATE — a cached shell opens instantly, the
+  // fresh copy lands in the background. The app is client-driven, so the
+  // cached HTML is safe and the real data always comes live over the network.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(VERSION).then((cache) => cache.put(request, copy)).catch(() => undefined);
-          return response;
-        })
-        .catch(async () => {
-          const cache = await caches.open(VERSION);
-          return (await cache.match(request)) || (await cache.match("/")) || Response.error();
-        })
+      caches.open(VERSION).then(async (cache) => {
+        const cached = await cache.match(request);
+        const network = fetch(request)
+          .then((response) => {
+            if (response && response.status === 200) {
+              cache.put(request, response.clone()).catch(() => undefined);
+            }
+            return response;
+          })
+          .catch(() => cached || (await cache.match("/")) || Response.error());
+        return cached || network;
+      })
     );
     return;
   }

@@ -414,24 +414,26 @@ function BubbleMeta({
 }
 
 /**
- * Telegram's tick ladder: one tick = sent, two = delivered, two in the accent
- * colour = read. When we know the exact read moment it's shown right after.
+ * The tick ladder: one tick = delivered, two ticks (accent) = seen.
+ * When we know the exact read moment it's shown right after.
  */
 function Ticks({ status, seenAt }: { status?: ChatMessage["status"]; seenAt?: number | null }) {
   if (status === "failed") return <AlertCircle className="h-3 w-3 text-red-300" aria-label="Not sent" />;
   if (status === "sending" || !status) return <Clock className="h-3 w-3 text-white/40" aria-label="Sending" />;
-  if (status === "sent") return <Check className="h-3 w-3 text-white/70" aria-label="Sent" />;
-  if (status === "delivered") return <CheckCheck className="h-3 w-3 text-white/70" aria-label="Delivered" />;
-  return (
-    <>
-      <CheckCheck className="h-3 w-3" style={{ color: "var(--accent)" }} aria-label="Read" />
-      {seenAt ? (
-        <span className="tabular-nums text-white/75" aria-label={`Read at ${clockTime(seenAt)}`}>
-          Read {clockTime(seenAt)}
-        </span>
-      ) : null}
-    </>
-  );
+  if (status === "read") {
+    return (
+      <>
+        <CheckCheck className="h-3 w-3" style={{ color: "var(--accent)" }} aria-label="Seen" />
+        {seenAt ? (
+          <span className="tabular-nums text-white/75" aria-label={`Seen at ${clockTime(seenAt)}`}>
+            Read {clockTime(seenAt)}
+          </span>
+        ) : null}
+      </>
+    );
+  }
+  // "sent" (the brief demo beat) and "delivered" both read as: one tick
+  return <Check className="h-3 w-3 text-white/70" aria-label="Delivered" />;
 }
 
 function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: number; mine: boolean }) {

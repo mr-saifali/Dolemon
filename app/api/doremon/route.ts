@@ -5,6 +5,7 @@ import {
   DOREMON_PERSONA,
   FINALIZE_INSTRUCTIONS,
   ROOM_ANALYST_INSTRUCTIONS,
+  compactTranscript,
   memoryForPrompt,
 } from "@/lib/doremon/persona";
 import { statsForPrompt, viewStats } from "@/lib/doremon/insights";
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const wantJson = body.action === "analyze" || body.action === "finalize";
-    const raw = await generateContent(key, model, system, user, wantJson);
+    const raw = await generateContent(key, model, system, user, wantJson, body.action);
     if (body.action === "analyze") {
       const parsed = parseJson(raw);
       if (!parsed) throw new Error("unparseable analysis");
@@ -88,10 +89,9 @@ export async function POST(req: NextRequest) {
 }
 
 function promptsFor(body: RequestBody): { system: string; user: string } {
-  const transcript = body.recent
-    .slice(-16)
-    .map((m) => `${m.who === "me" ? body.me : body.partner}: ${m.text}`)
-    .join("\n");
+  // Compressed LOCALLY (empties dropped, long lines clipped, last 12 kept)
+  // so we only spend tokens on signal before the API call.
+  const transcript = compactTranscript(body.recent, body.me, body.partner);
 
   const memoryBlock = memoryForPrompt(
     body.memory as Parameters<typeof memoryForPrompt>[0]
@@ -134,16 +134,28 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
   };
 }
 
+/**
+ * Per-action output budgets: cap the answer at the length the format needs.
+ * Smaller cap = faster first token, less spend, no run-on answers.
+ */
+const OUTPUT_CAPS: Record<string, number> = {
+  analyze: 500,
+  finalize: 450,
+  ask: 300,
+  roomAsk: 320,
+};
+
 async function generateContent(
   key: string,
   model: string,
   system: string,
   user: string,
-  wantJson: boolean
+  wantJson: boolean,
+  action: string
 ): Promise<string> {
   const generationConfig: Record<string, unknown> = {
     temperature: wantJson ? 0.3 : 0.9,
-    maxOutputTokens: wantJson ? 700 : 400,
+    maxOutputTokens: OUTPUT_CAPS[action] ?? 320,
   };
   if (wantJson) generationConfig.responseMimeType = "application/json";
 

@@ -234,6 +234,10 @@ export function useDoremon(
       let answer: string | null = null;
       if (remote && (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS)) {
         try {
+          // 12s hang-guard: one stalled call falls back locally without
+          // disabling Gemini for the next 10 minutes.
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 12_000);
           const res = await fetch("/api/doremon", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -245,18 +249,22 @@ export function useDoremon(
               memory: memoryRef.current,
               question,
             }),
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
           const data = (await res.json()) as { ok?: boolean; answer?: string };
           if (res.ok && data.ok && data.answer) answer = data.answer;
           else if (res.status === 503) geminiState = { down: true, since: Date.now() };
-        } catch {
-          geminiState = { down: true, since: Date.now() };
+        } catch (err) {
+          if (!(err instanceof DOMException && err.name === "AbortError")) {
+            geminiState = { down: true, since: Date.now() };
+          }
         }
       }
       if (!answer) answer = localAsk(question, memoryRef.current, recent);
 
-      // a short beat so it feels like he thought, not a parrot
-      await new Promise((r) => setTimeout(r, 700));
+      // a short beat so it feels like he thought, not a parrot — kept snappy
+      await new Promise((r) => setTimeout(r, 400));
       pushDoremon("answer", answer);
       setThinking(false);
     },

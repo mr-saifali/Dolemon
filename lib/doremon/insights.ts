@@ -208,10 +208,10 @@ export function dossierLines(
     lines.push(
       `${totalMsgs} baatein, ${sinceLabel(
         new Date(v.firstAt).toISOString()
-      )} se. Ab tak ki poori kahani maine pocket mein rakhi hai.`
+      )} se — aur har ek meri 4D memory mein hai. 22vi sadi ka robot, Nobita. 🐱`
     );
   } else if (memory?.summary) {
-    lines.push(`Is chat ka record mere paas hai — ab main wo yaad dilata hoon.`);
+    lines.push(`Ye chat ab nahi hai, par meri 4D memory mein poori zinda hai — wahi se sunao.`);
   }
 
   if (memory?.summary) {
@@ -407,15 +407,15 @@ export function localRoomAsk(
       return `Pehle tension giraao — koi naya topic uthao, purana wala mat chhoo. Raat ko, jab dono halka hote ho.`;
     }
     return pick([
-      `Sab theek chal raha hai. Agar kuch naya chahiye toh ek sawaal pucho jo 10 minute ki baat ban sake — main ek suggest karta hoon: "agar hum ek din ke liye phone chhod dein, toh pehli baat kya hogi?"`,
-      `Relation healthy hai. Ek chhota game khelein: aaj dono alag-alag ek "aaj ka best moment" bhejein — 2 minute mein 20 messages ban jayenge.`,
+      `Future-report: sab theek chal raha hai, Nobita. 🐱 Ek 10-minute ka deep sawaal uthao — "agar hum ek din phone chhod dein, pehli baat kya hogi?" Maine future mein dekha, isse kaam karta hai. 😌`,
+      `Relation healthy hai! Pocket se ek game: aaj dono alag-alag ek "aaj ka best moment" bhejo — 2 minute mein 20 messages. Main referee. 🐱`,
     ]);
   }
   if (/(chhod|avoid|door|door pe|ghar se)/.test(q)) {
     if (v.them && v.themPerDay != null && v.themPerDay < 1 && (v.mePerDay ?? 0) > 2) {
-      return `Haan, ${partnerName} pichhle 14 din mein ~${round1(v.themPerDay)}/din karke bol rahe hai — tumhare ~${round1(v.mePerDay)} ke muqable. Door hain ya busy, ye toh wo hi bata sakta hai. Tum apni taraf se thoda space bhi do.`;
+      return `Time Machine se dekh liya — ${partnerName} pichhle 14 din mein ~${round1(v.themPerDay)}/din bol rahe hai, tum ~${round1(v.mePerDay)}. Door hain ya busy, ye toh wo hi bata sakta hai. Tum bhi thoda space do, Nobita. 🐱`;
     }
-    return `Avoid karne ka pattern abhi nahi dikhta — numbers normal hain.`;
+    return `Avoid ka pattern abhi nahi dikhta — numbers clean hain. Future mein bhi yahi dikha. 😌`;
   }
 
   // fallback — offer what he knows
@@ -423,9 +423,9 @@ export function localRoomAsk(
   if (memory?.summary) known.push(memory.summary);
   if (v.me && v.them) known.push(`tum ${Math.round((v.meShare ?? 0) * 100)}% baatein, ${partnerName} ${100 - Math.round((v.meShare ?? 0) * 100)}%`);
   return (
-    `Suna, main is chat ka poori tarah record rakhunga — memories, timing, moods, ladaiyan, sab. ${
+    `Arre, main is chat ka 4D memory mein poora record rakhta hoon — memories, timing, moods, ladaiyan, sab. ${
       known.length ? "Abhi tak: " + known.join(" · ") + ". " : ""
-    }Tum mujhse koi bhi inmein se poochh sakte ho: "kab zyada bolta hai", "who talks more", "what happens next".`
+    }Mujhse kuch bhi poochh: "kab zyada bolta hai", "who talks more", "what happens next". Future-grade answers, guaranteed. 🐱`
   );
 }
 
@@ -456,8 +456,8 @@ export function localFinalize(
 
   const silent = v.silentFor != null && v.silentFor > MS_DAY ? `, ${silenceLabel(v.silentFor)} ki khamoshi ke saath` : "";
   const note = pick([
-    `Bas, ab is baat ka full record mere pocket mein hai${silent}. Jab bhi wapas aao ya ${partnerName} wapas likhe, main pehla line se jaanta hoon.`,
-    `Ye session band${silent} — maine sab save kar liya hai: moods, timings, tumhari har pattern. Kuch poochhna ho toh meri room mein mil lena.`,
+    `Bas, is session ka poora record meri 4D memory mein${silent}. 22vi sadi ka robot, Nobita — main pehli line se jaanta hoon. Wapas aao, sab yaad hai. 🐱`,
+    `Ye session band${silent} — moods, timings, har pattern, sab future-grade save ho gaya. Kuch poochhna ho toh meri room mein mil lena. 😌`,
   ]);
   return { summary, note };
 }

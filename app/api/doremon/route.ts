@@ -88,7 +88,8 @@ export async function GET() {
     if (error instanceof GeminiKeyError) {
       pingCache = { at: now, body: { ok: false, error: "BAD_KEY", detail: msg.slice(0, 200) }, status: 401 };
     } else if (error instanceof GeminiModelError) {
-      pingCache = { at: now, body: { ok: false, error: "MODEL", detail: msg.slice(0, 200) }, status: 502 };
+      // longer slice: the [model list: …] diagnostic note is appended last
+      pingCache = { at: now, body: { ok: false, error: "MODEL", detail: msg.slice(0, 320) }, status: 502 };
     } else {
       pingCache = { at: now, body: { ok: false, error: "NETWORK", detail: msg.slice(0, 120) }, status: 502 };
     }
@@ -243,16 +244,16 @@ function modelChain(configured: string): string[] {
 /* flash models THIS key can use, and try the newest of those.         */
 /* ------------------------------------------------------------------ */
 
-let modelListCache: { at: number; models: string[] } | null = null;
+let modelListCache: { at: number; usable: string[]; total: number } | null = null;
 
 function modelVersion(id: string): number {
   const m = id.match(/gemini-([\d.]+)/);
   return m ? parseFloat(m[1]) : 0;
 }
 
-async function discoverFlashModels(key: string): Promise<string[]> {
+async function discoverModels(key: string): Promise<{ usable: string[]; total: number }> {
   const now = Date.now();
-  if (modelListCache && now - modelListCache.at < 10 * 60_000) return modelListCache.models;
+  if (modelListCache && now - modelListCache.at < 10 * 60_000) return modelListCache;
   const url = new URL("https://generativelanguage.googleapis.com/v1beta/models");
   url.searchParams.set("key", key);
   url.searchParams.set("pageSize", "100");
@@ -266,22 +267,29 @@ async function discoverFlashModels(key: string): Promise<string[]> {
   const data = (await res.json()) as {
     models?: { name?: string; supportedGenerationMethods?: string[] }[];
   };
-  // Plain text-flash models first (gemini-2.5-flash), then variants
-  // (…-flash-image, …-flash-native-audio) — same version, wrong job.
+  const all = data.models ?? [];
+  // Ranking: plain flash (gemini-X-flash) → flash variants → any other
+  // text-capable gemini model. Media/embed/preview/live models are excluded
+  // (wrong job for chat). If Google has renamed everything, the third tier
+  // still finds a model that can answer.
   const exact: string[] = [];
-  const variants: string[] = [];
-  for (const m of data.models ?? []) {
+  const flashVariants: string[] = [];
+  const anyText: string[] = [];
+  for (const m of all) {
     const id = (m.name ?? "").replace(/^models\//, "");
-    if (!/flash/.test(id)) continue;
+    if (!/^gemini-/.test(id)) continue;
     if (!(m.supportedGenerationMethods ?? []).includes("generateContent")) continue;
+    if (/image|video|audio|tts|embed|preview|live|realtime/i.test(id)) continue;
     if (/^gemini-[\d.]+-flash$/.test(id)) exact.push(id);
-    else variants.push(id);
+    else if (/flash/.test(id)) flashVariants.push(id);
+    else anyText.push(id);
   }
   const byNewest = (a: string, b: string) => modelVersion(b) - modelVersion(a);
   exact.sort(byNewest);
-  variants.sort(byNewest);
-  modelListCache = { at: now, models: [...exact, ...variants].slice(0, 5) };
-  return modelListCache.models;
+  flashVariants.sort(byNewest);
+  anyText.sort(byNewest);
+  modelListCache = { at: now, usable: [...exact, ...flashVariants, ...anyText].slice(0, 6), total: all.length };
+  return modelListCache;
 }
 
 /** One attempt against one model — classifies Google's failure precisely. */
@@ -376,14 +384,19 @@ async function generateContent(
   }
 
   // Every known model name 404'd — Google has renamed/retired them. Ask
-  // which flash models THIS key can actually use, and try the newest.
+  // which models THIS key can actually use, and try the best of those.
   if (lastError instanceof GeminiModelError) {
     let discovered: string[] = [];
+    let listNote: string;
     try {
-      discovered = await discoverFlashModels(key);
+      const listing = await discoverModels(key);
+      discovered = listing.usable;
+      listNote = `model list: ${listing.total} returned / ${listing.usable.length} usable${
+        discovered.length ? ` [tried: ${discovered.slice(0, 3).join(", ")}]` : ""
+      }`;
     } catch (err) {
       if (err instanceof GeminiKeyError) throw err;
-      // the listing call itself failed — keep the original model error
+      listNote = `model list failed: ${err instanceof Error ? err.message.slice(0, 100) : "unknown"}`;
     }
     for (const model of discovered.slice(0, 3)) {
       if (tried.has(model)) continue;
@@ -400,6 +413,8 @@ async function generateContent(
         lastError = err as Error;
       }
     }
+    // the final error tells exactly what discovery saw — no more guessing
+    throw new GeminiModelError(`${lastError.message} [${listNote}]`);
   }
 
   throw lastError ?? new Error("no models available");

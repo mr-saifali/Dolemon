@@ -27,6 +27,7 @@ import type { DoremonMemory, DoremonStats } from "@/lib/doremon/types";
  */
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 type RequestBody = {
@@ -87,6 +88,37 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Diagnostic: ?probe=1 fires a tiny generateContent at the top usable
+  // models and returns the RAW response, so we can see the exact shape
+  // (parts, finishReason, block reasons) without guessing.
+  if (new URL(req.url).searchParams.get("probe") === "1") {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
+    try {
+      const listing = await discoverModels(key);
+      const results: Record<string, unknown>[] = [];
+      for (const model of listing.usable.slice(0, 2)) {
+        const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
+        url.searchParams.set("key", key);
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "Reply with exactly one word." }] }],
+            generationConfig: { temperature: 0.9, maxOutputTokens: 256 },
+          }),
+          cache: "no-store",
+        });
+        const raw = (await res.text()).slice(0, 600);
+        results.push({ model, status: res.status, raw });
+      }
+      return NextResponse.json({ ok: true, results });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ ok: false, error: error instanceof GeminiKeyError ? "BAD_KEY" : "ERROR", detail: msg.slice(0, 240) }, { status: 502 });
+    }
+  }
+
   const now = Date.now();
   if (pingCache && now - pingCache.at < 60_000) {
     return NextResponse.json(pingCache.body, { status: pingCache.status });
@@ -109,7 +141,7 @@ export async function GET(req: NextRequest) {
       // longer slice: the [model list: …] diagnostic note is appended last
       pingCache = { at: now, body: { ok: false, error: "MODEL", detail: msg.slice(0, 320) }, status: 502 };
     } else {
-      pingCache = { at: now, body: { ok: false, error: "NETWORK", detail: msg.slice(0, 120) }, status: 502 };
+      pingCache = { at: now, body: { ok: false, error: "NETWORK", detail: msg.slice(0, 220) }, status: 502 };
     }
   }
   return NextResponse.json(pingCache.body, { status: pingCache.status });
@@ -233,8 +265,8 @@ const OUTPUT_CAPS: Record<string, number> = {
   roomAsk: 320,
   /** three lines, ~150 chars each */
   daily: 480,
-  /** liveness probe — one word */
-  ping: 8,
+  /** liveness probe — one word (headroom for 3.x thinking models) */
+  ping: 64,
 };
 
 /* ------------------------------------------------------------------ */
@@ -310,6 +342,16 @@ async function discoverModels(key: string): Promise<{ usable: string[]; total: n
   return modelListCache;
 }
 
+/** A failure meaning "this model can't do it" — the chain should try the next. */
+function isModelLevelError(err: unknown): boolean {
+  if (err instanceof GeminiModelError) return true;
+  if (err instanceof Error) {
+    if (/^gemini 429/.test(err.message)) return true; // per-model quota
+    if (/^empty completion/.test(err.message)) return true; // 200 but nothing visible
+  }
+  return false;
+}
+
 /** One attempt against one model — classifies Google's failure precisely. */
 async function callGemini(
   key: string,
@@ -364,11 +406,23 @@ async function callGemini(
   }
 
   const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+    promptFeedback?: { blockReason?: string };
   };
-  const parts = data.candidates?.[0]?.content?.parts ?? [];
-  const text = parts.map((p) => p.text ?? "").join("").trim();
-  if (!text) throw new Error("empty completion");
+  const cand = data.candidates?.[0];
+  const parts = cand?.content?.parts ?? [];
+  // Gemini 3.x streams its reasoning as parts flagged `thought: true` —
+  // those are internal, never part of the answer.
+  const text = parts.filter((p) => !p.thought).map((p) => p.text ?? "").join("").trim();
+  if (!text) {
+    const block = data.promptFeedback?.blockReason;
+    const detail = block
+      ? `safety-blocked (${block})`
+      : parts.length
+        ? `no visible text in ${parts.length} part(s), finish=${cand?.finishReason ?? "?"}`
+        : `no candidates, finish=${cand?.finishReason ?? "none"}${block ? `, block=${block}` : ""}`;
+    throw new Error(`empty completion (${model}): ${detail}`);
+  }
   return text;
 }
 
@@ -394,9 +448,7 @@ async function generateContent(
       return text;
     } catch (err) {
       if (err instanceof GeminiKeyError) throw err;
-      const isModelProblem = err instanceof GeminiModelError;
-      const isQuota = err instanceof Error && /^gemini 429/.test(err.message);
-      if (!isModelProblem && !isQuota) throw err;
+      if (!isModelLevelError(err)) throw err;
       lastError = err as Error;
     }
   }
@@ -425,9 +477,7 @@ async function generateContent(
         return text;
       } catch (err) {
         if (err instanceof GeminiKeyError) throw err;
-        const isModelProblem = err instanceof GeminiModelError;
-        const isQuota = err instanceof Error && /^gemini 429/.test(err.message);
-        if (!isModelProblem && !isQuota) throw err;
+        if (!isModelLevelError(err)) throw err;
         lastError = err as Error;
       }
     }

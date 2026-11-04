@@ -12,6 +12,7 @@ import {
   saveDoremonMessages,
 } from "./memory";
 import { localFinalize, viewStats } from "./insights";
+import { OFFLINE_NOTICE } from "./offline";
 import type { DoremonAnalysis, DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
 
@@ -261,7 +262,16 @@ export function useDoremon(
           }
         }
       }
-      if (!answer) answer = localAsk(question, memoryRef.current, recent);
+      if (!answer) {
+        if (remote) {
+          // No canned demo answers in remote mode — an honest status instead,
+          // so Doremon never parrots a scripted line while his brain is down.
+          answer = OFFLINE_NOTICE;
+        } else {
+          // Pure demo mode (no backend at all): the pocket brain IS the brain.
+          answer = localAsk(question, memoryRef.current, recent);
+        }
+      }
 
       // a short beat so it feels like he thought, not a parrot — kept snappy
       await new Promise((r) => setTimeout(r, 400));

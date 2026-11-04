@@ -53,6 +53,49 @@ const ok = (payload: unknown) => NextResponse.json(payload);
  *  failure from "unreachable". The client can then say *why* the brain is down. */
 class GeminiKeyError extends Error {}
 
+/** The key is fine, but THIS MODEL isn't available to it (404 "model is not
+ *  found for API key"). The model chain walks past these. */
+class GeminiModelError extends Error {}
+
+/* ------------------------------------------------------------------ */
+/* GET /api/doremon — the brain self-check.                           */
+/* A 1-token call that answers: is there a key, does Google accept it,*/
+/* and is the network open? The room header chip uses it on mount so  */
+/* the status is true BEFORE the first question, and it is the way to */
+/* verify a deployed key in seconds. Cached 60s so opening the room   */
+/* repeatedly does not burn tokens.                                   */
+/* ------------------------------------------------------------------ */
+
+let pingCache: { at: number; body: Record<string, unknown>; status: number } | null = null;
+
+export async function GET() {
+  const now = Date.now();
+  if (pingCache && now - pingCache.at < 60_000) {
+    return NextResponse.json(pingCache.body, { status: pingCache.status });
+  }
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
+  }
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  try {
+    await generateContent(key, model, "You are a liveness probe. Reply with exactly one word.", "ping", false, "ping");
+    // report the model the key actually proved out on (may differ from the
+    // configured one when the key is scoped to a different flash model)
+    pingCache = { at: now, body: { ok: true, model: provenModel ?? model }, status: 200 };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (error instanceof GeminiKeyError) {
+      pingCache = { at: now, body: { ok: false, error: "BAD_KEY", detail: msg.slice(0, 200) }, status: 401 };
+    } else if (error instanceof GeminiModelError) {
+      pingCache = { at: now, body: { ok: false, error: "MODEL", detail: msg.slice(0, 200) }, status: 502 };
+    } else {
+      pingCache = { at: now, body: { ok: false, error: "NETWORK", detail: msg.slice(0, 120) }, status: 502 };
+    }
+  }
+  return NextResponse.json(pingCache.body, { status: pingCache.status });
+}
+
 export async function POST(req: NextRequest) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
@@ -98,7 +141,11 @@ export async function POST(req: NextRequest) {
       // The key was read but Google refused it — tell the client exactly that.
       return NextResponse.json({ ok: false, error: "BAD_KEY", detail: msg.slice(0, 200) }, { status: 401 });
     }
-    return NextResponse.json({ ok: false, error: "GEMINI" }, { status: 502 });
+    if (error instanceof GeminiModelError) {
+      // Key is fine but none of the flash models in the chain are allowed to it.
+      return NextResponse.json({ ok: false, error: "MODEL", detail: msg.slice(0, 200) }, { status: 502 });
+    }
+    return NextResponse.json({ ok: false, error: "GEMINI", detail: msg.slice(0, 200) }, { status: 502 });
   }
 }
 
@@ -167,9 +214,30 @@ const OUTPUT_CAPS: Record<string, number> = {
   roomAsk: 320,
   /** three lines, ~150 chars each */
   daily: 480,
+  /** liveness probe — one word */
+  ping: 8,
 };
 
-async function generateContent(
+/* ------------------------------------------------------------------ */
+/* Model chain — AI Studio keys can be scoped to specific models, so  */
+/* a key that works on gemini-2.0-flash 404s on gemini-2.5-flash.     */
+/* Walk the chain instead of going dark, and remember the first model */
+/* the key proves it works on.                                        */
+/* ------------------------------------------------------------------ */
+
+const MODEL_FALLBACKS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+let provenModel: string | null = null;
+
+function modelChain(configured: string): string[] {
+  const chain: string[] = [];
+  for (const m of [provenModel, configured, ...MODEL_FALLBACKS]) {
+    if (m && !chain.includes(m)) chain.push(m);
+  }
+  return chain;
+}
+
+/** One attempt against one model — classifies Google's failure precisely. */
+async function callGemini(
   key: string,
   model: string,
   system: string,
@@ -202,15 +270,23 @@ async function generateContent(
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    const looksLikeKeyProblem =
+    const text = (await res.text().catch(() => "")).slice(0, 200);
+    const msg = `gemini ${res.status} (${model}): ${text}`;
+    // "models/X is not found for API key (id: …)" — the KEY is fine, the
+    // MODEL isn't allowed to it. Checked BEFORE the key patterns, because
+    // that message also contains the words "API key".
+    if (res.status === 404 || /is not found for api key|model.*not found|not_found/i.test(text)) {
+      throw new GeminiModelError(msg);
+    }
+    if (
       res.status === 400 ||
       res.status === 401 ||
       res.status === 403 ||
-      /api key|api_key|APIKeyInvalid|INVALID_KEY|PERMISSION_DENIED|not valid|bad key/i.test(text);
-    const err = new Error(`gemini ${res.status}: ${text.slice(0, 200)}`);
-    if (looksLikeKeyProblem) throw new GeminiKeyError(err.message);
-    throw err;
+      /api key not valid|api_key_invalid|invalid_api_key|permission_denied/i.test(text)
+    ) {
+      throw new GeminiKeyError(msg);
+    }
+    throw new Error(msg);
   }
 
   const data = (await res.json()) as {
@@ -220,6 +296,36 @@ async function generateContent(
   const text = parts.map((p) => p.text ?? "").join("").trim();
   if (!text) throw new Error("empty completion");
   return text;
+}
+
+/**
+ * Walk the model chain: a scoped key that 404s on one flash model (or hits
+ * its per-model quota) moves to the next instead of going dark. A rejected
+ * key stops immediately — no point walking with a dead key.
+ */
+async function generateContent(
+  key: string,
+  configuredModel: string,
+  system: string,
+  user: string,
+  wantJson: boolean,
+  action: string
+): Promise<string> {
+  let lastError: Error | null = null;
+  for (const model of modelChain(configuredModel)) {
+    try {
+      const text = await callGemini(key, model, system, user, wantJson, action);
+      provenModel = model;
+      return text;
+    } catch (err) {
+      if (err instanceof GeminiKeyError) throw err;
+      const isModelProblem = err instanceof GeminiModelError;
+      const isQuota = err instanceof Error && /^gemini 429/.test(err.message);
+      if (!isModelProblem && !isQuota) throw err;
+      lastError = err as Error;
+    }
+  }
+  throw lastError ?? new Error("no models available");
 }
 
 /** Gemini sometimes wraps JSON in fences or prose — be forgiving. */

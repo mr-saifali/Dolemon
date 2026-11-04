@@ -147,19 +147,19 @@ export function localAsk(question: string, memory: DoremonMemory | null, recent:
   if (/mood|kaise feel|feeling|mood kya|vibe/i.test(q)) return moodRead(memory);
 
   const firstNote = memory && memory.notes.length > 0 ? memory.notes[0] : null;
-  const flavor = firstNote ? ` (haan, maine yaad rakha hai: ${firstNote})` : "";
+  const flavor = firstNote ? ` (haan, 22vi sadi ka robot hai, main yaad nahi bhoolta: ${firstNote})` : "";
   return pick([
-    `Suna? Doremon pocket mein sab sun raha tha. Ek baat — dono ke beech ka space chhota hai, isliye sab suna deta hai. Usi space mein aaj thodi khairi karo. Main yahan hoon. 🐱${flavor}`,
-    `Arre, theek pucha. ${memory?.summary ? `Tumhara scene: ${memory.summary} ` : ""}Mera mashwara: aaj ek chhoti si baat bina phone ke karo — call bhi chalegi, walk bhi. Chhoti cheezein hi yeh do logon ko jode rakhti hain. 😌`,
-    `Suna, Doremon ki report: ${memory?.conflictTopics[0] ? `jab baat "${memory.conflictTopics[0]}" ki hoti hai, wahan se 9/10 tension aati hai. ` : ""}Isliye rule simple hai — pehle sunna, phir kehna. Aur haan, main hamesha dekh raha hoon. 🐱`,
+    `Arre Nobita! 🐱 Main toh 22vi sadi se yahan hoon, future mein hazaron couples dekhe hain — aur main teri har baat pocket mein rakhta hoon. Aaj ek chhoti si khairi baat kar do, main dekh raha hoon. 😌${flavor}`,
+    `Theek pucha, genius hai tu. ${memory?.summary ? `Scene yeh hai: ${memory.summary} ` : ""}Mera future-report: aaj ek chhoti baat bina phone ke karo — call bhi chalegi, walk bhi. Yehi chhoti cheezein do logon ko jode rakhti hain. 🐱`,
+    `Time Machine se check kar liya! 🐱 ${memory?.conflictTopics[0] ? `Jab baat "${memory.conflictTopics[0]}" ki hoti hai, wahan se 9/10 tension aati hai — maine future mein yahi pattern dekha hai. ` : ""}Rule simple hai — pehle sunna, phir kehna. Main hamesha dekh raha hoon. 😌`,
   ]);
 }
 
 function checkIn(memory: DoremonMemory | null): string {
   if (!memory || (!memory.summary && memory.notes.length === 0)) {
     return pick([
-      "Arre, naya scene hai! Main abhi se tumhari har baat sununga aur pocket mein record karunga. Kuch poochhna ho toh bas /doremon likh de. 🐱",
-      "Pocket check! Abhi notes kam hain, kyunki conversation naya hai. Thodi baatein hongi toh main dono ke mood, ladai, deep baatein — sab yaad karunga. /doremon + sawaal, kabhi bhi. 😌",
+      "Arre, naya scene hai! 🐱 Main 22vi sadi ka robot hoon — abhi se tumhari har baat meri 4D memory mein record hogi. Kuch poochhna ho toh bas /doremon likh de, Nobita. 😌",
+      "Pocket check! Abhi notes kam hain, kyunki conversation naya hai. Thodi baatein hongi toh main dono ke mood, ladai, deep baatein — sab future-grade precision se yaad karunga. /doremon + sawaal, kabhi bhi. 🐱",
     ]);
   }
   const parts: string[] = [];
@@ -169,10 +169,10 @@ function checkIn(memory: DoremonMemory | null): string {
   if (memory.deepTopics.length)
     parts.push(`Aur jab dil se baat hoti hai toh: ${memory.deepTopics.slice(0, 2).join(", ")}.`);
   parts.push(`Ajab tak ${memory.fightCount} baar tension, ${memory.deepTalkCount} baar dil ki baat.`);
-  return `Report ready, suno. 🐱 ${parts.join(" ")} ${
+  return `Future-report ready, suno. 🐱 ${parts.join(" ")} ${
     memory.fightCount > 2
-      ? "Ek chhota sa pattern hai — tension ke waqt 10 minute ka break le lo, kaam karta hai. Main dekh raha hoon. 😌"
-      : "Vibe achha chal raha hai, yahi chalta raho. 😌"
+      ? "Ek clear pattern hai — future mein yahi loop phirta hai jab 10 minute ka break nahi milta. Tension ke waqt gap lo. Main dekh raha hoon. 😌"
+      : "Vibe achha chal raha hai — Time Machine se dekhne par future bright dikha. Yahi chalta raho. 😌"
   }`;
 }
 

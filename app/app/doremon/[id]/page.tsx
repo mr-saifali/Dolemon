@@ -150,15 +150,22 @@ function Room({ conversationId }: { conversationId: string }) {
       const q = raw.trim();
       if (!q || !data || thinking) return;
       const partner = data.partnerName;
-      const recent = data.recent.slice(-16).map((m) => ({
-        who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
-        text: m.body || mediaLabel(m),
-      }));
+      // token discipline: presence/system rows are noise, not conversation
+      const recent = data.recent
+        .filter((m) => m.kind !== "presence")
+        .slice(-16)
+        .map((m) => ({
+          who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
+          text: m.body || mediaLabel(m),
+        }));
 
       setThinking(true);
       let answer: string | null = null;
       if (REMOTE) {
         try {
+          // 12s hang-guard: if Gemini stalls, fall back to the local brain
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 12_000);
           const res = await fetch("/api/doremon", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -173,7 +180,9 @@ function Room({ conversationId }: { conversationId: string }) {
               stats: data.stats,
               question: q,
             }),
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
           const out = (await res.json()) as { ok?: boolean; answer?: string };
           if (res.ok && out.ok && out.answer) answer = out.answer;
         } catch {
@@ -182,8 +191,8 @@ function Room({ conversationId }: { conversationId: string }) {
       }
       if (!answer) answer = localRoomAsk(q, view, data.memory, partner);
 
-      // a short beat so it reads as thought, not a parrot
-      await new Promise((r) => setTimeout(r, 500));
+      // a short beat so it reads as thought, not a parrot — kept snappy
+      await new Promise((r) => setTimeout(r, 250));
       setThinking(false);
       persistTurn(q, answer);
     },
@@ -250,7 +259,7 @@ function Room({ conversationId }: { conversationId: string }) {
             <ul className="space-y-1.5">
               {dossier.length === 0 ? (
                 <li className="text-[13px] leading-relaxed text-zinc-400">
-                  Is chat ka record abhi ban nahi paaya — pehle thodi baat hoti hai, phir main har line, har timing, har mood pocket mein rakh lunga.
+                  Is chat ka record abhi meri 4D memory mein nahi banta — pehle thodi baat hoti hai. Phir har line, har timing, har mood, future-grade precision se yaad rahega. 🐱
                 </li>
               ) : (
                 dossier.map((line, i) => (

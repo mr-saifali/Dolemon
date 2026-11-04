@@ -68,7 +68,25 @@ class GeminiModelError extends Error {}
 
 let pingCache: { at: number; body: Record<string, unknown>; status: number } | null = null;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Diagnostic: ?models=1 returns the raw model catalog Google exposes for
+  // this key, so we can see exactly what names exist without guessing.
+  if (new URL(req.url).searchParams.get("models") === "1") {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
+    try {
+      const listing = await discoverModels(key);
+      return NextResponse.json({
+        ok: true,
+        total: listing.total,
+        usable: listing.usable,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ ok: false, error: error instanceof GeminiKeyError ? "BAD_KEY" : "ERROR", detail: msg.slice(0, 240) }, { status: 502 });
+    }
+  }
+
   const now = Date.now();
   if (pingCache && now - pingCache.at < 60_000) {
     return NextResponse.json(pingCache.body, { status: pingCache.status });

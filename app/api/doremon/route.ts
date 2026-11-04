@@ -44,6 +44,10 @@ type RequestBody = {
 
 const ok = (payload: unknown) => NextResponse.json(payload);
 
+/** Google rejected the API key itself (400/401/403) — a different, diagnosable
+ *  failure from "unreachable". The client can then say *why* the brain is down. */
+class GeminiKeyError extends Error {}
+
 export async function POST(req: NextRequest) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
@@ -83,7 +87,12 @@ export async function POST(req: NextRequest) {
     }
     return ok({ ok: true, answer: raw.slice(0, 1400) });
   } catch (error) {
-    console.error("[doremon] gemini failure:", error instanceof Error ? error.message : error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[doremon] gemini failure:", msg);
+    if (error instanceof GeminiKeyError) {
+      // The key was read but Google refused it — tell the client exactly that.
+      return NextResponse.json({ ok: false, error: "BAD_KEY", detail: msg.slice(0, 200) }, { status: 401 });
+    }
     return NextResponse.json({ ok: false, error: "GEMINI" }, { status: 502 });
   }
 }
@@ -179,7 +188,14 @@ async function generateContent(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`gemini ${res.status}: ${text.slice(0, 200)}`);
+    const looksLikeKeyProblem =
+      res.status === 400 ||
+      res.status === 401 ||
+      res.status === 403 ||
+      /api key|api_key|APIKeyInvalid|INVALID_KEY|PERMISSION_DENIED|not valid|bad key/i.test(text);
+    const err = new Error(`gemini ${res.status}: ${text.slice(0, 200)}`);
+    if (looksLikeKeyProblem) throw new GeminiKeyError(err.message);
+    throw err;
   }
 
   const data = (await res.json()) as {

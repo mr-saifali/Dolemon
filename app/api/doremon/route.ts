@@ -236,6 +236,54 @@ function modelChain(configured: string): string[] {
   return chain;
 }
 
+/* ------------------------------------------------------------------ */
+/* Model discovery — Google retires and renames models, so a hardcoded */
+/* chain can 404 even with a perfect key. When the static chain fails  */
+/* with "model not found", ask Google which generateContent-capable    */
+/* flash models THIS key can use, and try the newest of those.         */
+/* ------------------------------------------------------------------ */
+
+let modelListCache: { at: number; models: string[] } | null = null;
+
+function modelVersion(id: string): number {
+  const m = id.match(/gemini-([\d.]+)/);
+  return m ? parseFloat(m[1]) : 0;
+}
+
+async function discoverFlashModels(key: string): Promise<string[]> {
+  const now = Date.now();
+  if (modelListCache && now - modelListCache.at < 10 * 60_000) return modelListCache.models;
+  const url = new URL("https://generativelanguage.googleapis.com/v1beta/models");
+  url.searchParams.set("key", key);
+  url.searchParams.set("pageSize", "100");
+  const res = await fetch(url, { method: "GET", cache: "no-store" });
+  if (!res.ok) {
+    const text = (await res.text().catch(() => "")).slice(0, 200);
+    const msg = `gemini ${res.status} (model list): ${text}`;
+    if (res.status === 400 || res.status === 401 || res.status === 403) throw new GeminiKeyError(msg);
+    throw new Error(msg);
+  }
+  const data = (await res.json()) as {
+    models?: { name?: string; supportedGenerationMethods?: string[] }[];
+  };
+  // Plain text-flash models first (gemini-2.5-flash), then variants
+  // (…-flash-image, …-flash-native-audio) — same version, wrong job.
+  const exact: string[] = [];
+  const variants: string[] = [];
+  for (const m of data.models ?? []) {
+    const id = (m.name ?? "").replace(/^models\//, "");
+    if (!/flash/.test(id)) continue;
+    if (!(m.supportedGenerationMethods ?? []).includes("generateContent")) continue;
+    if (/^gemini-[\d.]+-flash$/.test(id)) exact.push(id);
+    else variants.push(id);
+  }
+  const byNewest = (a: string, b: string) => modelVersion(b) - modelVersion(a);
+  exact.sort(byNewest);
+  variants.sort(byNewest);
+  modelListCache = { at: now, models: [...exact, ...variants].slice(0, 5) };
+  return modelListCache.models;
+}
+
 /** One attempt against one model — classifies Google's failure precisely. */
 async function callGemini(
   key: string,
@@ -312,6 +360,7 @@ async function generateContent(
   action: string
 ): Promise<string> {
   let lastError: Error | null = null;
+  const tried = new Set(modelChain(configuredModel));
   for (const model of modelChain(configuredModel)) {
     try {
       const text = await callGemini(key, model, system, user, wantJson, action);
@@ -325,6 +374,34 @@ async function generateContent(
       lastError = err as Error;
     }
   }
+
+  // Every known model name 404'd — Google has renamed/retired them. Ask
+  // which flash models THIS key can actually use, and try the newest.
+  if (lastError instanceof GeminiModelError) {
+    let discovered: string[] = [];
+    try {
+      discovered = await discoverFlashModels(key);
+    } catch (err) {
+      if (err instanceof GeminiKeyError) throw err;
+      // the listing call itself failed — keep the original model error
+    }
+    for (const model of discovered.slice(0, 3)) {
+      if (tried.has(model)) continue;
+      tried.add(model);
+      try {
+        const text = await callGemini(key, model, system, user, wantJson, action);
+        provenModel = model;
+        return text;
+      } catch (err) {
+        if (err instanceof GeminiKeyError) throw err;
+        const isModelProblem = err instanceof GeminiModelError;
+        const isQuota = err instanceof Error && /^gemini 429/.test(err.message);
+        if (!isModelProblem && !isQuota) throw err;
+        lastError = err as Error;
+      }
+    }
+  }
+
   throw lastError ?? new Error("no models available");
 }
 

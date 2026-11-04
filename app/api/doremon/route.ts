@@ -60,11 +60,11 @@ class GeminiModelError extends Error {}
 
 /* ------------------------------------------------------------------ */
 /* GET /api/doremon — the brain self-check.                           */
-/* A 1-token call that answers: is there a key, does Google accept it,*/
-/* and is the network open? The room header chip uses it on mount so  */
-/* the status is true BEFORE the first question, and it is the way to */
-/* verify a deployed key in seconds. Cached 60s so opening the room   */
-/* repeatedly does not burn tokens.                                   */
+/* A FREE model-catalog call (zero generateContent tokens) that       */
+/* answers: is there a key, does Google accept it, and does it see    */
+/* usable models? The room header chip uses it on mount so the status */
+/* is true BEFORE the first question; the first real answer remains   */
+/* the ground truth and updates the chip. Cached 60s.                 */
 /* ------------------------------------------------------------------ */
 
 let pingCache: { at: number; body: Record<string, unknown>; status: number } | null = null;
@@ -127,19 +127,27 @@ export async function GET(req: NextRequest) {
   if (!key) {
     return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
   }
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  // FREE probe: the model-catalog call authenticates the key and confirms
+  // usable models WITHOUT spending a single generateContent token. The old
+  // one-word probe cost one of the free tier's ~20 daily requests EVERY
+  // time a room opened — that alone could eat a third of the day's budget.
+  // The first real question remains the ground-truth test (the room's
+  // brain chip updates from it).
   try {
-    await generateContent(key, model, "You are a liveness probe. Reply with exactly one word.", "ping", false, "ping");
-    // report the model the key actually proved out on (may differ from the
-    // configured one when the key is scoped to a different flash model)
-    pingCache = { at: now, body: { ok: true, model: provenModel ?? model }, status: 200 };
+    const listing = await discoverModels(key);
+    if (listing.usable.length === 0) {
+      pingCache = {
+        at: now,
+        body: { ok: false, error: "MODEL", detail: `model list: ${listing.total} returned / 0 usable for this key` },
+        status: 502,
+      };
+    } else {
+      pingCache = { at: now, body: { ok: true, model: listing.usable[0] }, status: 200 };
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (error instanceof GeminiKeyError) {
       pingCache = { at: now, body: { ok: false, error: "BAD_KEY", detail: msg.slice(0, 200) }, status: 401 };
-    } else if (error instanceof GeminiModelError) {
-      // longer slice: the [model list: …] diagnostic note is appended last
-      pingCache = { at: now, body: { ok: false, error: "MODEL", detail: msg.slice(0, 320) }, status: 502 };
     } else {
       pingCache = { at: now, body: { ok: false, error: "NETWORK", detail: msg.slice(0, 220) }, status: 502 };
     }
@@ -265,8 +273,6 @@ const OUTPUT_CAPS: Record<string, number> = {
   roomAsk: 320,
   /** three lines, ~150 chars each */
   daily: 480,
-  /** liveness probe — one word (headroom for 3.x thinking models) */
-  ping: 64,
 };
 
 /* ------------------------------------------------------------------ */

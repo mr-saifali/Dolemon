@@ -23,6 +23,15 @@ const RETRY_AFTER_MS = 10 * 60_000;
 
 let geminiState: { down: boolean; since: number } = { down: false, since: 0 };
 
+/**
+ * The REAL (Gemini) analysis may run at most once per conversation per gap.
+ * The free tier's daily budget (~20 requests) must survive a whole day of
+ * chatting — between real analyses the local brain keeps the record fresh
+ * for free (silently, same as always).
+ */
+const ANALYZE_MIN_GAP_MS = 30 * 60_000;
+const lastGeminiAnalyze: Record<string, number> = {};
+
 export type DoremonStatus = "idle" | "watching" | "thinking";
 
 export function useDoremon(
@@ -212,8 +221,16 @@ export function useDoremon(
     if (recent.length === 0) return;
 
     let analysis: DoremonAnalysis | null = null;
-    if (remote && (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS)) {
+    // Budget discipline: one real analysis per gap — the rest of the time
+    // the local brain does the (silent) work for free.
+    const lastReal = lastGeminiAnalyze[conversationId] ?? 0;
+    if (
+      remote &&
+      (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS) &&
+      Date.now() - lastReal > ANALYZE_MIN_GAP_MS
+    ) {
       analysis = await geminiAnalyze(recent);
+      if (analysis) lastGeminiAnalyze[conversationId] = Date.now();
     }
     if (!analysis) {
       analysis = localAnalyze(recent, memoryRef.current);

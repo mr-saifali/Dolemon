@@ -386,14 +386,13 @@ function Room({ conversationId }: { conversationId: string }) {
     [data, view]
   );
 
-  // Doremon's daily briefing — once a day he re-reads the last 24 hours and
-  // writes what happened, what is happening, and what he sees coming. This is
-  // how he evolves: every day the record gets one more honest page.
-  useEffect(() => {
-    if (!data) return;
+  // Doremon's daily briefing — what happened, what's happening, what's coming.
+  // WRITTEN ONLY ON TAP (the Sunrise button): one deliberate call per day,
+  // never automatic. Opening the room no longer triggers any AI call.
+  const runDaily = useCallback(async () => {
+    if (!data || dailyBusy) return;
     const today = localDay();
     if (data.memory.dailyDay === today) return;
-    let alive = true;
     setDailyBusy(true);
     const dayAgo = Date.now() - 24 * 3600 * 1000;
     const yesterday = data.recent
@@ -403,51 +402,45 @@ function Room({ conversationId }: { conversationId: string }) {
         who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
         text: m.body || mediaLabel(m),
       }));
-    (async () => {
-      let text: string | null = null;
-      if (REMOTE) {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 12_000);
-          const res = await fetch("/api/doremon", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "daily",
-              me: myHandle,
-              partner: data.partnerName,
-              meId: data.meId,
-              partnerId: data.partnerId,
-              recent: [],
-              yesterday,
-              day: today,
-              memory: data.memory,
-              stats: data.stats,
-            }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          const out = (await res.json()) as { ok?: boolean; answer?: string };
-          if (res.ok && out.ok && out.answer) text = out.answer;
-        } catch {
-          // offline / timeout — his pocket brain still writes the day
-        }
+    let text: string | null = null;
+    if (REMOTE) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12_000);
+        const res = await fetch("/api/doremon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "daily",
+            me: myHandle,
+            partner: data.partnerName,
+            meId: data.meId,
+            partnerId: data.partnerId,
+            recent: [],
+            yesterday,
+            day: today,
+            memory: data.memory,
+            stats: data.stats,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        const out = (await res.json()) as { ok?: boolean; answer?: string };
+        if (res.ok && out.ok && out.answer) text = out.answer;
+      } catch {
+        // offline / timeout — his pocket brain still writes the day (free)
       }
-      if (!alive) return;
-      if (!text) text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
-      setDailyBusy(false);
-      // land the two daily fields on whatever the FRESHEST memory is
-      setData((prev) => (prev ? { ...prev, memory: { ...prev.memory, dailyDay: today, dailyBriefing: text } } : prev));
-      void saveDoremonMemory(
-        conversationId,
-        { ...(dataRef.current?.memory ?? data.memory), dailyDay: today, dailyBriefing: text },
-        REMOTE
-      );
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [data, conversationId, myHandle, view]);
+    }
+    if (!text) text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
+    setDailyBusy(false);
+    // land the two daily fields on whatever the FRESHEST memory is
+    setData((prev) => (prev ? { ...prev, memory: { ...prev.memory, dailyDay: today, dailyBriefing: text } } : prev));
+    void saveDoremonMemory(
+      conversationId,
+      { ...(dataRef.current?.memory ?? data.memory), dailyDay: today, dailyBriefing: text },
+      REMOTE
+    );
+  }, [data, dailyBusy, conversationId, myHandle, view]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -677,7 +670,17 @@ function Room({ conversationId }: { conversationId: string }) {
             </ul>
           </motion.div>
 
-          {/* Doremon's daily — what happened, what's happening, what's coming */}
+          {/* Doremon's daily — what happened, what's happening, what's coming.
+              Written only when tapped: one deliberate call per day, never hidden. */}
+          {data.memory.dailyDay !== localDay() && !dailyBusy && (
+            <button
+              onClick={() => void runDaily()}
+              className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-amber-200/15 bg-amber-400/[0.04] px-4 py-3 text-[12.5px] font-medium text-amber-200/90 transition-colors active:bg-amber-400/[0.08]"
+            >
+              <Sunrise className="h-4 w-4" strokeWidth={1.8} />
+              Write today&apos;s brief
+            </button>
+          )}
           {dailyBusy && (
             <div className="flex items-center gap-2.5 rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-3">
               <Sunrise className="h-4 w-4 animate-pulse-soft text-amber-300" strokeWidth={1.8} />

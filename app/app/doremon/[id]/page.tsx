@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Play, Send, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Play, Send, Sunrise, Volume2, VolumeX } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { DoremonFace } from "@/components/chat/doremon";
 import { authMode } from "@/lib/auth";
@@ -15,7 +15,13 @@ import {
   loadDoremonStats,
   saveDoremonMemory,
 } from "@/lib/doremon/memory";
-import { dossierLines, localRoomAsk, viewStats, type StatsView } from "@/lib/doremon/insights";
+import {
+  dossierLines,
+  localDailyBriefing,
+  localRoomAsk,
+  viewStats,
+  type StatsView,
+} from "@/lib/doremon/insights";
 import { emptyMemory, type DoremonMemory, type DoremonStats, type RoomTurn } from "@/lib/doremon/types";
 
 const REMOTE = authMode === "supabase";
@@ -36,6 +42,39 @@ function mediaLabel(m: DbMessage): string {
     default:
       return "…";
   }
+}
+
+/** Local date as "YYYY-MM-DD" — the day-stamp of Doremon's daily brief. */
+function localDay(now = new Date()): string {
+  const y = now.getFullYear();
+  const m = `${now.getMonth() + 1}`.padStart(2, "0");
+  const d = `${now.getDate()}`.padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** "2026-11-04" → "4 Nov" */
+function dayLabel(day: string): string {
+  const d = new Date(`${day}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return day;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+/** Split a briefing into its labelled lines; falls back to plain paragraphs. */
+function dailyLines(text: string): { label: string | null; body: string }[] {
+  const out: { label: string | null; body: string }[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(YESTERDAY|NOW|TOMORROW)\s*[—–-]\s*(.*)$/i);
+    if (m) {
+      out.push({ label: m[1].toUpperCase(), body: m[2] });
+    } else if (out.length > 0) {
+      out[out.length - 1].body += (out[out.length - 1].body ? " " : "") + line;
+    } else {
+      out.push({ label: null, body: line });
+    }
+  }
+  return out;
 }
 
 type Loaded = {
@@ -254,8 +293,11 @@ function Room({ conversationId }: { conversationId: string }) {
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
   const [brainState, setBrainState] = useState<BrainState>("unknown");
+  const [dailyBusy, setDailyBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const music = useRoomMusic();
+  const dataRef = useRef<Loaded | null>(null);
+  dataRef.current = data;
 
   // Demo mode never calls the API — his brain is the local one, by design.
   useEffect(() => {
@@ -314,6 +356,69 @@ function Room({ conversationId }: { conversationId: string }) {
     () => (data ? dossierLines(view, data.memory, data.partnerName) : []),
     [data, view]
   );
+
+  // Doremon's daily briefing — once a day he re-reads the last 24 hours and
+  // writes what happened, what is happening, and what he sees coming. This is
+  // how he evolves: every day the record gets one more honest page.
+  useEffect(() => {
+    if (!data) return;
+    const today = localDay();
+    if (data.memory.dailyDay === today) return;
+    let alive = true;
+    setDailyBusy(true);
+    const dayAgo = Date.now() - 24 * 3600 * 1000;
+    const yesterday = data.recent
+      .filter((m) => m.kind !== "presence" && m.at > dayAgo)
+      .slice(-12)
+      .map((m) => ({
+        who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
+        text: m.body || mediaLabel(m),
+      }));
+    (async () => {
+      let text: string | null = null;
+      if (REMOTE) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 12_000);
+          const res = await fetch("/api/doremon", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "daily",
+              me: myHandle,
+              partner: data.partnerName,
+              meId: data.meId,
+              partnerId: data.partnerId,
+              recent: [],
+              yesterday,
+              day: today,
+              memory: data.memory,
+              stats: data.stats,
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+          const out = (await res.json()) as { ok?: boolean; answer?: string };
+          if (res.ok && out.ok && out.answer) text = out.answer;
+        } catch {
+          // offline / timeout — his pocket brain still writes the day
+        }
+      }
+      if (!alive) return;
+      if (!text) text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
+      setDailyBusy(false);
+      // land the two daily fields on whatever the FRESHEST memory is
+      setData((prev) => (prev ? { ...prev, memory: { ...prev.memory, dailyDay: today, dailyBriefing: text } } : prev));
+      void saveDoremonMemory(
+        conversationId,
+        { ...(dataRef.current?.memory ?? data.memory), dailyDay: today, dailyBriefing: text },
+        REMOTE
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [data, conversationId, myHandle, view]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -530,6 +635,52 @@ function Room({ conversationId }: { conversationId: string }) {
               )}
             </ul>
           </motion.div>
+
+          {/* Doremon's daily — what happened, what's happening, what's coming */}
+          {dailyBusy && (
+            <div className="flex items-center gap-2.5 rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <Sunrise className="h-4 w-4 animate-pulse-soft text-amber-300" strokeWidth={1.8} />
+              <span className="text-[12.5px] text-zinc-400">Doremon is writing today&apos;s brief…</span>
+            </div>
+          )}
+          {data.memory.dailyBriefing && !dailyBusy && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.08 }}
+              className="rounded-[20px] border border-amber-200/10 bg-amber-400/[0.04] p-4"
+            >
+              <div className="mb-2.5 flex items-center gap-2">
+                <Sunrise className="h-3.5 w-3.5 text-amber-300" strokeWidth={1.8} />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200/90">
+                  My daily
+                </span>
+                {data.memory.dailyDay && (
+                  <span className="text-[11px] text-zinc-500">· {dayLabel(data.memory.dailyDay)}</span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {dailyLines(data.memory.dailyBriefing).map((line, i) => (
+                  <p key={i} className="text-[13px] leading-relaxed text-zinc-300">
+                    {line.label && (
+                      <span
+                        className={`mr-1.5 text-[10.5px] font-semibold tracking-[0.08em] ${
+                          line.label === "YESTERDAY"
+                            ? "text-rose-300/90"
+                            : line.label === "NOW"
+                              ? "text-sky-300/90"
+                              : "text-violet-300/90"
+                        }`}
+                      >
+                        {line.label}
+                      </span>
+                    )}
+                    <span className="whitespace-pre-wrap">{line.body}</span>
+                  </p>
+                ))}
+              </div>
+            </motion.div>
+          )}
 
           {/* Q&A transcript */}
           {turns.map((t) => (

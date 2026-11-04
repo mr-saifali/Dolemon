@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   ANALYZE_INSTRUCTIONS,
   ASK_INSTRUCTIONS,
+  DAILY_INSTRUCTIONS,
   DOREMON_PERSONA,
   FINALIZE_INSTRUCTIONS,
   ROOM_ANALYST_INSTRUCTIONS,
@@ -29,7 +30,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 type RequestBody = {
-  action: "analyze" | "ask" | "roomAsk" | "finalize";
+  action: "analyze" | "ask" | "roomAsk" | "finalize" | "daily";
   me: string;
   partner: string;
   /** user ids — needed to give the census a perspective (me vs them) */
@@ -40,6 +41,10 @@ type RequestBody = {
   /** the raw talking census from doremon_stats() (may be null post-deletion) */
   stats?: DoremonStats | null;
   question?: string;
+  /** action "daily" only: the last 24 hours of the chat, pre-sliced client-side */
+  yesterday?: { who: "me" | "them"; text: string }[];
+  /** action "daily" only: local date "YYYY-MM-DD" of the briefing */
+  day?: string | null;
 };
 
 const ok = (payload: unknown) => NextResponse.json(payload);
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "BAD_BODY" }, { status: 400 });
   }
 
-  const actions = ["analyze", "ask", "roomAsk", "finalize"] as const;
+  const actions = ["analyze", "ask", "roomAsk", "finalize", "daily"] as const;
   if (!(actions as readonly string[]).includes(body.action)) {
     return NextResponse.json({ ok: false, error: "BAD_ACTION" }, { status: 400 });
   }
@@ -127,6 +132,14 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
     };
   }
 
+  if (body.action === "daily") {
+    const yesterday = compactTranscript(body.yesterday ?? [], body.me, body.partner, 12);
+    return {
+      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon in his private room, writing the daily briefing for "${body.me}" about their relationship with "${body.partner}".\n\n${DAILY_INSTRUCTIONS}`,
+      user: `TODAY IS: ${body.day?.trim() || "an unknown date"}\n\nYOUR PRIVATE MEMORY OF THEM:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nYESTERDAY'S MESSAGES (last 24 hours, oldest → newest):\n${yesterday || "(the chat was silent for the last 24 hours)"}`,
+    };
+  }
+
   if (body.action === "finalize") {
     return {
       system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon, the private observer of the pair "${body.me}" and "${body.partner}".\n\n${FINALIZE_INSTRUCTIONS}`,
@@ -152,6 +165,8 @@ const OUTPUT_CAPS: Record<string, number> = {
   finalize: 450,
   ask: 300,
   roomAsk: 320,
+  /** three lines, ~150 chars each */
+  daily: 480,
 };
 
 async function generateContent(

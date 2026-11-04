@@ -23,6 +23,7 @@ import {
   type StatsView,
 } from "@/lib/doremon/insights";
 import { emptyMemory, type DoremonMemory, type DoremonStats, type RoomTurn } from "@/lib/doremon/types";
+import { OFFLINE_NOTICE } from "@/lib/doremon/offline";
 
 const REMOTE = authMode === "supabase";
 
@@ -528,7 +529,17 @@ function Room({ conversationId }: { conversationId: string }) {
           setBrainState("offline");
         }
       }
-      if (!answer) answer = localRoomAsk(q, view, data.memory, partner);
+      if (!answer) {
+        if (REMOTE) {
+          // No canned demo answers in remote mode — an honest offline status
+          // instead, so the room never parrots scripted lines while the
+          // brain is down.
+          answer = OFFLINE_NOTICE;
+        } else {
+          // Pure demo mode (no backend): the pocket brain IS the brain.
+          answer = localRoomAsk(q, view, data.memory, partner);
+        }
+      }
 
       // a short beat so it reads as thought, not a parrot — kept snappy
       await new Promise((r) => setTimeout(r, 250));

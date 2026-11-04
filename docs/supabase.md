@@ -333,6 +333,7 @@ but each unlocks a feature. Run them in the Supabase SQL editor, in order:
 | `docs/migrations/004_privacy_deletion.sql` | Private/public accounts, delete-chat, (deletion — see 006) |
 | `docs/migrations/005_read_receipts.sql` | Telegram-style read ticks + exact read time (live) |
 | `docs/migrations/006_revoke_self_deletion.sql` | Drops `delete_my_account()` — accounts can't self-delete |
+| `docs/migrations/009_reply_to.sql` | Replies — a message can quote another (the `reply_to_id` column) |
 
 Notes:
 - **004 contains `delete_my_account()`.** If you already ran 004, just run 006 —
@@ -344,9 +345,10 @@ Notes:
 
 ## 9. Doremon — the resident AI
 
-Doremon watches every chat, keeps a compressed record per conversation
-(moods, fight patterns, deep-talk moments), steps in when a fight starts or
-the talk goes dry, and answers `/doremon <anything>` in chat.
+Doremon watches every chat quietly and keeps a compressed record per
+conversation (moods, fight patterns, deep-talk moments). He **never speaks on
+his own** — no greetings, no interventions — and only answers when summoned
+with `/doremon <anything>` in chat (or a tap on his face in the header).
 
 **Setup**
 

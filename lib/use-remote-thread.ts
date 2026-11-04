@@ -5,6 +5,7 @@ import {
   conversationReadState,
   deleteMessage,
   editMessage,
+  fetchMessageQuote,
   loadReactions,
   loadThread,
   listConversations,
@@ -20,7 +21,7 @@ import {
   type DbMessage,
 } from "@/lib/db";
 import type { ReactionType } from "@/lib/reactions";
-import type { ChatMessage } from "@/lib/thread";
+import type { ChatMessage, QuotedMessage } from "@/lib/thread";
 
 const tmpId = () => `tmp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -75,6 +76,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
       status: mine ? (pending ? "sending" : "delivered") : undefined,
       reactions: row.reactions,
       media,
+      replyTo: row.replyTo ?? undefined,
     };
   }
 
@@ -88,6 +90,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
     status: mine ? (pending ? "sending" : "delivered") : undefined,
     reactions: row.reactions,
     sticker: row.kind === "sticker" ? (sticker || "dil") : undefined,
+    replyTo: row.replyTo ?? undefined,
   };
 }
 
@@ -120,6 +123,8 @@ export type RemoteSendOptions = {
   kind?: "text" | "sticker" | "image" | "audio" | "file";
   sticker?: ReactionType;
   media?: RemoteMediaOptions;
+  /** Telegram-style reply — this message quotes the given one */
+  replyTo?: QuotedMessage | null;
 };
 
 /**
@@ -140,13 +145,22 @@ export function useRemoteThread(
   const [online, setOnline] = useState(false);
   /** the other person's read cursor — everything of mine at or before it is seen */
   const [partnerReadAt, setPartnerReadAt] = useState<number | null>(null);
+  /** the message being quoted (Telegram-style reply) while composing */
+  const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
   const bus = useRef<ReturnType<typeof typingBus> | null>(null);
-  const pending = useRef<Map<string, { body: string; kind: RemoteSendOptions["kind"]; media?: RemoteMediaOptions }>>(new Map());
+  const pending = useRef<
+    Map<string, { body: string; kind: RemoteSendOptions["kind"]; media?: RemoteMediaOptions; replyTo?: QuotedMessage | null }>
+  >(new Map());
   const messagesRef = useRef<ChatMessage[]>([]);
+  const replyToRef = useRef<QuotedMessage | null>(null);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    replyToRef.current = replyTo;
+  }, [replyTo]);
 
   const refreshReactions = useCallback(async () => {
     try {
@@ -158,6 +172,41 @@ export function useRemoteThread(
       /* keep the optimistic state */
     }
   }, [conversationId, me]);
+
+  /* ------------------------------------------------------------- replying */
+  /** Build the short quote preview for a message (Telegram-style). */
+  const quoteFor = useCallback((m: ChatMessage): QuotedMessage => {
+    let text = m.text;
+    if (!text) {
+      switch (m.kind) {
+        case "image":
+          text = "Photo";
+          break;
+        case "audio":
+          text = "Voice note";
+          break;
+        case "file":
+          text = "File";
+          break;
+        case "sticker":
+          text = "Reaction";
+          break;
+        case "call":
+          text = "Call";
+          break;
+        default:
+          text = "…";
+      }
+    }
+    return { id: m.id, author: m.author, text: text.slice(0, 140) };
+  }, []);
+
+  const startReply = useCallback(
+    (m: ChatMessage) => setReplyTo(quoteFor(m)),
+    [quoteFor]
+  );
+
+  const cancelReply = useCallback(() => setReplyTo(null), []);
 
   useEffect(() => {
     if (!enabled) {
@@ -197,16 +246,23 @@ export function useRemoteThread(
         setMessages((prev) => {
           if (prev.some((m) => m.id === row.id)) return prev;
           // drop the matching optimistic bubble if this is our own send echoing back
-          const withoutTmp = prev.filter(
-            (m) =>
-              !(
-                m.id.startsWith("tmp_") &&
-                m.author === "me" &&
-                m.text === (row.kind === "sticker" ? "" : row.body)
-              )
+          const tmp = prev.find(
+            (m) => m.id.startsWith("tmp_") && m.author === "me" && m.text === (row.kind === "sticker" ? "" : row.body)
           );
-          return [...withoutTmp, toChatMessage(row, me)];
+          const withoutTmp = tmp ? prev.filter((m) => m.id !== tmp.id) : prev;
+          const next = toChatMessage(row, me);
+          // realtime rows carry the id but not the resolved quote — keep the
+          // optimistic one for a beat so my own bubble never loses its reply
+          if (!next.replyTo && tmp?.replyTo) next.replyTo = tmp.replyTo;
+          return [...withoutTmp, next];
         });
+        // a reply just arrived (mine or theirs) — fetch the quoted message so the link renders
+        if (row.replyToId) {
+          void fetchMessageQuote(row.replyToId, me).then((qt) => {
+            if (!qt) return;
+            setMessages((prev) => prev.map((m) => (m.id === row.id && !m.replyTo ? { ...m, replyTo: qt } : m)));
+          });
+        }
       },
       onUpdate: (row) => {
         setMessages((prev) =>
@@ -251,7 +307,13 @@ export function useRemoteThread(
   }, [ready, conversationId, enabled, shareReads]);
 
   const deliver = useCallback(
-    async (id: string, body: string, kind: RemoteSendOptions["kind"], media?: RemoteMediaOptions) => {
+    async (
+      id: string,
+      body: string,
+      kind: RemoteSendOptions["kind"],
+      media?: RemoteMediaOptions,
+      quote?: QuotedMessage | null
+    ) => {
       try {
         let finalUrl = media?.url;
         // Photo / voice / file: upload to storage first, then insert the row with the URL.
@@ -272,11 +334,12 @@ export function useRemoteThread(
           kind ?? "text",
           finalUrl
             ? { url: finalUrl, name: media?.name, sizeBytes: media?.sizeBytes, durationMs: media?.durationMs }
-            : undefined
+            : undefined,
+          quote?.id ?? null
         );
         pending.current.delete(id);
         setMessages((prev) =>
-          prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "delivered" } : m))
+          prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "delivered", replyTo: quote ?? m.replyTo } : m))
         );
       } catch {
         setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status: "failed" } : m)));
@@ -300,7 +363,10 @@ export function useRemoteThread(
       if (!body && kind !== "sticker") return;
 
       const id = tmpId();
-      pending.current.set(id, { body, kind, media: options.media });
+      // a swipe-to-reply preview, if one is showing, travels with this message
+      const quote = options.replyTo ?? replyToRef.current;
+      pending.current.set(id, { body, kind, media: options.media, replyTo: quote ?? null });
+      if (quote === replyToRef.current) cancelReply();
       const optimistic = options.media?.dataUrl
         ? {
             url: options.media.dataUrl,
@@ -328,11 +394,12 @@ export function useRemoteThread(
           status: "sending",
           sticker: kind === "sticker" ? ((options.sticker ?? "dil") as ReactionType) : undefined,
           media: optimistic,
+          replyTo: quote ?? undefined,
         },
       ]);
-      void deliver(id, body, kind, options.media);
+      void deliver(id, body, kind, options.media, quote ?? null);
     },
-    [deliver]
+    [deliver, cancelReply]
   );
 
   const retry = useCallback(
@@ -340,7 +407,7 @@ export function useRemoteThread(
       const queued = pending.current.get(messageId);
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, status: "sending" } : m)));
       if (queued) {
-        void deliver(messageId, queued.body, queued.kind, queued.media);
+        void deliver(messageId, queued.body, queued.kind, queued.media, queued.replyTo ?? null);
         return;
       }
       const current = messages.find((m) => m.id === messageId);
@@ -438,6 +505,9 @@ export function useRemoteThread(
     retry,
     remove,
     edit,
+    replyTo,
+    startReply,
+    cancelReply,
     notifyTyping: () => bus.current?.ping(),
   };
 }

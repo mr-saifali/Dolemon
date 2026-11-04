@@ -56,10 +56,28 @@ export async function saveDoremonMemory(
   }
 }
 
-/** Ephemeral Doremon messages (greetings, interventions, answers). */
+/**
+ * Ephemeral Doremon messages.
+ *
+ * Since "Doremon only speaks when summoned" we wipe his old greetings and
+ * interventions once, on the first load after the update — he starts every
+ * conversation silent, and only new /doremon answers accumulate again.
+ */
+const WIPED_FLAG = "dolemon:msgs-cleared-v2";
+
 export function loadDoremonMessages(conversationId: string): DoremonMessage[] {
   if (typeof window === "undefined") return [];
   try {
+    if (window.localStorage.getItem(WIPED_FLAG) !== "1") {
+      const doomed: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith(MSG_PREFIX)) doomed.push(key);
+      }
+      doomed.forEach((key) => window.localStorage.removeItem(key));
+      window.localStorage.setItem(WIPED_FLAG, "1");
+      return [];
+    }
     const raw = window.localStorage.getItem(MSG_PREFIX + conversationId);
     return raw ? ((JSON.parse(raw) as DoremonMessage[]).slice(-MAX_MSGS) ?? []) : [];
   } catch {
@@ -73,24 +91,6 @@ export function saveDoremonMessages(conversationId: string, messages: DoremonMes
     window.localStorage.setItem(MSG_PREFIX + conversationId, JSON.stringify(messages.slice(-MAX_MSGS)));
   } catch {
     /* quota — drop persistence, keep the session */
-  }
-}
-
-/** true once Doremon has said his one-time hello in this conversation */
-export function doremonGreeted(conversationId: string): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    loadDoremonMessages(conversationId).some((m) => m.kind === "greeting") ||
-    window.localStorage.getItem(`dolemon:doremon-met:${conversationId}`) === "1"
-  );
-}
-
-export function markDoremonGreeted(conversationId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(`dolemon:doremon-met:${conversationId}`, "1");
-  } catch {
-    /* non-fatal */
   }
 }
 

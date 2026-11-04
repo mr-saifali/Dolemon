@@ -37,6 +37,10 @@ export type DbMessage = {
   mediaSize?: number | null;
   mediaDurationMs?: number | null;
   reactions: MessageReaction[];
+  /** the id of the message this one quotes (Telegram-style reply), if any */
+  replyToId?: string | null;
+  /** the quoted message, resolved for rendering */
+  replyTo?: { id: string; author: "me" | "them"; text: string } | null;
 };
 
 type ConversationRow = {
@@ -65,6 +69,7 @@ type MessageRow = {
   media_name?: string | null;
   media_size?: number | null;
   media_duration?: number | null;
+  reply_to_id?: string | null;
 };
 
 type ReactionRow = { message_id: string; user_id: string; reaction_type: string };
@@ -83,7 +88,27 @@ function mapRow(row: MessageRow): DbMessage {
     mediaSize: row.media_size ?? null,
     mediaDurationMs: row.media_duration ?? null,
     reactions: [],
+    replyToId: row.reply_to_id ?? null,
+    replyTo: null,
   };
+}
+
+/** A human label for a quoted message — mirrors previewFor so the quote in
+ *  the bubble matches the preview that was shown while composing. */
+function quoteLabel(kind: string, body: string, name?: string | null): string {
+  if (body) return body;
+  switch (kind) {
+    case "image":
+      return "📷 Photo";
+    case "audio":
+      return "🎙️ Voice note";
+    case "file":
+      return name ? `📎 ${name}` : "📎 File";
+    case "sticker":
+      return "Reaction";
+    default:
+      return "…";
+  }
 }
 
 function client() {
@@ -195,9 +220,11 @@ export async function loadThread(
   const sb = client();
   const me = (await sb.auth.getUser()).data.user?.id ?? null;
 
+  // "*" is deliberate: it picks up reply_to_id once migration 009 has run,
+  // and keeps threads loadable (with plain messages) before it has.
   const { data: rows, error } = await sb
     .from("messages")
-    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at, media_url, media_name, media_size, media_duration")
+    .select("*")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true })
     .limit(400);
@@ -209,7 +236,87 @@ export async function loadThread(
   }));
 
   const reactions = await loadReactions(conversationId, me);
-  return { messages: messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] })), me };
+  const withReactions = messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] }));
+  await resolveQuotes(withReactions, me);
+  return { messages: withReactions, me };
+}
+
+/**
+ * Fills in each message's `replyTo`. Quotes to messages already in the window
+ * are free; anything older (beyond the 400-row window) is fetched in one batch.
+ */
+type QuoteRef = { id: string; senderId: string; kind: string; body: string; name?: string | null };
+
+async function resolveQuotes(messages: DbMessage[], me: string | null): Promise<void> {
+  const byId = new Map<string, QuoteRef>(
+    messages.map((m) => [
+      m.id,
+      { id: m.id, senderId: m.senderId, kind: m.kind, body: m.body, name: m.mediaName },
+    ])
+  );
+  const missing = Array.from(
+    new Set(
+      messages
+        .filter((m) => m.replyToId && !byId.has(m.replyToId))
+        .map((m) => m.replyToId as string)
+    )
+  );
+  if (missing.length > 0) {
+    const { data } = await client()
+      .from("messages")
+      .select("id, sender_id, kind, body, media_name")
+      .in("id", missing.slice(0, 50))
+      .limit(50);
+    for (const row of (data ?? []) as {
+      id: string;
+      sender_id: string;
+      kind: string | null;
+      body: string | null;
+      media_name: string | null;
+    }[]) {
+      byId.set(row.id, {
+        id: row.id,
+        senderId: row.sender_id,
+        kind: row.kind ?? "text",
+        body: row.body ?? "",
+        name: row.media_name,
+      });
+    }
+  }
+  for (const m of messages) {
+    if (!m.replyToId) continue;
+    const target = byId.get(m.replyToId);
+    if (!target) continue; // original was deleted — the quote quietly vanishes
+    m.replyTo = {
+      id: target.id,
+      author: target.senderId === me ? "me" : "them",
+      text: quoteLabel(target.kind, target.body, target.name),
+    };
+  }
+}
+
+/** Resolves a single quote for a message that just arrived over realtime. */
+export async function fetchMessageQuote(
+  messageId: string,
+  me: string | null
+): Promise<{ id: string; author: "me" | "them"; text: string } | null> {
+  const { data } = await client()
+    .from("messages")
+    .select("id, sender_id, kind, body, media_name")
+    .eq("id", messageId)
+    .maybeSingle<{
+      id: string;
+      sender_id: string;
+      kind: string | null;
+      body: string | null;
+      media_name: string | null;
+    }>();
+  if (!data) return null;
+  return {
+    id: data.id,
+    author: data.sender_id === me ? "me" : "them",
+    text: quoteLabel(data.kind ?? "text", data.body ?? "", data.media_name),
+  };
 }
 
 export async function loadReactions(
@@ -268,13 +375,20 @@ export async function postMessage(
   conversationId: string,
   body: string,
   kind: MessageKind = "text",
-  media?: MediaPayload
+  media?: MediaPayload,
+  replyToId?: string | null
 ): Promise<DbMessage> {
   const sb = client();
   const { data: userData } = await sb.auth.getUser();
   const sender = userData.user?.id;
   if (!sender) throw new Error("You're signed out.");
 
+  // The reply column only enters the query when a reply is actually being
+  // sent — plain messages keep working even before migration 009 has run.
+  const withReply = Boolean(replyToId);
+  const columns = withReply
+    ? "id, conversation_id, sender_id, kind, body, created_at, edited_at, media_url, media_name, media_size, media_duration, reply_to_id"
+    : "id, conversation_id, sender_id, kind, body, created_at, edited_at, media_url, media_name, media_size, media_duration";
   const { data, error } = await sb
     .from("messages")
     .insert({
@@ -286,8 +400,9 @@ export async function postMessage(
       media_name: media?.name ?? null,
       media_size: media?.sizeBytes ?? null,
       media_duration: media?.durationMs ?? null,
+      ...(withReply ? { reply_to_id: replyToId } : {}),
     })
-    .select("id, conversation_id, sender_id, kind, body, created_at, edited_at, media_url, media_name, media_size, media_duration")
+    .select(columns)
     .single<MessageRow>();
 
   if (error) throw new Error(error.message);

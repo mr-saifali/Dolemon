@@ -449,9 +449,6 @@ function ThreadScreen() {
         hidden={!prefs.showPresence}
         onMenu={() => setMenuOpen(true)}
         onCall={REMOTE ? (type) => void live.start(conversationId, type) : undefined}
-        doremonStatus={doremon.status}
-        doremonMemory={doremon.memory}
-        onDoremon={() => void doremon.ask("")}
       />
 
       <MessageList

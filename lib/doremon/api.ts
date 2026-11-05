@@ -1,6 +1,7 @@
 "use client";
 
 import { getSupabase } from "@/lib/supabase";
+import { readProfile } from "@/lib/personal/store";
 
 /** Send Doremon requests as the signed-in user; the server verifies this token. */
 export async function doremonFetch(body: unknown, signal: AbortSignal): Promise<Response> {
@@ -12,7 +13,9 @@ export async function doremonFetch(body: unknown, signal: AbortSignal): Promise<
   return fetch("/api/doremon", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session.access_token}` },
-    body: JSON.stringify(body),
+    // Every request carries the one-owner Constitution, so the brain answers
+    // THIS person in THEIR language — never a generic couple.
+    body: JSON.stringify({ ...(body as Record<string, unknown>), profile: readProfile() }),
     signal,
   });
 }

@@ -48,6 +48,11 @@ export default function manifest(): MetadataRoute.Manifest {
         short_name: "Settings",
         url: "/settings",
       },
+      {
+        name: "Your brain",
+        short_name: "Brain",
+        url: "/app/brain",
+      },
     ],
   };
 }

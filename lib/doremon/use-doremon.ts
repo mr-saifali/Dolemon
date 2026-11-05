@@ -16,6 +16,8 @@ import { OFFLINE_NOTICE, isOfflineNotice, offlineReason } from "./offline";
 import { doremonFetch } from "./api";
 import type { DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
+import { extractGraph } from "@/lib/personal/core";
+import { recordEvent } from "@/lib/personal/store";
 
 const uid = () => `dm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -165,9 +167,26 @@ export function useDoremon(
     // messages Doremon (ask below).
     const analysis = localAnalyze(recent, memoryRef.current);
 
+    // Memory graph v2: facts, inside jokes, promises / open loops and daily
+    // episodes are extracted locally from the transcript and stored in the
+    // SAME private jsonb record. Free, silent, no extra API call.
+    const graph = extractGraph(
+      humanMessages.slice(-40).map((m) => ({
+        who: m.author === "me" ? ("me" as const) : ("them" as const),
+        text: previewFor(m),
+        at: m.at,
+        id: m.id,
+      })),
+      analysis.memory.graph ?? null
+    );
+    recordEvent("memory.indexed", {
+      conversationId,
+      meta: { facts: graph.facts.length, loops: graph.openLoops.length, episodes: graph.episodes.length },
+    });
+
     // He only *listens* now: the record updates silently so a later /doremon
     // is still sharp. He no longer speaks up on his own — ever.
-    commitMemory(analysis.memory);
+    commitMemory({ ...analysis.memory, graph });
     setWatching(false);
   };
 

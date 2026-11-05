@@ -6,6 +6,8 @@ import { ArrowUp, ImagePlus, Mic, Plus, Smile, X } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { PulseButton } from "./pulse-button";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
+import { autocompleteFor } from "@/lib/personal/core";
+import { useLabs, useProfile } from "@/lib/personal/store";
 import { cn } from "@/lib/utils";
 
 const SPRING = { type: "spring", stiffness: 400, damping: 30 } as const;
@@ -25,6 +27,9 @@ export function ChatInput({
   replyTo,
   onCancelReply,
   hint,
+  onDraftChange,
+  injectedText,
+  pulseFirst = false,
 }: {
   onSend: (text: string) => void;
   onSticker: (type: ReactionType) => void;
@@ -40,11 +45,20 @@ export function ChatInput({
   replyTo?: { author: string; text: string } | null;
   onCancelReply?: () => void;
   hint?: React.ReactNode;
+  /** the whisper reads the draft as you type — nothing leaves the device */
+  onDraftChange?: (text: string) => void;
+  /** a one-tap rewrite from the whisper lands here (nonce forces a re-apply) */
+  injectedText?: { text: string; nonce: number } | null;
+  /** a learned rule moved the heart to the front of the tray */
+  pulseFirst?: boolean;
 }) {
   const [value, setValue] = useState("");
   const [trayOpen, setTrayOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement | null>(null);
   const hasText = value.trim().length > 0;
+  const profile = useProfile();
+  const labs = useLabs();
+  const suggestions = labs["lexicon.autocomplete"] ? autocompleteFor(profile, value) : [];
 
   useEffect(() => {
     const el = area.current;
@@ -53,11 +67,20 @@ export function ChatInput({
     el.style.height = `${Math.min(el.scrollHeight, MAX_LINES_PX)}px`;
   }, [value]);
 
+  useEffect(() => {
+    if (!injectedText) return;
+    setValue(injectedText.text);
+    onDraftChange?.(injectedText.text);
+    requestAnimationFrame(() => area.current?.focus());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [injectedText?.nonce]);
+
   const submit = () => {
     const text = value.trim();
     if (!text) return;
     onSend(text);
     setValue("");
+    onDraftChange?.("");
     setTrayOpen(false);
     // Keep the keyboard exactly where it is. Re-focusing an already-focused
     // field on iOS/Android makes the keyboard dip and come back — the glitch.
@@ -70,6 +93,27 @@ export function ChatInput({
     <div className="relative z-20">
       <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-2">
         {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
+
+        {/* your private lexicon completes itself */}
+        {suggestions.length > 0 && (
+          <div className="no-scrollbar mb-1.5 flex gap-1.5 overflow-x-auto px-1">
+            {suggestions.map((s) => (
+              <button
+                key={s.insert}
+                type="button"
+                onClick={() => {
+                  const next = `${value.slice(0, Math.max(0, value.length - s.word.length))}${s.insert} `;
+                  setValue(next);
+                  onDraftChange?.(next);
+                  requestAnimationFrame(() => area.current?.focus());
+                }}
+                className="shrink-0 rounded-full border border-violet/20 bg-violet/[0.08] px-2.5 py-1 text-[11px] text-violet-soft active:scale-95"
+              >
+                {s.insert} <span className="text-zinc-500">· {s.means}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <AnimatePresence>
           {replyTo && (
@@ -110,6 +154,12 @@ export function ChatInput({
               <p className="px-1.5 pb-1.5 text-[10.5px] uppercase tracking-[0.14em] text-zinc-600">
                 Bina shabdon ke
               </p>
+              {showPulse && pulseFirst && (
+                <div className="mb-1 flex items-center justify-between border-b border-white/[0.06] pb-1.5">
+                  <span className="pl-1.5 text-[11px] text-zinc-500">Theek se kehna hai?</span>
+                  <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 {REACTION_TYPES.map((type) => (
                   <button
@@ -127,7 +177,7 @@ export function ChatInput({
                   </button>
                 ))}
               </div>
-              {showPulse && (
+              {showPulse && !pulseFirst && (
                 <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] pt-1.5">
                   <span className="pl-1.5 text-[11px] text-zinc-500">Theek se kehna hai?</span>
                   <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
@@ -157,6 +207,7 @@ export function ChatInput({
               aria-label={placeholder}
               onChange={(e) => {
                 setValue(e.target.value);
+                onDraftChange?.(e.target.value);
                 if (e.target.value.trim()) onTyping?.();
               }}
               onKeyDown={(e) => {

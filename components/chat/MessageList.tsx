@@ -134,7 +134,7 @@ export function MessageList({
                 }
 
                 return (
-                  <div key={message.id}>
+                  <div key={message.id} id={`msg-${message.id}`}>
                     {showDivider && <UnreadDivider />}
                     <MessageBubble
                       message={message}

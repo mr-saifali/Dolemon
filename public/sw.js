@@ -1,7 +1,7 @@
 /* Dolemon service worker — app shell cache so the app opens instantly and survives a dead network. */
 
-const VERSION = "dolemon-v0.3.0";
-const SHELL = ["/", "/app", "/signin", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+const VERSION = "dolemon-v0.4.0";
+const SHELL = ["/", "/app", "/app/brain", "/signin", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

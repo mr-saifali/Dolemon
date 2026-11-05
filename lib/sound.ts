@@ -80,12 +80,14 @@ function bassNote(audio: AudioContext, at: number, frequency: number, dur: numbe
  * pentatonic little tune (an original Dolemon motif, not a recording).
  * Synthesised on the fly: zero bytes of audio, works fully offline.
  */
-export function playIntroJingle() {
+export function playIntroJingle(chord: number[] = [523.25, 659.25, 783.99, 1046.5]) {
   const audio = ctx();
   if (!audio) return;
+  // One owner, one key: transpose the whole jingle to their self chord.
+  const ratio = (chord[0] || 523.25) / 523.25;
   const now = audio.currentTime + 0.05;
   const step = 0.24; // one eighth-note at ~125 bpm
-  const mel = (slot: number, freq: number, dur = 0.22, gain = 0.05) => bell(audio, now + slot * step, freq, dur, gain);
+  const mel = (slot: number, freq: number, dur = 0.22, gain = 0.05) => bell(audio, now + slot * step, freq * ratio, dur, gain);
 
   // phrase A — the rising bounce
   mel(0, 523.25); mel(1, 659.25); mel(2, 783.99); mel(3, 1046.5);
@@ -102,15 +104,15 @@ export function playIntroJingle() {
   // the landing
   mel(32, 659.25); mel(33, 783.99); mel(34, 1046.5); mel(35, 1318.51, 0.7, 0.055);
   // the closing double-bell
-  bell(audio, now + 38 * step, 1318.51, 1.3, 0.045);
-  bell(audio, now + 38 * step, 1046.5, 1.3, 0.03);
+  bell(audio, now + 38 * step, 1318.51 * ratio, 1.3, 0.045);
+  bell(audio, now + 38 * step, 1046.5 * ratio, 1.3, 0.03);
 
   // soft roots under each phrase
-  bassNote(audio, now, 130.81, 1.7, 0.028);
-  bassNote(audio, now + 8 * step, 196.0, 1.7, 0.028);
-  bassNote(audio, now + 16 * step, 130.81, 1.7, 0.028);
-  bassNote(audio, now + 24 * step, 146.83, 1.7, 0.028);
-  bassNote(audio, now + 32 * step, 130.81, 2.4, 0.028);
+  bassNote(audio, now, 130.81 * ratio, 1.7, 0.028);
+  bassNote(audio, now + 8 * step, 196.0 * ratio, 1.7, 0.028);
+  bassNote(audio, now + 16 * step, 130.81 * ratio, 1.7, 0.028);
+  bassNote(audio, now + 24 * step, 146.83 * ratio, 1.7, 0.028);
+  bassNote(audio, now + 32 * step, 130.81 * ratio, 2.4, 0.028);
 }
 
 /** Lower, longer pair for a call invite. */
@@ -122,4 +124,90 @@ export function playRingTone() {
     blip(audio, now + i * 0.5, 520, 0.05);
     blip(audio, now + i * 0.5 + 0.16, 440, 0.04);
   }
+}
+
+
+/* ------------------------------------------------------------------------ */
+/* Sonic identity — every sound is a variation of ONE four-note chord.       */
+/* Zero bytes of audio, fully offline, entirely yours.                       */
+/* ------------------------------------------------------------------------ */
+
+export type MotifVariant = "message" | "pulse" | "call" | "doremon" | "together";
+
+const MOTIFS: Record<MotifVariant, { notes: number[]; step: number; dur: number; gain: number }> = {
+  message: { notes: [1, 2], step: 0.09, dur: 0.16, gain: 0.05 },
+  pulse: { notes: [0, 2], step: 0.13, dur: 0.3, gain: 0.04 },
+  call: { notes: [3, 2, 1], step: 0.16, dur: 0.28, gain: 0.05 },
+  doremon: { notes: [2, 3, 2], step: 0.11, dur: 0.22, gain: 0.045 },
+  together: { notes: [0, 1, 2, 3], step: 0.14, dur: 0.34, gain: 0.035 },
+};
+
+export function playMotif(chord: number[], variant: MotifVariant = "message") {
+  const audio = ctx();
+  if (!audio) return;
+  const notes = chord.filter((n) => Number.isFinite(n) && n > 40 && n < 8000);
+  if (notes.length === 0) return;
+  const m = MOTIFS[variant];
+  const now = audio.currentTime + 0.02;
+  m.notes.forEach((index, i) => {
+    bell(audio, now + i * m.step, notes[index % notes.length], m.dur, m.gain);
+  });
+}
+
+type Drone = { stop: () => void };
+let drone: Drone | null = null;
+
+/** A barely-there chord that fades in only while you're both in the room. */
+export function startAmbientDrone(chord: number[]) {
+  if (drone) return;
+  const audio = ctx();
+  if (!audio) return;
+  const notes = chord.filter((n) => Number.isFinite(n) && n > 40 && n < 8000).slice(0, 3);
+  if (!notes.length) return;
+
+  const master = audio.createGain();
+  master.gain.setValueAtTime(0.0001, audio.currentTime);
+  master.gain.exponentialRampToValueAtTime(0.011, audio.currentTime + 2.4);
+  master.connect(audio.destination);
+
+  const oscillators = notes.map((freq, i) => {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq / 2;
+    gain.gain.value = [0.5, 0.3, 0.2][i] ?? 0.2;
+    osc.connect(gain).connect(master);
+    osc.start();
+    return osc;
+  });
+
+  const lfo = audio.createOscillator();
+  const lfoGain = audio.createGain();
+  lfo.frequency.value = 0.07;
+  lfoGain.gain.value = 0.0035;
+  lfo.connect(lfoGain).connect(master.gain);
+  lfo.start();
+
+  let stopped = false;
+  drone = {
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      master.gain.cancelScheduledValues(audio.currentTime);
+      master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), audio.currentTime);
+      master.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.7);
+      window.setTimeout(() => {
+        [...oscillators, lfo].forEach((osc) => {
+          try { osc.stop(); } catch { /* already stopped */ }
+        });
+        try { master.disconnect(); } catch { /* ignore */ }
+      }, 800);
+      drone = null;
+    },
+  };
+}
+
+export function stopAmbientDrone() {
+  drone?.stop();
+  drone = null;
 }

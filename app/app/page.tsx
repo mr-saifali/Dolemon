@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { BrainCircuit, Plus, Sparkles } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { DoremonFace } from "@/components/chat/doremon";
 import { ChatAvatar, ChatRow, type ChatRowData } from "@/components/home/chat-row";
@@ -12,7 +12,7 @@ import { HomeEmptyState } from "@/components/home/empty-state";
 import { PeopleSearch } from "@/components/home/people-search";
 import { StartChatSheet } from "@/components/home/start-chat-sheet";
 import { authMode } from "@/lib/auth";
-import { demoConversations, greetingFor } from "@/lib/chat";
+import { demoConversations } from "@/lib/chat";
 import { useChatMeta } from "@/lib/conversation-meta";
 import {
   conversationReadState,
@@ -22,6 +22,9 @@ import {
 } from "@/lib/db";
 import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
 import { playIntroJingle } from "@/lib/sound";
+import { SpatialRoom } from "@/components/personal/spatial-room";
+import { greetingForProfile, openLoopsOf } from "@/lib/personal/core";
+import { recordEvent, useLabs, useProfile } from "@/lib/personal/store";
 import { useSession } from "@/lib/session";
 import { usePrefs } from "@/lib/prefs";
 import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
@@ -35,6 +38,9 @@ function HomeScreen() {
   const { account } = useSession();
   const metaMap = useChatMeta();
   const { readReceipts, introMusic } = usePrefs();
+  const profile = useProfile();
+  const labs = useLabs();
+  const [roomView, setRoomView] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -53,6 +59,10 @@ function HomeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    recordEvent("app.open");
+  }, []);
+
   // The little opening jingle — once per app session, not per visit.
   useEffect(() => {
     if (!introMusic) return;
@@ -63,8 +73,8 @@ function HomeScreen() {
     } catch {
       // storage unavailable — fall through, the jingle is harmless to play
     }
-    playIntroJingle();
-  }, [introMusic]);
+    playIntroJingle(profile.selfChord);
+  }, [introMusic, profile.selfChord]);
 
   // When the list changes, learn where each partner's read cursor sits.
   useEffect(() => {
@@ -161,6 +171,12 @@ function HomeScreen() {
       .sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
   }, [remoteChats, metaMap, readStates, readReceipts, account?.id]);
 
+  const openLoops = useMemo(
+    () => doremonRecords.flatMap((rec) => openLoopsOf(rec.memory.graph).map((loop) => ({ id: loop.id, text: loop.text }))),
+    [doremonRecords]
+  );
+  const tension = doremonRecords[0]?.memory.tension ?? 0;
+
   const startChat = async (handle: string) => {
     setStartError(null);
     setStarting(true);
@@ -179,6 +195,46 @@ function HomeScreen() {
     setStartError(null);
     setSheetOpen(true);
   };
+
+  const startSheet = (
+    <StartChatSheet
+      open={sheetOpen}
+      onClose={() => setSheetOpen(false)}
+      onStart={REMOTE ? startChat : undefined}
+      demoPeople={
+        REMOTE
+          ? undefined
+          : demoConversations().map((c) => ({ id: c.id, handle: c.username, avatarId: c.avatarId }))
+      }
+      onPickDemo={(id) => router.push(`/app/chat/${id}`)}
+      starting={starting}
+      error={startError}
+      myHandle={account?.username ?? null}
+    />
+  );
+
+  // Home is a room, not a list. The inbox is still one tap away.
+  if (labs["home.room"] && roomView) {
+    return (
+      <>
+        <SpatialRoom
+          rows={rows}
+          accountName={account?.username ?? profile.name}
+          openLoops={openLoops}
+          tension={tension}
+          onOpenStart={openStart}
+          onToggleList={() => setRoomView(false)}
+          onOpenChat={(id) => router.push(`/app/chat/${id}`)}
+          onOpenDoremon={() =>
+            doremonRecords[0]
+              ? router.push(`/app/doremon/${doremonRecords[0].conversationId}`)
+              : router.push("/app/brain")
+          }
+        />
+        {startSheet}
+      </>
+    );
+  }
 
   return (
     <main className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#09090B]">
@@ -211,12 +267,34 @@ function HomeScreen() {
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
               className="mt-1.5 min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
             >
-              {greetingFor()},{" "}
-              <span className="text-brand font-normal">@{account?.username ?? "you"}</span>
+              {greetingForProfile(profile)}
+              {!profile.nickname && (
+                <>
+                  , <span className="text-brand font-normal">@{account?.username ?? "you"}</span>
+                </>
+              )}
             </motion.h1>
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5">
+            {labs["home.room"] && (
+              <button
+                type="button"
+                onClick={() => setRoomView(true)}
+                aria-label="Back to your room"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white active:scale-95"
+              >
+                <Sparkles className="h-[18px] w-[18px]" />
+              </button>
+            )}
+            <Link
+              href="/app/brain"
+              aria-label="Your brain"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white active:scale-95"
+            >
+              <BrainCircuit className="h-[18px] w-[18px]" />
+            </Link>
+
             <button
               type="button"
               onClick={openStart}
@@ -298,20 +376,7 @@ function HomeScreen() {
         </div>
       </div>
 
-      <StartChatSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onStart={REMOTE ? startChat : undefined}
-        demoPeople={
-          REMOTE
-            ? undefined
-            : demoConversations().map((c) => ({ id: c.id, handle: c.username, avatarId: c.avatarId }))
-        }
-        onPickDemo={(id) => router.push(`/app/chat/${id}`)}
-        starting={starting}
-        error={startError}
-        myHandle={account?.username ?? null}
-      />
+      {startSheet}
     </main>
   );
 }

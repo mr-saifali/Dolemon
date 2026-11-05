@@ -192,6 +192,37 @@ The local demo keeps the simulated call screen (no media) for click-through.
 | Block / report, backups | Server-authoritative features that follow the backend |
 | Message editing, in-chat search | Next polish pass once data is real |
 
+## Personal OS (v0.2) — ten ideas, one owner
+
+Dolemon is a **single-owner app**. That changes what is possible: the whole stack can be
+built around one human instead of the median user. Ten of the twenty ideas from the
+ultra-personalization plan are now live, all local-first and usable with **no Gemini key
+and no Supabase project**:
+
+| # | Idea | Where it lives |
+| --- | --- | --- |
+| 1 | **The Constitution (`me.json`)** — one editable file drives greetings, language, quiet hours, Doremon's prompt and every sound | `lib/personal/core.ts`, `store.ts`, `/app/brain` |
+| 2 | **Memory Graph v2** — facts, inside jokes, promises and daily episodes extracted locally into the private `doremon_memory` jsonb (no migration) | `extractGraph()`, `lib/doremon/types.ts`, `use-doremon.ts` |
+| 3 | **Open Loops Ledger** — "what did I promise?", a quiet header chip, done/undo, never a notification | `/app/brain#loops`, `ChatHeader` |
+| 4 | **Private Lexicon** — your slang completes in the composer, expands in-chat search, and is fed to Doremon | `/app/brain#lexicon`, `FindSheet`, `personalContextForPrompt()` |
+| 5 | **Draft Whisper** — a local, quota-free read of how a message will land + one-tap rewrites; never sends | `whisperFor()`, `components/chat/draft-whisper.tsx` |
+| 6 | **Learns Your Hands** — an append-only event spine derives adaptations; every change has a reason and an undo | `recordEvent()`, `deriveLearnings()`, `LearningsBar` |
+| 7 | **Labs Garden** — feature flags per idea, a kill switch, and a "what I tried & how it felt" changelog | `/app/brain#labs` |
+| 8 | **Sonic Identity + Mood Weather** — every sound is a variation of your four-note chord; the room's light follows hour, quiet window and tension | `lib/sound.ts`, `climateFor()` |
+| 9 | **Honesty** — seeded presence history only exists in the local demo; live presence comes from the real channel, pulses travel over realtime, and tapping `sources` shows the events behind every number | `presence-log.ts`, `presence.ts`, `pulse-bus.ts`, `SourceSheet` |
+| 10 | **Home Is a Room** — a spatial home with two lights, a lamp, a shelf, open loops and Dolemon's pocket; no unread badges. The inbox is one tap away | `components/personal/spatial-room.tsx` |
+
+**Start here:** open `/app/brain` (or the brain icon on home). Edit the Constitution, try the
+chord, flip a lab, add a word to your lexicon, and download your data under Honesty.
+
+**Guardrails:** Doremon can never send or delete — `boundaries.aiMaySend` is hard-wired `false`.
+Turn off telemetry and nothing is observed. Every learned change is reversible. The Gemini
+route still verifies the Supabase token; the Constitution is appended to its system prompt so
+answers are specific to one person.
+
+New pure-core tests: `node --test tests/*.test.cjs` (29 tests). `npm run typecheck`,
+`npm run lint` and `npm run build` are clean.
+
 ## Stack
 
 Next.js 14 App Router · TypeScript · Tailwind · shadcn-style components (Radix + cva) ·

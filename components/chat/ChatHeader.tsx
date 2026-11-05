@@ -24,6 +24,8 @@ export function ChatHeader({
   doremonStatus,
   doremonMemory,
   onDoremon,
+  openLoops = 0,
+  onOpenLoops,
 }: {
   name: string;
   avatarId: string | null;
@@ -40,6 +42,9 @@ export function ChatHeader({
   doremonStatus?: "idle" | "watching" | "thinking";
   doremonMemory?: DoremonMemory | null;
   onDoremon?: () => void;
+  /** promises Doremon heard in your own words — a quiet chip, never a badge */
+  openLoops?: number;
+  onOpenLoops?: () => void;
 }) {
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
@@ -86,6 +91,17 @@ export function ChatHeader({
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
             >
               <Video className="h-5 w-5" strokeWidth={1.8} />
+            </button>
+          )}
+          {onOpenLoops && openLoops > 0 && (
+            <button
+              type="button"
+              onClick={onOpenLoops}
+              aria-label={`${openLoops} open loops`}
+              title="Promises you made, quietly counted"
+              className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-violet/25 bg-violet/[0.08] px-2 text-[10.5px] text-violet-soft active:scale-95"
+            >
+              ✦ {openLoops}
             </button>
           )}
           {onDoremon && (

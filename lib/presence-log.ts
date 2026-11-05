@@ -1,5 +1,7 @@
 "use client";
 
+import { authMode } from "./auth";
+
 /**
  * Presence memory.
  *
@@ -41,8 +43,11 @@ export function loadSessions(conversationId: string): PresenceSession[] {
     const raw = window.localStorage.getItem(key(conversationId));
     if (raw) return JSON.parse(raw) as PresenceSession[];
   } catch {
-    /* fall through to seed */
+    /* fall through */
   }
+  // Honesty: invented history is only ever allowed in the local demo. A live
+  // account starts at zero and every minute shown is a real together-session.
+  if (authMode !== "local") return [];
   const seeded = seed();
   saveSessions(conversationId, seeded);
   return seeded;

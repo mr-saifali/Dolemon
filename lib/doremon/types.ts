@@ -13,6 +13,8 @@
  * Demo mode (or no API key): a local heuristic brain keeps Doremon alive.
  */
 
+import type { MemoryGraph } from "@/lib/personal/core";
+
 /** The compressed, long-lived record Doremon keeps for one conversation.
  *  One per (conversation, user) — private to its owner. */
 export type DoremonMemory = {
@@ -49,6 +51,9 @@ export type DoremonMemory = {
   dailyDay?: string | null;
   /** Doremon's daily briefing for `dailyDay` — yesterday / now / tomorrow */
   dailyBriefing?: string | null;
+  /** The long-term graph: facts, inside jokes, promises/open loops, episodes.
+   *  Lives in this same jsonb row — no migration, no new table, still private. */
+  graph?: MemoryGraph | null;
 };
 
 /** One exchange in Doremon's room — private to the user who asked. */

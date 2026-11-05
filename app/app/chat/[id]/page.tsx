@@ -12,6 +12,7 @@ import {
   Palette,
   RotateCcw,
   ShieldOff,
+  Search,
   Sparkles,
   Trash2,
   Video,
@@ -34,7 +35,7 @@ import { demoConversations } from "@/lib/chat";
 import { markRead, patchMeta, useChatMetaFor } from "@/lib/conversation-meta";
 import { formatAgo, usePresence } from "@/lib/presence";
 import { buzz, usePrefs } from "@/lib/prefs";
-import { playMessageTone } from "@/lib/sound";
+import { playMessageTone, playMotif, startAmbientDrone, stopAmbientDrone } from "@/lib/sound";
 import { useLiveCall } from "@/lib/live-call";
 import { usePulses } from "@/lib/pulses";
 import { QUICK_REACTION, type ReactionType } from "@/lib/reactions";
@@ -44,6 +45,12 @@ import { useRemoteThread } from "@/lib/use-remote-thread";
 import { useSession } from "@/lib/session";
 import { useDoremon } from "@/lib/doremon/use-doremon";
 import { useViewportHeight } from "@/lib/use-viewport-height";
+import { FindSheet } from "@/components/chat/find-sheet";
+import { DraftWhisper } from "@/components/chat/draft-whisper";
+import { LearningsBar } from "@/components/personal/learnings-bar";
+import { climateFor, isQuietHour, openLoopsOf, type WhisperContext } from "@/lib/personal/core";
+import { recordEvent, useLabs, useLearnings, useProfile } from "@/lib/personal/store";
+import { openPulseBus, type PulseBus } from "@/lib/personal/pulse-bus";
 
 const REMOTE = authMode === "supabase";
 
@@ -58,6 +65,19 @@ function ThreadScreen() {
   const live = useLiveCall();
   const prefs = usePrefs();
   const meta = useChatMetaFor(conversationId);
+  const profile = useProfile();
+  const labs = useLabs();
+  const sonicOn = labs["sonic.identity"];
+  const livePulsesOn = labs["live.pulses"];
+  const ambientOn = labs["ambient.drone"];
+  const climateOn = labs["climate.wallpaper"];
+  const { learnings, dismiss } = useLearnings();
+  const [draft, setDraft] = useState("");
+  const [injected, setInjected] = useState<{ text: string; nonce: number } | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const pulseBus = useRef<PulseBus | null>(null);
+  const receivePulseRef = useRef<() => void>(() => undefined);
+  const lastDraftEvent = useRef(0);
   const theme = resolveChatTheme(meta.chatTheme, prefs.chatTheme);
   const local = useThread(conversationId, { enabled: !REMOTE });
   const remote = useRemoteThread(conversationId, REMOTE, { shareReads: prefs.readReceipts });
@@ -85,6 +105,7 @@ function ThreadScreen() {
   const { together, partner, lastSeenAt, setPresence } = usePresence({
     demo: !REMOTE,
     logKey: conversationId,
+    liveOnline: REMOTE ? remote.online : null,
   });
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -115,10 +136,14 @@ function ThreadScreen() {
     if (last.id === previous) return;
     lastSeenMessage.current = last.id;
     if (prefs.sounds && last.author === "them") {
-      playMessageTone();
+      if (sonicOn) playMotif(profile.selfChord, "message");
+      else playMessageTone();
       if (prefs.haptics) buzz(8);
     }
-  }, [messages, prefs.sounds, prefs.haptics]);
+    if (last.author === "them" && last.kind !== "presence") {
+      recordEvent("message.received", { conversationId });
+    }
+  }, [messages, prefs.sounds, prefs.haptics, sonicOn, profile.selfChord, conversationId]);
 
   // Their line lands while you're looking at it → advance the read cursor, so
   // the home list never shows a badge for a message you already saw.
@@ -175,6 +200,8 @@ function ThreadScreen() {
     demo: !REMOTE,
     onIncoming: () => {
       if (prefs.haptics) buzz(14);
+      recordEvent("pulse.received", { conversationId });
+      if (sonicOn) playMotif(profile.selfChord, "pulse");
     },
     onMutual: () => {
       const time = new Date().toLocaleTimeString("en-IN", {
@@ -186,6 +213,40 @@ function ThreadScreen() {
       toast.success("You both reached for each other", { description: "Saved to your presence moments." });
     },
   });
+
+  receivePulseRef.current = pulses.receive;
+
+  // Real pulses in live mode: a broadcast on the presence channel, no row,
+  // no thread entry — exactly what a pulse is supposed to be.
+  useEffect(() => {
+    if (!REMOTE || !livePulsesOn || !account?.id) return;
+    const bus = openPulseBus(conversationId, account.id, () => receivePulseRef.current());
+    pulseBus.current = bus;
+    return () => {
+      bus?.stop();
+      pulseBus.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [REMOTE, livePulsesOn, conversationId, account?.id]);
+
+  // The event spine: real events only, local-only, exportable from /app/brain.
+  useEffect(() => {
+    recordEvent("app.open", { conversationId });
+  }, [conversationId]);
+
+  useEffect(() => {
+    recordEvent(together ? "presence.together" : "presence.apart", { conversationId });
+  }, [together, conversationId]);
+
+  // Sonic identity + an ambient chord only while you are ACTUALLY both here.
+  useEffect(() => {
+    if (!ambientOn || !profile.boundaries.ambientSound || !together) {
+      stopAmbientDrone();
+      return;
+    }
+    startAmbientDrone(profile.selfChord);
+    return () => stopAmbientDrone();
+  }, [ambientOn, profile.boundaries.ambientSound, profile.selfChord, together]);
 
   // Demo only: the sample partner starts typing a beat after you send.
   useEffect(() => {
@@ -222,10 +283,13 @@ function ThreadScreen() {
     const result = pulses.send();
     if (result === "disabled") {
       toast.error("Pulses are off", { description: "Turn them on in Settings → Presence." });
-    } else if (result === "sent" && prefs.haptics) {
-      buzz(8);
+    } else if (result === "sent") {
+      pulseBus.current?.send();
+      recordEvent("pulse.sent", { conversationId });
+      if (sonicOn) playMotif(profile.selfChord, "pulse");
+      if (prefs.haptics) buzz(8);
     }
-  }, [pulses, prefs.haptics]);
+  }, [pulses, prefs.haptics, conversationId, sonicOn, profile.selfChord]);
 
   // one call site, two backends — remote uploads the media before inserting the row
   const sendNow = (text: string, options?: Parameters<typeof local.send>[1]) => {
@@ -261,8 +325,17 @@ function ThreadScreen() {
       return;
     }
     sendNow(text, replyTo ? { replyTo } : {});
+    recordEvent("message.sent", { conversationId, meta: { chars: trimmed.length } });
     setReplyTo(null);
   };
+
+  const handleDraftChange = useCallback((text: string) => {
+    setDraft(text);
+    if (text.trim() && Date.now() - lastDraftEvent.current > 3000) {
+      lastDraftEvent.current = Date.now();
+      recordEvent("composer.typing", { conversationId });
+    }
+  }, [conversationId]);
 
   const handleSticker = (type: ReactionType) => {
     sendNow("", { kind: "sticker", sticker: type, replyTo: replyTo ?? undefined });
@@ -342,6 +415,13 @@ function ThreadScreen() {
           : router.push(`/app/call/${conversationId}?kind=video&direction=outgoing`),
     },
     {
+      key: "find",
+      label: "Find in chat",
+      hint: "your words",
+      icon: <Search className="h-[18px] w-[18px]" />,
+      onSelect: () => setFindOpen(true),
+    },
+    {
       key: "room",
       label: "Your room",
       hint: "presence",
@@ -413,6 +493,26 @@ function ThreadScreen() {
       : []),
   ];
 
+  const whisperContext = useMemo<WhisperContext>(() => {
+    const theirs = [...messages].reverse().find((m) => m.author === "them" && m.kind !== "presence" && m.kind !== "call");
+    return {
+      quiet: isQuietHour(profile),
+      hoursSinceTheirLastMessage: theirs ? (Date.now() - theirs.at) / 3_600_000 : null,
+      theirLastLine: theirs?.text ?? "",
+    };
+  }, [messages, profile]);
+
+  const climate = useMemo(
+    () => (climateOn ? climateFor(profile, new Date(), doremon.memory?.tension ?? 0) : null),
+    [climateOn, profile, doremon.memory?.tension]
+  );
+  const learnerOn = labs["learn.hands"];
+  const compactLearned = learnerOn && learnings.some((l) => l.id === "compact");
+  const quietLearned = learnerOn && learnings.some((l) => l.id === "quietGlow");
+  const pulseFirst = learnerOn && learnings.some((l) => l.id === "pulseFirst");
+  const activeLearning = learnerOn ? learnings[0] : undefined;
+  const openLoopCount = openLoopsOf(doremon.memory?.graph).length;
+
   const myReaction = picker?.message.reactions?.find((r) => r.by === "me")?.type ?? null;
 
   return (
@@ -423,6 +523,10 @@ function ThreadScreen() {
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(124,58,237,0.08),transparent_45%),radial-gradient(ellipse_at_85%_65%,rgba(59,130,246,0.07),transparent_48%),radial-gradient(ellipse_at_40%_100%,rgba(255,92,122,0.06),transparent_45%)]"
+        style={{
+          ...(climate ? { backgroundImage: climate.gradient } : {}),
+          opacity: quietLearned ? 0.55 : 1,
+        }}
       />
 
       {theme.image && (
@@ -459,6 +563,8 @@ function ThreadScreen() {
         doremonStatus={doremon.status}
         doremonMemory={doremon.memory}
         onDoremon={() => router.push(`/app/doremon/${conversationId}`)}
+        openLoops={labs["openLoops.chip"] ? openLoopCount : 0}
+        onOpenLoops={() => router.push("/app/brain#loops")}
       />
 
       <MessageList
@@ -466,7 +572,7 @@ function ThreadScreen() {
         partnerName={partnerName}
         typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator && !meta.blocked}
         showReceipts={prefs.readReceipts}
-        compact={prefs.compactChat}
+        compact={prefs.compactChat || compactLearned}
         dividerId={dividerId}
         doremon={doremon.doremonMessages}
         doremonThinking={doremon.thinking}
@@ -495,6 +601,25 @@ function ThreadScreen() {
         )}
       </AnimatePresence>
 
+      {activeLearning && (
+        <div className="mx-auto w-full max-w-2xl px-4">
+          <LearningsBar learning={activeLearning} onUndo={dismiss} />
+        </div>
+      )}
+
+      {labs["draft.whisper"] && (
+        <div className="mx-auto w-full max-w-2xl px-4">
+          <DraftWhisper
+            draft={draft}
+            context={whisperContext}
+            onRewrite={(text) => {
+              setInjected({ text, nonce: Date.now() });
+              recordEvent("draft.rewrite", { conversationId });
+            }}
+          />
+        </div>
+      )}
+
       <ChatInput
         onSend={handleSend}
         onSticker={handleSticker}
@@ -502,7 +627,10 @@ function ThreadScreen() {
         onAttach={() => setAttachOpen(true)}
         onVoice={() => setAttachOpen(true)}
         onTyping={() => !REMOTE || remote.notifyTyping()}
-        showPulse={!REMOTE}
+        showPulse={livePulsesOn}
+        onDraftChange={handleDraftChange}
+        injectedText={injected}
+        pulseFirst={pulseFirst}
         pulseCoolingUntil={pulses.coolingUntil}
         pulseDisabled={!prefs.allowPulses}
         placeholder={`Message ${partnerName}`}
@@ -606,6 +734,14 @@ function ThreadScreen() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <FindSheet
+        open={findOpen}
+        messages={messages}
+        profile={profile}
+        partnerName={partnerName}
+        onClose={() => setFindOpen(false)}
+      />
     </main>
   );
 }

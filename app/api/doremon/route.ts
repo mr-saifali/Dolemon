@@ -10,6 +10,7 @@ import {
   memoryForPrompt,
 } from "@/lib/doremon/persona";
 import { statsForPrompt, viewStats } from "@/lib/doremon/insights";
+import { personalContextForPrompt, type PersonalProfile } from "@/lib/personal/core";
 import type { DoremonMemory, DoremonStats } from "@/lib/doremon/types";
 
 /**
@@ -45,9 +46,17 @@ type RequestBody = {
   yesterday?: { who: "me" | "them"; text: string }[];
   /** action "daily" only: local date "YYYY-MM-DD" of the briefing */
   day?: string | null;
+  /** the one-owner Constitution — makes every prompt specific to this human */
+  profile?: PersonalProfile | null;
 };
 
 const ok = (payload: unknown) => NextResponse.json(payload);
+
+/** The persona plus the owner's Constitution. One human, one brain. */
+function PERSONA(profile?: PersonalProfile | null): string {
+  const block = personalContextForPrompt(profile ?? null);
+  return block ? `${DOREMON_PERSONA}\n\n---\n${block}` : DOREMON_PERSONA;
+}
 
 /** Google rejected the API key itself (400/401/403) — a different, diagnosable
  *  failure from "unreachable". The client can then say *why* the brain is down. */
@@ -219,7 +228,7 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
 
   if (body.action === "analyze") {
     return {
-      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon working for the pair "${body.me}" and "${body.partner}".\n\n${ANALYZE_INSTRUCTIONS}`,
+      system: `${PERSONA(body.profile)}\n\n---\nYou are Doremon working for the pair "${body.me}" and "${body.partner}".\n\n${ANALYZE_INSTRUCTIONS}`,
       user: `YOUR MEMORY SO FAR:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation is empty)"}`,
     };
   }
@@ -232,7 +241,7 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
           .map((turn) => `User: ${turn.q.slice(0, 300)}\nDoremon: ${turn.a.slice(0, 500)}`).join("\n")
       : "";
     return {
-      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon in his private room, talking one-to-one with "${body.me}" about their relationship with "${body.partner}".\n\n${ROOM_ANALYST_INSTRUCTIONS}`,
+      system: `${PERSONA(body.profile)}\n\n---\nYou are Doremon in his private room, talking one-to-one with "${body.me}" about their relationship with "${body.partner}".\n\n${ROOM_ANALYST_INSTRUCTIONS}`,
       user: `YOUR PRIVATE MEMORY OF THEM:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation has no recent messages — answer from memory and the census)"}\n\nPREVIOUS PRIVATE EXCHANGES:\n${history || "(none)"}\n\n${
         question
           ? `THE QUESTION: ${question}`
@@ -244,21 +253,21 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
   if (body.action === "daily") {
     const yesterday = compactTranscript(body.yesterday ?? [], body.me, body.partner, 12);
     return {
-      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon in his private room, writing the daily briefing for "${body.me}" about their relationship with "${body.partner}".\n\n${DAILY_INSTRUCTIONS}`,
+      system: `${PERSONA(body.profile)}\n\n---\nYou are Doremon in his private room, writing the daily briefing for "${body.me}" about their relationship with "${body.partner}".\n\n${DAILY_INSTRUCTIONS}`,
       user: `TODAY IS: ${body.day?.trim() || "an unknown date"}\n\nYOUR PRIVATE MEMORY OF THEM:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nYESTERDAY'S MESSAGES (last 24 hours, oldest → newest):\n${yesterday || "(the chat was silent for the last 24 hours)"}`,
     };
   }
 
   if (body.action === "finalize") {
     return {
-      system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon, the private observer of the pair "${body.me}" and "${body.partner}".\n\n${FINALIZE_INSTRUCTIONS}`,
+      system: `${PERSONA(body.profile)}\n\n---\nYou are Doremon, the private observer of the pair "${body.me}" and "${body.partner}".\n\n${FINALIZE_INSTRUCTIONS}`,
       user: `YOUR MEMORY SO FAR:\n${memoryBlock}\n\nTHE TALKING CENSUS:\n${census}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation has no messages)"}`,
     };
   }
 
   const question = body.question?.trim().slice(0, 2000) || "";
   return {
-    system: `${DOREMON_PERSONA}\n\n---\nYou are Doremon, talking with the pair "${body.me}" and "${body.partner}" in their private chat. One of them is writing to you right now.\n\n${ASK_INSTRUCTIONS}`,
+    system: `${PERSONA(body.profile)}\n\n---\nYou are Doremon, talking with the pair "${body.me}" and "${body.partner}" in their private chat. One of them is writing to you right now.\n\n${ASK_INSTRUCTIONS}`,
     user: `YOUR MEMORY OF THEM:\n${memoryBlock}\n\nRECENT MESSAGES (oldest → newest):\n${transcript || "(the conversation is empty)"}\n\n${
       question ? `THEY SAID: ${question}` : "They just wrote /doremon with no question — give a short check-in: what you noticed, what you remember, one small suggestion."
     }`,

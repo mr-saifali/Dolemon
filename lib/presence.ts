@@ -20,13 +20,18 @@ export type PartnerPresence = "here" | "away" | "typing";
 export function usePresence({
   demo = false,
   logKey,
+  liveOnline = null,
 }: {
   demo?: boolean;
   /** conversation id — enables presence-memory logging for the session */
   logKey?: string;
+  /** live mode: the real `presence:` channel, instead of an optimistic "here" */
+  liveOnline?: boolean | null;
 } = {}) {
   const prefs = usePrefs();
-  const [partner, setPartner] = useState<PartnerPresence>("here");
+  // In live mode we must NOT assume the other person is here. An invented
+  // "you're both here" is exactly the kind of fake number Dolemon refuses to show.
+  const [partner, setPartner] = useState<PartnerPresence>(demo ? "here" : "away");
   const [pageVisible, setPageVisible] = useState(true);
   const [togetherSince, setTogetherSince] = useState<number | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
@@ -36,6 +41,12 @@ export function usePresence({
   const together = iAmHere && partner !== "away";
   const wasTogether = useRef(false);
   const sessionStart = useRef<number | null>(null);
+
+  // Live mode: the real Realtime presence channel drives this room.
+  useEffect(() => {
+    if (demo || liveOnline == null) return;
+    setPartner(liveOnline ? "here" : "away");
+  }, [demo, liveOnline]);
 
   useEffect(() => {
     const onVisibility = () => setPageVisible(document.visibilityState === "visible");

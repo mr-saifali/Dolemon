@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Flame, Heart, Lock, Settings2 } from "lucide-react";
+import { ChevronLeft, Flame, Heart, Info, Lock, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { Avatar } from "@/components/avatar";
@@ -24,6 +24,8 @@ import {
 } from "@/lib/presence-log";
 import { usePulses } from "@/lib/pulses";
 import { setPref, usePrefs } from "@/lib/prefs";
+import { listConversations } from "@/lib/db";
+import { SourceSheet } from "@/components/personal/source-sheet";
 
 function RoomScreen() {
   const params = useParams<{ id: string }>();
@@ -31,7 +33,19 @@ function RoomScreen() {
   const [conversation] = useState(
     () => demoConversations().find((c) => c.id === conversationId) ?? null
   );
-  const partnerName = conversation?.name ?? "Them";
+  const [partnerName, setPartnerName] = useState(conversation?.name ?? "Them");
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+
+  // Honesty: in live mode the room must name the real person, never "Them".
+  useEffect(() => {
+    if (authMode !== "supabase") return;
+    void listConversations()
+      .then((rows) => {
+        const found = rows.find((r) => r.id === conversationId);
+        if (found) setPartnerName(found.partnerUsername);
+      })
+      .catch(() => undefined);
+  }, [conversationId]);
 
   const prefs = usePrefs();
   const { together, partner, togetherSince, lastSeenAt } = usePresence({ demo: authMode === "local" });
@@ -175,9 +189,19 @@ function RoomScreen() {
                 <span className="text-[13px] text-text-muted">min</span>
               </p>
             </div>
-            <div className="flex items-center gap-1 rounded-full border border-rose/20 bg-rose/10 px-2.5 py-1 text-[11.5px] text-rose">
-              <Flame className="h-3 w-3" />
-              {streak}-day streak
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSourcesOpen(true)}
+                aria-label="Where these numbers come from"
+                className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10.5px] text-zinc-400 active:scale-95"
+              >
+                <Info className="h-3 w-3" /> sources
+              </button>
+              <div className="flex items-center gap-1 rounded-full border border-rose/20 bg-rose/10 px-2.5 py-1 text-[11.5px] text-rose">
+                <Flame className="h-3 w-3" />
+                {streak}-day streak
+              </div>
             </div>
           </div>
 
@@ -243,6 +267,8 @@ function RoomScreen() {
             )}
           </ul>
         </section>
+
+        <SourceSheet open={sourcesOpen} sessions={sessions} onClose={() => setSourcesOpen(false)} />
 
         <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[11px] text-text-muted/50">
           <Lock className="h-3 w-3" />

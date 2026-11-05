@@ -29,6 +29,8 @@ export type DbMessage = {
   kind: string;
   body: string;
   at: number;
+  /** Original timestamp, including database precision. */
+  createdAt?: string;
   /** set once the sender edits the text — rendered as a quiet "edited" */
   editedAt?: number | null;
   /** chat media (photo / voice note / file) — public URL in the chat-media bucket */
@@ -82,6 +84,7 @@ function mapRow(row: MessageRow): DbMessage {
     kind: row.kind ?? "text",
     body: row.body ?? "",
     at: new Date(row.created_at).getTime(),
+    createdAt: row.created_at,
     editedAt: row.edited_at ? new Date(row.edited_at).getTime() : null,
     mediaUrl: row.media_url ?? null,
     mediaName: row.media_name ?? null,
@@ -223,7 +226,7 @@ export async function loadThread(
   const [session, result] = await Promise.all([
     sb.auth.getSession(),
     sb.from("messages").select("*").eq("conversation_id", conversationId)
-      .order("created_at", { ascending: false }).limit(400),
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(400),
   ]);
   const me = session.data.session?.user.id ?? null;
   if (result.error) throw new Error(result.error.message);
@@ -234,6 +237,36 @@ export async function loadThread(
   const [reactions] = await Promise.all([loadReactions(conversationId, me), resolveQuotes(messages, me)]);
   const withReactions = messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] }));
   return { messages: withReactions, me };
+}
+
+/** Search visible text messages in this conversation (RLS still applies). */
+export async function searchThread(conversationId: string, query: string): Promise<DbMessage[]> {
+  const term = query.trim().slice(0, 100);
+  if (term.length < 2) return [];
+  // Treat SQL LIKE metacharacters as literal characters.
+  const pattern = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+  const { data, error } = await client().from("messages").select("*")
+    .eq("conversation_id", conversationId).eq("kind", "text").ilike("body", pattern)
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(50);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as MessageRow[]).map(mapRow);
+}
+
+/** Fetch a stable older page without offset drift as new messages arrive. */
+export async function loadOlderMessages(conversationId: string, cursor: { createdAt: string; id: string }, me: string | null): Promise<DbMessage[]> {
+  // Both values come from an already-loaded server row. Reject unexpected
+  // syntax before interpolating into PostgREST's filter expression.
+  if (!/^\d{4}-\d\d-\d\dT[\d:.+-]+(?:Z|[+-]\d\d(?::?\d\d)?)?$/.test(cursor.createdAt) || !/^[a-f\d-]{36}$/i.test(cursor.id)) {
+    throw new Error("Invalid message cursor");
+  }
+  const { data, error } = await client().from("messages").select("*")
+    .eq("conversation_id", conversationId)
+    .or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`)
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(100);
+  if (error) throw new Error(error.message);
+  const messages = ((data ?? []) as MessageRow[]).reverse().map(mapRow);
+  const [reactions] = await Promise.all([loadReactions(conversationId, me), resolveQuotes(messages, me)]);
+  return messages.map((message) => ({ ...message, reactions: reactions.get(message.id) ?? [] }));
 }
 
 /**
@@ -419,18 +452,20 @@ export async function editMessage(messageId: string, body: string): Promise<numb
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Can't save an empty message.");
   const editedAt = new Date().toISOString();
-  const { error } = await client()
+  const { data, error } = await client()
     .from("messages")
     .update({ body: trimmed, edited_at: editedAt })
-    .eq("id", messageId);
+    .eq("id", messageId).select("id");
   if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Message could not be edited.");
   return new Date(editedAt).getTime();
 }
 
 /** Hard delete of your own message. */
 export async function deleteMessage(messageId: string): Promise<void> {
-  const { error } = await client().from("messages").delete().eq("id", messageId);
+  const { data, error } = await client().from("messages").delete().eq("id", messageId).select("id");
   if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Message could not be deleted.");
 }
 
 export async function setMyReaction(messageId: string, type: ReactionType): Promise<void> {
@@ -489,8 +524,19 @@ export async function markThreadRead(conversationId: string, shareReads = true):
 export async function conversationReadState(conversationId: string): Promise<number | null> {
   const { data, error } = await client().rpc("conversation_read_state", { target: conversationId });
   if (error) return null;
-  const at = (data as { partner_read_at?: string | null } | null)?.partner_read_at;
+  const row = Array.isArray(data) ? data[0] : data;
+  const at = (row as { partner_read_at?: string | null } | null)?.partner_read_at;
   return at ? new Date(at).getTime() : null;
+}
+
+/** Refresh the inbox after accessible message changes and after reconnect. */
+export function watchInbox(onChange: () => void): () => void {
+  const sb = client();
+  const channel = sb.channel("inbox-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "conversation_members" }, onChange)
+    .subscribe((status) => { if (status === "SUBSCRIBED") onChange(); });
+  return () => { void sb.removeChannel(channel); };
 }
 
 /** New messages as they land, filtered to this conversation. */
@@ -502,6 +548,8 @@ export function watchMessages(
     onDelete?: (id: string) => void;
     /** the partner opened the thread at `at` — their read cursor moved */
     onRead?: (at: number) => void;
+    /** Called after subscribing or re-subscribing, so missed events can be reconciled. */
+    onSubscribed?: () => void;
   },
   me?: string | null
 ) {
@@ -531,7 +579,7 @@ export function watchMessages(
       if (!p?.at || p.user === me) return;
       handlers.onRead?.(p.at);
     })
-    .subscribe();
+    .subscribe((status) => { if (status === "SUBSCRIBED") handlers.onSubscribed?.(); });
 
   return () => {
     void sb.removeChannel(channel);
@@ -567,7 +615,8 @@ export type TypingBus = {
 export function typingBus(
   conversationId: string,
   me: string,
-  onPartner: (state: { typing: boolean; online: boolean }) => void
+  onPartner: (state: { typing: boolean; online: boolean }) => void,
+  { sharePresence = true, shareTyping = true }: { sharePresence?: boolean; shareTyping?: boolean } = {}
 ): TypingBus {
   const sb = client();
   const channel = sb.channel(`presence:${conversationId}`, {
@@ -575,30 +624,47 @@ export function typingBus(
   });
 
   let lastTyping = 0;
+  let typingTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  const isPartnerOnline = () => Object.keys(channel.presenceState() as Record<string, unknown[]>).some((key) => key !== me);
+  let subscribed = false;
+  const syncPresence = () => {
+    if (!subscribed) return;
+    if (sharePresence && (typeof document === "undefined" || document.visibilityState === "visible")) {
+      void channel.track({ user: me, at: Date.now() });
+    } else {
+      void channel.untrack();
+    }
+  };
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", syncPresence);
 
   channel
     .on("broadcast", { event: "typing" }, ({ payload }) => {
       if ((payload as { user?: string })?.user === me) return;
       lastTyping = Date.now();
-      onPartner({ typing: true, online: true });
-      window.setTimeout(() => {
-        if (Date.now() - lastTyping >= 1800) onPartner({ typing: false, online: true });
+      onPartner({ typing: true, online: isPartnerOnline() });
+      if (typingTimer) clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        if (!stopped && Date.now() - lastTyping >= 1800) onPartner({ typing: false, online: isPartnerOnline() });
       }, 1900);
     })
     .on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState() as Record<string, unknown[]>;
-      const online = Object.keys(state).some((key) => key !== me);
-      onPartner({ typing: false, online });
+      onPartner({ typing: false, online: isPartnerOnline() });
     })
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") void channel.track({ user: me, at: Date.now() });
+      if (status === "SUBSCRIBED") { subscribed = true; syncPresence(); }
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") subscribed = false;
     });
 
   return {
     ping: () => {
+      if (!shareTyping || (typeof document !== "undefined" && document.visibilityState !== "visible")) return;
       void channel.send({ type: "broadcast", event: "typing", payload: { user: me } });
     },
     stop: () => {
+      stopped = true;
+      if (typingTimer) clearTimeout(typingTimer);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", syncPresence);
       void sb.removeChannel(channel);
     },
   };

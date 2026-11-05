@@ -1,6 +1,6 @@
 # Dolemon · v0.1
 
-A private, invite-only space for **one-to-one** conversations. No groups, no noise.
+A space for **one-to-one** conversations. No groups, no noise. Messages are protected by Supabase access controls, not end-to-end encryption.
 
 Installable: open [dolemon.vercel.app/download](https://dolemon.vercel.app/download) →
 **Install the app**. It lands on the home screen and runs full screen, no app store
@@ -16,11 +16,22 @@ synced over Realtime.
 
 Open the app → create an account → search your person by **@handle** → the room opens. Both
 people need an account; messages, reactions, typing dots and presence are live between them,
-and voice/video calls ring the other device directly.
+and calls can ring another device while its app is active, subject to network and Realtime configuration.
 
 Supabase project `dolemon` is provisioned (schema + RLS + presence tables) and its auth
 site URL points at the live domain. See [DEPLOY.md](./DEPLOY.md) for env vars, how the
 first builds were fixed, and the OTP/SMTP caveats before switching to real auth.
+
+## Privacy and deployment limitations
+
+- The documented `chat-media` bucket is **public**. Anyone with an attachment URL can access it. Deleting a message or chat does not remove its stored files. Check the actual bucket configuration before using sensitive media.
+- App lock is a UI gate, not encryption. Local preferences and presence history are device-specific. New local secrets require Web Crypto; users with old weak fallback hashes should reset their password/app lock on HTTPS.
+- Typing and presence controls stop future signals from this device; a previously shared last-seen timestamp may remain. An untracked partner is not necessarily offline. Live room history is an incomplete, device-local observation, not an authoritative shared record. Legacy history is preserved but excluded because it could contain demo data.
+- Live pulses and server-enforced blocking are not implemented. The lamp is local only. Push notifications, TURN relay, message E2EE and a durable offline outbox are also not implemented. Retry after an ambiguous failure may duplicate a message.
+- Realtime calling uses DTLS-SRTP transport, but signalling needs private, authenticated Realtime policies and live two-account security testing before making an identity-authenticated end-to-end privacy claim. Calls may fail on restrictive networks and cannot ring a suspended app without push.
+- Automatic local Doremon analysis is opt-in under Settings. Explicit questions and briefings can send recent excerpts and memory to Google Gemini; consider the other person's consent. Inferences can be wrong. Memory controls allow summary edits, JSON export and deletion of your copy (other devices may recreate it if analysis remains enabled).
+- Apply `docs/migrations/011_privacy_and_memory.sql` **only after 004, 008 and 010**, after a backup and staging verification. This fixes the visibility function and memory-related deletion conflict; it does not remove storage objects. The migration is not automatically applied by deploying the app. Do not rerun 010 after 011: it reinstates the old foreign key and policy.
+- The lockfile has known security advisories including Next.js and Zod; a major framework/dependency upgrade and deployment-specific validation remain necessary. CI and mocked tests are not a substitute for live RLS, storage, two-device and Gemini generation tests.
 
 ## Run it
 
@@ -94,10 +105,9 @@ Built around **presence**, not around an inbox:
   the header reads "You're both here · 4m" with a shared clock, and a hairline ribbon under
   the header comes alive. When one of you leaves, the light drops and the composer quietly
   says "Aarohi left 2m ago — your message will be waiting."
-- **Presence moments** are timeline items in their own right ("You were both here together
-  yesterday · 22 minutes") — something a normal chat log can't show.
+- **Presence moments** can appear in the demo timeline. Live room observations are local to this device and are not a shared timeline.
 - Bubbles with day separators (Aaj / Kal / 12 Nov), 3-minute grouping, delivery ticks
-  (sending → sent → delivered → read → failed + tap-to-retry), typing bubble, auto-growing
+  (sending → server-accepted → read → failed + tap-to-retry), typing bubble, auto-growing
   composer (Enter to send, Shift+Enter for a newline).
 - Auto-scroll only pins when you're within 120px of the bottom; scroll up and new messages
   collect behind a `↓ N naya` pill instead of yanking you away from what you were reading.
@@ -134,23 +144,19 @@ and still distinguishable at 16px in a chip.
 
 ### Pulses
 
-The heart in the composer sends a **pulse** — the smallest possible "thinking of you" that
-isn't a message. It leaves nothing in the thread: hearts drift up, the room warms, and it's
-gone. You can send one every 15s (the ring drains so the limit is felt). If two pulses cross
-within a minute, that *does* get remembered as a presence moment.
+Pulses are available in the local demo only. Live mode does not claim to send them.
 
 ### The room (`/app/room/[id]`)
 
 - Your two avatars with a live line between them, lit only when you're both in.
-- **Leave a light on** — a warm glow that stays in the room while you're away.
+- **Leave a light on** — a warm glow on this device only.
 - **Together today** — minutes you've shared, a 7-day chart and a streak, all from logged
-  presence sessions rather than fake numbers.
+  presence sessions observed on this device; they are incomplete and may overlap across tabs.
 - **Presence moments** — the last few times you were both here, with times and lengths.
 
 ### Presence controls
 
-`/settings` → Presence: *Show when I'm here* (invisible mode) and *Allow pulses*. Both are
-respected everywhere — the header reads "You're invisible" when you switch yourself off.
+`/settings` → Presence controls future presence publication from this device. Typing is a separate setting; turn both off if you do not want either signal shared. Last-seen timestamps already published can remain.
 
 ## Calls — real WebRTC
 
@@ -172,25 +178,23 @@ The local demo keeps the simulated call screen (no media) for click-through.
 
 ## Everything else a messenger needs
 
-- **Message actions** — long-press any bubble: react (❤️ 😌 😂 🥺 🔥 👍), reply with quote,
-  copy, delete for me.
+- **Message actions** — long-press a bubble to react, reply, copy or forward; edit and delete your own messages. Live deletion removes the message for both participants.
 - **Attachments** — photos (downscaled to fit device storage) with a full-screen viewer, and
   voice notes recorded with MediaRecorder up to 60s with a live waveform.
-- **Unread divider** — a "New" line marks where you left off, backed by per-chat read state.
+- **Older messages & search** — load older pages in the thread or search text across accessible messages (up to 50 results).
 - **Chat management** — long-press a row on home to pin, mute, mark read, or delete a chat.
-- **Privacy controls** — read receipts, typing indicator and haptics, each working in both
-  directions (Settings → Chats & privacy).
+- **Privacy controls** — read receipts, typing, presence, automatic analysis and haptics (Settings).
 
 ## Not built yet (deliberately)
 
 | Gap | Why |
 | --- | --- |
-| End-to-end encrypted **messages** | Calls are E2EE (DTLS-SRTP, peer to peer). Text is stored in Postgres under RLS, so it is encrypted in transit but readable by the project owner. Real message E2EE needs a key exchange per device |
+| End-to-end encrypted **messages** | Call media uses DTLS-SRTP, but signalling identity is not yet independently authenticated. Text is stored in Postgres under RLS, so it is encrypted in transit but readable by the project owner. Real message E2EE needs a key exchange per device |
 | Push notifications | Requires Web Push + service worker + a backend sender |
-| Real media storage | Photos/voice notes live on-device until Supabase Storage is wired |
-| Multi-device sync | Single-device local state today |
+| Private media | Live attachments use public links; private storage and object cleanup need a migration |
+| Full multi-device state | Messages sync, but preferences, themes, drafts and local room history do not |
 | Block / report, backups | Server-authoritative features that follow the backend |
-| Message editing, in-chat search | Next polish pass once data is real |
+| Durable outbox | Unsent messages currently live in memory and do not survive reload |
 
 ## Stack
 

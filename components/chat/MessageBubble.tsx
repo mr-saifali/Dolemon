@@ -427,7 +427,7 @@ function Ticks({ status, seenAt }: { status?: ChatMessage["status"]; seenAt?: nu
     return <CheckCheck className="h-3 w-3 text-white/60" aria-label={seenAt ? `Seen at ${clockTime(seenAt)}` : "Seen"} />;
   }
   // "sent" (the brief demo beat) and "delivered" both read as: one tick
-  return <Check className="h-3 w-3 text-white/60" aria-label="Delivered" />;
+  return <Check className="h-3 w-3 text-white/60" aria-label={status === "sent" ? "Sent to server" : "Delivered"} />;
 }
 
 function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: number; mine: boolean }) {

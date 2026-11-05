@@ -27,6 +27,10 @@ export function MessageList({
   onRetry,
   onOpenImage,
   onSwipeReply,
+  hasOlder = false,
+  loadingOlder = false,
+  onLoadOlder,
+  onBottomChange,
 }: {
   messages: ChatMessage[];
   partnerName: string;
@@ -44,12 +48,18 @@ export function MessageList({
   onRetry: (message: ChatMessage) => void;
   onOpenImage?: (url: string) => void;
   onSwipeReply?: (message: ChatMessage) => void;
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?: () => Promise<void>;
+  onBottomChange?: (atBottom: boolean) => void;
 }) {
   const scroller = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
+  const prepending = useRef(false);
   /** whatever was already on screen when the thread opened stays still — no hundred springs */
   const initialIds = useRef<Set<string> | null>(null);
   if (initialIds.current === null && messages.length > 0) initialIds.current = new Set(messages.map((m) => m.id));
+  if (prepending.current) messages.forEach((message) => initialIds.current?.add(message.id));
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
 
@@ -68,8 +78,9 @@ export function MessageList({
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = distance < 120;
     setAtBottom(near);
+    onBottomChange?.(near);
     if (near) setNewCount(0);
-  }, []);
+  }, [onBottomChange]);
 
   // Pin to the newest message only when the reader is already near the bottom.
   useEffect(() => {
@@ -77,7 +88,7 @@ export function MessageList({
     const added = messages.length - previousCount.current;
     const first = previousCount.current === 0;
     previousCount.current = messages.length;
-    if (!grew) return;
+    if (!grew || prepending.current) return;
     if (first || atBottom) {
       requestAnimationFrame(() => scrollToBottom(first ? "auto" : "smooth"));
     } else {
@@ -107,6 +118,26 @@ export function MessageList({
             </span>
           </div>
 
+          {hasOlder && onLoadOlder && (
+            <div className="mb-3 flex justify-center">
+              <button type="button" disabled={loadingOlder} onClick={() => {
+                const el = scroller.current;
+                if (!el || prepending.current) return;
+                const height = el.scrollHeight;
+                const top = el.scrollTop;
+                prepending.current = true;
+                void onLoadOlder().finally(() => {
+                  requestAnimationFrame(() => {
+                    if (scroller.current === el) el.scrollTop = top + el.scrollHeight - height;
+                    prepending.current = false;
+                  });
+                });
+              }} className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs text-zinc-300 disabled:opacity-50">
+                {loadingOlder ? "Loading…" : "Load older messages"}
+              </button>
+            </div>
+          )}
+
           {groups.map((group) => (
             <section key={group.key}>
               <SystemPill>{group.label}</SystemPill>
@@ -134,7 +165,7 @@ export function MessageList({
                 }
 
                 return (
-                  <div key={message.id}>
+                  <div key={message.id} id={`message-${message.id}`}>
                     {showDivider && <UnreadDivider />}
                     <MessageBubble
                       message={message}

@@ -11,7 +11,7 @@ import {
   PhoneIncoming,
   Palette,
   RotateCcw,
-  ShieldOff,
+  Search,
   Sparkles,
   Trash2,
   Video,
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { MessageSearchSheet } from "@/components/chat/MessageSearchSheet";
 import { ChatThemeSheet } from "@/components/chat/ChatThemePicker";
 import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
@@ -60,7 +61,7 @@ function ThreadScreen() {
   const meta = useChatMetaFor(conversationId);
   const theme = resolveChatTheme(meta.chatTheme, prefs.chatTheme);
   const local = useThread(conversationId, { enabled: !REMOTE });
-  const remote = useRemoteThread(conversationId, REMOTE, { shareReads: prefs.readReceipts });
+  const remote = useRemoteThread(conversationId, REMOTE, { shareReads: prefs.readReceipts, sharePresence: prefs.showPresence, shareTyping: prefs.typingIndicator });
 
   const messages = REMOTE ? remote.messages : local.messages;
   const ready = REMOTE ? remote.ready : local.ready;
@@ -76,6 +77,7 @@ function ThreadScreen() {
   // Doremon — watches the room, keeps the record, and speaks only in his room.
   const doremon = useDoremon(conversationId, messages, {
     remote: REMOTE,
+    analysisEnabled: prefs.doremonAnalysis,
     me: myHandle,
     partner: partnerName.replace(/^@/, ""),
     meId: account?.id ?? null,
@@ -87,7 +89,12 @@ function ThreadScreen() {
     logKey: conversationId,
   });
 
+  useEffect(() => {
+    if (REMOTE) setPresence(remote.online ? "here" : "away");
+  }, [remote.online, setPresence]);
+
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const closeTheme = useCallback(() => setThemeOpen(false), []);
   const [picker, setPicker] = useState<{ message: ChatMessage; anchor: BubbleAnchor } | null>(null);
@@ -96,6 +103,8 @@ function ThreadScreen() {
   const [attachOpen, setAttachOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [dividerId, setDividerId] = useState<string | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  const [visible, setVisible] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const marked = useRef(false);
@@ -131,6 +140,19 @@ function ThreadScreen() {
     themCursor.current = last.id;
     if (document.visibilityState === "visible") markRead(conversationId);
   }, [messages, conversationId]);
+
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState === "visible");
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  const latestId = messages[messages.length - 1]?.id;
+  const { markRead: markRemoteRead, loadError } = remote;
+  useEffect(() => {
+    if (REMOTE && ready && !loadError && visible && atBottom) markRemoteRead();
+  }, [ready, visible, atBottom, latestId, loadError, markRemoteRead]);
 
   // Swipe in from the left edge to go back to the inbox (the gesture every phone app has).
   const edge = useRef<{ x: number; y: number; id: number } | null>(null);
@@ -212,11 +234,11 @@ function ThreadScreen() {
   const status = useMemo(() => {
     if (online) return "online";
     if (REMOTE) {
-      const seen = remote.partnerLastSeenAt ?? remote.partnerLastAt;
-      return seen ? `last seen ${formatAgo(seen)}` : "last seen recently";
+      const seen = remote.partnerLastSeenAt;
+      return seen ? `last seen ${formatAgo(seen)}` : "presence unavailable";
     }
     return lastSeenAt ? `last seen ${formatAgo(lastSeenAt)}` : "last seen recently";
-  }, [online, remote.partnerLastAt, remote.partnerLastSeenAt, lastSeenAt]);
+  }, [online, remote.partnerLastSeenAt, lastSeenAt]);
 
   const handlePulse = useCallback(() => {
     const result = pulses.send();
@@ -297,8 +319,8 @@ function ThreadScreen() {
         }
         break;
       case "delete":
-        removeNow(message.id);
-        toast.success("Message deleted");
+        void Promise.resolve(removeNow(message.id)).then(() => toast.success("Message deleted"))
+          .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't delete that message"));
         break;
     }
     setPicker(null);
@@ -323,6 +345,7 @@ function ThreadScreen() {
   };
 
   const menuActions: ChatMenuAction[] = [
+    { key: "search", label: "Search messages", icon: <Search className="h-[18px] w-[18px]" />, onSelect: () => setSearchOpen(true) },
     {
       key: "voice",
       label: "Voice call",
@@ -363,16 +386,6 @@ function ThreadScreen() {
       onSelect: () => {
         patchMeta(conversationId, { muted: !meta.muted });
         toast.success(meta.muted ? "Notifications on" : "Notifications muted");
-      },
-    },
-    {
-      key: "block",
-      label: meta.blocked ? "Unblock" : "Block",
-      icon: <ShieldOff className="h-[18px] w-[18px]" />,
-      danger: !meta.blocked,
-      onSelect: () => {
-        patchMeta(conversationId, { blocked: !meta.blocked });
-        toast.success(meta.blocked ? "Unblocked" : `Blocked ${partnerName}`);
       },
     },
     {
@@ -461,10 +474,20 @@ function ThreadScreen() {
         onDoremon={() => router.push(`/app/doremon/${conversationId}`)}
       />
 
+      {REMOTE && remote.loadError && (
+        <div role="alert" className="relative z-10 mx-4 mt-2 flex items-center justify-between gap-3 rounded-xl bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+          <span>Couldn’t load this chat. Your messages may still be on the server.</span>
+          <button type="button" onClick={remote.reload} className="shrink-0 underline">Retry</button>
+        </div>
+      )}
       <MessageList
+        hasOlder={REMOTE && remote.hasOlder}
+        loadingOlder={remote.loadingOlder}
+        onLoadOlder={remote.loadOlder}
+        onBottomChange={setAtBottom}
         messages={messages}
         partnerName={partnerName}
-        typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator && !meta.blocked}
+        typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
         showReceipts={prefs.readReceipts}
         compact={prefs.compactChat}
         dividerId={dividerId}
@@ -496,12 +519,14 @@ function ThreadScreen() {
       </AnimatePresence>
 
       <ChatInput
+        disabled={REMOTE && (!ready || remote.loadError || !remote.me)}
+        hint={REMOTE && (!ready || remote.loadError || !remote.me) ? "Connect to load the chat before sending." : undefined}
         onSend={handleSend}
         onSticker={handleSticker}
         onPulse={handlePulse}
         onAttach={() => setAttachOpen(true)}
         onVoice={() => setAttachOpen(true)}
-        onTyping={() => !REMOTE || remote.notifyTyping()}
+        onTyping={() => { if (REMOTE && prefs.typingIndicator) remote.notifyTyping(); }}
         showPulse={!REMOTE}
         pulseCoolingUntil={pulses.coolingUntil}
         pulseDisabled={!prefs.allowPulses}
@@ -512,6 +537,7 @@ function ThreadScreen() {
         onCancelReply={() => setReplyTo(null)}
       />
 
+      <MessageSearchSheet open={searchOpen} onClose={() => setSearchOpen(false)} conversationId={conversationId} remote={REMOTE} me={remote.me} messages={messages} />
       <ChatThemeSheet
         open={themeOpen}
         value={theme.id}
@@ -531,7 +557,7 @@ function ThreadScreen() {
       <ConfirmDialog
         open={deleteOpen}
         title={`Delete this chat?`}
-        description={`Everything with ${partnerName} — messages, photos, voice notes — is removed for both of you. There's no undo.`}
+        description={`Messages are removed for both of you with no undo. Uploaded files may remain accessible by their links; AI memories may also be retained.`}
         confirmLabel="Delete chat"
         busy={deleting}
         onConfirm={() => void handleDelete()}
@@ -557,6 +583,7 @@ function ThreadScreen() {
       </AnimatePresence>
 
       <AttachmentSheet
+        publicMedia={REMOTE}
         open={attachOpen}
         onClose={() => setAttachOpen(false)}
         onPhoto={(image) => {

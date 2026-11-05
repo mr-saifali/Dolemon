@@ -26,7 +26,7 @@ export function usePresence({
   logKey?: string;
 } = {}) {
   const prefs = usePrefs();
-  const [partner, setPartner] = useState<PartnerPresence>("here");
+  const [partner, setPartner] = useState<PartnerPresence>(demo ? "here" : "away");
   const [pageVisible, setPageVisible] = useState(true);
   const [togetherSince, setTogetherSince] = useState<number | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
@@ -54,21 +54,21 @@ export function usePresence({
       setTogetherSince(null);
       setLastSeenAt(Date.now());
       if (logKey && sessionStart.current) {
-        appendSession(logKey, { start: sessionStart.current, end: Date.now() });
+        appendSession(logKey, { start: sessionStart.current, end: Date.now() }, demo);
       }
       sessionStart.current = null;
     }
     wasTogether.current = together;
-  }, [together, logKey]);
+  }, [together, logKey, demo]);
 
   // Log the tail of a session if the screen unmounts while you're still together.
   useEffect(() => {
     return () => {
       if (logKey && sessionStart.current && wasTogether.current) {
-        appendSession(logKey, { start: sessionStart.current, end: Date.now() });
+        appendSession(logKey, { start: sessionStart.current, end: Date.now() }, demo);
       }
     };
-  }, [logKey]);
+  }, [logKey, demo]);
 
   // Demo only: drift in and out so the presence layer is visible without a backend.
   useEffect(() => {

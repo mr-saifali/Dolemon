@@ -104,8 +104,8 @@ function SettingsContent() {
       await auth.setPrivate(value);
       await refresh();
       toast.success(value ? "You're private now" : "You're visible in search again");
-    } catch {
-      toast.error("Couldn't change that");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't change that");
     }
   };
 
@@ -415,7 +415,7 @@ function SettingsContent() {
                 <p className="mt-0.5 text-[12.5px] text-zinc-500">
                   {account?.hasAppLock
                     ? "On — asked when Dolemon opens, and when you've been away."
-                    : "A second lock for your phone."}
+                    : "A soft screen lock, not encryption."}
                 </p>
                 </div>
               </div>
@@ -547,12 +547,25 @@ function SettingsContent() {
           </div>
         </Section>
 
+        <Section title="Doremon &amp; AI">
+          <div className="py-3.5">
+            <Switch
+              icon={<Tile tone="sky"><Sparkles className="h-[15px] w-[15px]" /></Tile>}
+              label="Automatic chat analysis"
+              description="Optional: analyze recent chat text on this device and save a personal memory. Turn off to stop future analysis; existing memories remain. Consider the other person's consent."
+              checked={prefs.doremonAnalysis}
+              onChange={(v) => setPref("doremonAnalysis", v)}
+            />
+            <p className="mt-2 pl-12 text-xs leading-relaxed text-zinc-500">When you ask Doremon or request a daily briefing, chat excerpts and memory can be sent to Google Gemini. AI interpretations may be wrong.</p>
+          </div>
+        </Section>
+
         <Section title="Presence">
           <div className="py-3.5">
             <Switch
               icon={<Tile tone="mint"><Radio className="h-[15px] w-[15px]" /></Tile>}
               label="Share presence"
-              description="Off and the room reads you as away."
+              description="Stops future presence and last-seen updates from this device; earlier timestamps may remain."
               checked={prefs.showPresence}
               onChange={(v) => setPref("showPresence", v)}
             />
@@ -561,7 +574,7 @@ function SettingsContent() {
             <Switch
               icon={<Tile tone="rose"><Sparkles className="h-[15px] w-[15px]" /></Tile>}
               label="Pulses"
-              description="Thinking of you, without a message."
+              description="Demo pulses only. Live pulses are not available yet."
               checked={prefs.allowPulses}
               onChange={(v) => setPref("allowPulses", v)}
             />

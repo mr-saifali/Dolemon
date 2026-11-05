@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { getPrefs } from "@/lib/prefs";
 import {
   AuthFailure,
   RESERVED_USERNAMES,
@@ -98,7 +99,13 @@ export const supabaseProvider: AuthProvider = {
 
   async getAccount() {
     const { data, error } = await client().auth.getUser();
-    if (error || !data.user?.email) return null;
+    if (error) {
+      // Invalid/expired sessions are sign-outs; connectivity failures should
+      // not erase the cached account and force the user through login.
+      if (error.status === 401 || error.status === 403 || error.name === "AuthSessionMissingError") return null;
+      throw error;
+    }
+    if (!data.user?.email) return null;
 
     // A valid session must never be thrown out by a one-off network hiccup —
     // retry once before giving up.
@@ -111,7 +118,7 @@ export const supabaseProvider: AuthProvider = {
     }
 
     // "last seen" heartbeat, at most every five minutes per tab
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && getPrefs().showPresence && document.visibilityState === "visible") {
       const key = `dolemon:seen:${data.user.id}`;
       const previous = Number(window.localStorage.getItem(key) ?? 0);
       if (Date.now() - previous > 5 * 60_000) {
@@ -297,6 +304,12 @@ export const supabaseProvider: AuthProvider = {
       visibility: privateFlag ? "private" : "public",
     });
     if (error) throw mapError(error.message);
+    // Older deployments may have a visibility RPC that succeeds without
+    // changing the column. Never announce privacy without confirming it.
+    const result = await client().from("profiles").select("visibility").eq("id", auth.user.id).maybeSingle<{ visibility: string }>();
+    if (result.error || result.data?.visibility !== (privateFlag ? "private" : "public")) {
+      throw new Error("Could not verify account visibility. The server may need migration 011.");
+    }
     return loadProfile(auth.user.id, auth.user.email);
   },
 };

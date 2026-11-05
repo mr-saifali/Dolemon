@@ -24,6 +24,8 @@ import {
 } from "@/lib/presence-log";
 import { usePulses } from "@/lib/pulses";
 import { setPref, usePrefs } from "@/lib/prefs";
+import { listConversations, typingBus } from "@/lib/db";
+import { useSession } from "@/lib/session";
 
 function RoomScreen() {
   const params = useParams<{ id: string }>();
@@ -31,19 +33,39 @@ function RoomScreen() {
   const [conversation] = useState(
     () => demoConversations().find((c) => c.id === conversationId) ?? null
   );
-  const partnerName = conversation?.name ?? "Them";
+  const demo = authMode === "local";
+  const { account } = useSession();
+  const [liveName, setLiveName] = useState<string | null>(null);
+  const partnerName = demo ? conversation?.name ?? "Them" : liveName ?? "Them";
 
   const prefs = usePrefs();
-  const { together, partner, togetherSince, lastSeenAt } = usePresence({ demo: authMode === "local" });
-  const pulses = usePulses({ demo: authMode === "local" });
+  const { together, partner, togetherSince, lastSeenAt, setPresence } = usePresence({ demo, logKey: conversationId });
+  const pulses = usePulses({ demo });
   const [sessions, setSessions] = useState<PresenceSession[]>([]);
 
   useEffect(() => {
-    const refresh = () => setSessions(loadSessions(conversationId));
+    const refresh = () => setSessions(loadSessions(conversationId, demo));
     refresh();
     const t = setInterval(refresh, 5000);
     return () => clearInterval(t);
-  }, [conversationId]);
+  }, [conversationId, demo]);
+
+  useEffect(() => {
+    if (demo) return;
+    let alive = true;
+    void listConversations().then((rows) => {
+      if (alive) setLiveName(rows.find((row) => row.id === conversationId)?.partnerUsername ?? null);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [conversationId, demo]);
+
+  useEffect(() => {
+    if (demo || !account?.id) return;
+    const bus = typingBus(conversationId, account.id, ({ online }) => setPresence(online ? "here" : "away"), {
+      sharePresence: prefs.showPresence, shareTyping: false,
+    });
+    return () => { bus.stop(); setPresence("away"); };
+  }, [conversationId, demo, account?.id, prefs.showPresence, setPresence]);
 
   const today = minutesTogetherToday(sessions);
   const week = useMemo(() => lastSevenDays(sessions), [sessions]);
@@ -58,8 +80,8 @@ function RoomScreen() {
   const statusText = together
     ? `Both here${togetherSince ? ` · ${formatDuration(Date.now() - togetherSince)}` : ""}`
     : lastSeenAt
-      ? `Away · last here ${formatAgo(lastSeenAt)}`
-      : "Away";
+      ? `Not currently visible · last together ${formatAgo(lastSeenAt)}`
+      : demo ? "Away" : "Presence not visible";
 
   return (
     <main className="relative isolate min-h-dvh overflow-hidden bg-ink">
@@ -127,7 +149,7 @@ function RoomScreen() {
                 : "It waits for you. Nothing is lost."}
           </p>
 
-          <div className="mt-5 flex justify-center">
+          {demo && <div className="mt-5 flex justify-center">
             <button
               type="button"
               onClick={() => {
@@ -141,7 +163,8 @@ function RoomScreen() {
               <Heart className="h-3.5 w-3.5" />
               Send a pulse
             </button>
-          </div>
+          </div>}
+          {!demo && <p className="mt-4 text-center text-xs text-text-muted">Live pulses aren’t available yet.</p>}
         </section>
 
         {/* lamp */}
@@ -152,7 +175,7 @@ function RoomScreen() {
           </div>
           <Switch
             label="Keep the room lit when I leave"
-            description="A warm glow stays here so they know you're still close — even when you're not looking at your phone."
+            description="A warm glow on this device only; it isn't shared with the other person."
             checked={prefs.lampOn}
             onChange={(next) => {
               setPref("lampOn", next);
@@ -211,7 +234,7 @@ function RoomScreen() {
             })}
           </div>
           <p className="mt-3 text-center text-[11px] text-text-muted/60">
-            {totalMinutes(sessions).toLocaleString("en-IN")} minutes together in total
+            {totalMinutes(sessions).toLocaleString("en-IN")} minutes observed on this device
             {last ? ` · last time ${formatAgo(last.end)}` : ""}
           </p>
         </section>
@@ -246,7 +269,7 @@ function RoomScreen() {
 
         <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[11px] text-text-muted/50">
           <Lock className="h-3 w-3" />
-          This room and its history are only ever yours.
+          Presence history is stored on this device and may be incomplete.
         </p>
       </div>
     </main>

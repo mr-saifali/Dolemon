@@ -27,7 +27,9 @@ import type { DoremonMemory, DoremonStats } from "@/lib/doremon/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+// Two bounded 20s model attempts + auth/catalog can exceed 30s.
+// The browser has a 50s deadline; allow the server to return a real error.
+export const maxDuration = 60;
 
 type RequestBody = {
   action: "analyze" | "ask" | "roomAsk" | "finalize" | "daily";

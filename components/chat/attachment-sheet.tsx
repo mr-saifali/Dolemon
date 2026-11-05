@@ -21,12 +21,14 @@ export function AttachmentSheet({
   onPhoto,
   onVoice,
   onFile,
+  publicMedia = false,
 }: {
   open: boolean;
   onClose: () => void;
   onPhoto: (image: PhotoPayload) => void;
   onVoice: (audio: VoicePayload) => void;
   onFile?: (file: FilePayload) => void;
+  publicMedia?: boolean;
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const docInput = useRef<HTMLInputElement | null>(null);
@@ -121,7 +123,11 @@ export function AttachmentSheet({
       timer.current = setInterval(() => {
         const ms = Date.now() - startedAt.current;
         setElapsed(ms);
-        if (ms >= MAX_RECORDING_MS) recorder.current?.stop();
+        if (ms >= MAX_RECORDING_MS && recorder.current?.state === "recording") {
+          stopTimer();
+          setRecording(false);
+          recorder.current.stop();
+        }
       }, 200);
     } catch {
       toast.error("Microphone permission was blocked");
@@ -131,7 +137,7 @@ export function AttachmentSheet({
   const stopRecording = () => {
     stopTimer();
     setRecording(false);
-    recorder.current?.stop();
+    if (recorder.current?.state === "recording") recorder.current.stop();
   };
 
   const cancelRecording = () => {
@@ -188,6 +194,8 @@ export function AttachmentSheet({
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {publicMedia && <p role="note" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-100">Attachments use public links. Anyone with a link can open the file; deleting a message may not remove the file.</p>}
 
             {recording ? (
               <div className="rounded-xl2 border border-rose/25 bg-rose/[0.06] p-4">

@@ -31,6 +31,8 @@ export type ChatMessage = {
   kind: MessageKind;
   text: string;
   at: number;
+  /** Exact server timestamp for stable cursor pagination. */
+  createdAt?: string;
   status?: MessageStatus;
   /** epoch ms — the exact moment the other person read this one (Telegram-style) */
   seenAt?: number | null;

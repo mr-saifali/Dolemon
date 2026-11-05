@@ -42,8 +42,10 @@ For AI replies in live (Supabase) mode, set the server-only `GEMINI_API_KEY` in
 set `GEMINI_MODEL=gemini-2.5-flash-lite` there and redeploy. Never use a
 `NEXT_PUBLIC_` prefix for the key. Demo mode uses the local heuristic brain.
 
-Each question makes one generation request, without automatic retries or model
-switching; Sunrise is a separate, optional request. A timeout can still consume
+Each question normally makes one generation request; Sunrise is a separate,
+optional request. If the default model is missing or Google explicitly reports
+zero free quota for it, Doremon checks the model catalog and can try one known
+alternative. Ordinary rate limits, timeouts and other errors are not retried. A timeout can still consume
 quota even if no reply arrives. Google enforces per-project/model rate, token,
 and daily limits, and availability can differ by account and change over time.
 If you see a quota message, wait for the indicated retry time, or check your
@@ -52,10 +54,11 @@ with no free quota cannot be fixed by retries. If the model is unavailable,
 choose a model with free-tier generation access and set `GEMINI_MODEL` to its
 exact ID. `/api/doremon?models=1` lists models visible to the key, but the list
 and room status check do not guarantee free quota. No generation is spent on
-that check. Conversation data sent to Gemini includes the recent chat, a
+that check. AI generation requires a valid Supabase login, protecting the shared
+Gemini quota from anonymous callers. Conversation data sent to Gemini includes the recent chat, a
 compressed memory, and up to four recent private room exchanges.
 
-Run the mocked API tests with `node --test tests/doremon-api.test.cjs`.
+Run the mocked API and theme tests with `node --test tests/*.test.cjs`.
 
 ## Onboarding flow
 
@@ -103,6 +106,14 @@ Built around **presence**, not around an inbox:
 
 Presence lives in `lib/presence.ts` with a single seam to a realtime channel — see
 `docs/supabase.md` §4 for the Realtime + `presence_moments` mapping.
+
+### Chat backgrounds
+
+Pick a default under **Settings → Chat backgrounds**, or open a chat's **… →
+Chat background** to give that chat its own look. Choose Soft glow, Open sky,
+Wild coast, or Golden road; “Use my default” removes the individual override.
+These choices are saved on this device only and are not shared with the other
+person. The original backgrounds are bundled with the app.
 
 ### Five reactions, no emoji
 

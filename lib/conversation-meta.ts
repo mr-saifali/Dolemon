@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import type { ChatThemeId } from "./chat-themes";
 
 /** Per-chat state a premium messenger keeps: pinned, muted, unread, deleted. */
 export type ChatMeta = {
@@ -10,6 +11,8 @@ export type ChatMeta = {
   deleted?: boolean;
   lastReadAt?: number;
   blocked?: boolean;
+  /** Personal, device-local wallpaper override; absent means use the default. */
+  chatTheme?: ChatThemeId;
 };
 
 type MetaMap = Record<string, ChatMeta>;
@@ -37,10 +40,19 @@ function snapshot(): MetaMap {
   return cache;
 }
 
+function onStorage(event: StorageEvent) {
+  if (event.key !== KEY && event.key !== null) return;
+  cache = read();
+  loaded = true;
+  listeners.forEach((listener) => listener());
+}
+
 function subscribe(l: () => void) {
+  if (typeof window !== "undefined" && listeners.size === 0) window.addEventListener("storage", onStorage);
   listeners.add(l);
   return () => {
     listeners.delete(l);
+    if (typeof window !== "undefined" && listeners.size === 0) window.removeEventListener("storage", onStorage);
   };
 }
 

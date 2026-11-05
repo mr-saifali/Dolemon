@@ -16,7 +16,6 @@ const SPRING = { type: "spring", stiffness: 400, damping: 30 } as const;
 export function MessageBubble({
   message,
   grouped,
-  tail,
   showReceipts = true,
   partnerName,
   onLongPress,
@@ -31,7 +30,7 @@ export function MessageBubble({
   message: ChatMessage;
   /** same sender, inside the burst window → tighter gap */
   grouped: boolean;
-  /** last message of the burst → time + ticks live here */
+  /** Kept for grouping compatibility with the message list. */
   tail: boolean;
   showReceipts?: boolean;
   partnerName: string;
@@ -130,7 +129,7 @@ export function MessageBubble({
     );
   }
 
-  const metaColor = mine ? "text-white/50" : "text-zinc-500";
+  const metaColor = mine ? "text-white/60" : "text-zinc-400";
 
   return (
     <motion.div
@@ -207,24 +206,17 @@ export function MessageBubble({
                 : message.kind === "file"
                   ? "px-4 py-3"
                   : "px-4 py-2.5",
-              "rounded-[20px]",
-              mine
-                ? "rounded-br-[4px] text-white"
-                : "rounded-bl-[4px] bg-[#1C1C1E] text-zinc-100"
+              "rounded-[22px]",
+              mine ? "bg-[#FF5C7A] text-white" : "bg-[#262628] text-zinc-100"
             )}
-            style={
-              mine
-                ? { background: "var(--sent-bg)", boxShadow: "var(--sent-rim), var(--sent-glow)" }
-                : undefined
-            }
           >
             {message.replyTo && (
               <div
                 className={cn(
-                  "mb-1.5 flex items-start gap-1.5 rounded-[12px] border-l-2 px-2 py-1.5 text-[11.5px] leading-snug",
+                  "mb-1.5 flex items-start gap-1.5 rounded-[12px] px-2 py-1.5 text-[11.5px] leading-snug",
                   mine
-                    ? "border-white/40 bg-black/10 text-white/85"
-                    : "border-rose/40 bg-white/[0.04] text-zinc-400"
+                    ? "bg-black/10 text-white/85"
+                    : "bg-white/[0.06] text-zinc-400"
                 )}
               >
                 <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 opacity-70" />
@@ -253,7 +245,7 @@ export function MessageBubble({
                     className="max-h-[300px] w-full max-w-[248px] object-cover"
                   />
                 </button>
-                {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </div>
             ) : message.kind === "file" && message.media ? (
               <div>
@@ -284,27 +276,19 @@ export function MessageBubble({
                   </span>
                   <Download className={cn("h-[18px] w-[18px] shrink-0", mine ? "text-white/70" : "text-zinc-500")} />
                 </a>
-                {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </div>
             ) : message.kind === "audio" && message.media ? (
               <div>
                 <AudioBubble url={message.media.url} durationMs={message.media.durationMs ?? 0} mine={mine} />
-                {tail && <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />}
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </div>
             ) : (
-              // The time floats beside the last line of text, exactly like iMessage:
-              // room on the last line → it sits right there, no room → it drops to its own line.
               <>
                 <span className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
                   {message.text}
                 </span>
-                {tail && (
-                  <span className={cn("float-right ml-1.5 mt-[3px] flex items-center gap-1 text-[10px] leading-none", metaColor)}>
-                    <span className="tabular-nums">{clockTime(message.at)}</span>
-                    {message.editedAt ? <span className="italic">edited</span> : null}
-                    {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
-                  </span>
-                )}
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </>
             )}
 
@@ -340,7 +324,7 @@ export function MessageBubble({
 
         {/* Reaction chips hug the bubble's bottom corner, overlapping it slightly. */}
         {chips.length > 0 && (
-          <div className={cn("absolute -bottom-2 z-10 flex items-center gap-1", mine ? "right-1" : "left-1")}>
+          <div className={cn("absolute -bottom-2 z-10 flex items-center gap-1", mine ? "right-2" : "left-2")}>
             <AnimatePresence initial={false}>
               {chips.map((chip) => (
                 <ReactionChip
@@ -421,19 +405,10 @@ function Ticks({ status, seenAt }: { status?: ChatMessage["status"]; seenAt?: nu
   if (status === "failed") return <AlertCircle className="h-3 w-3 text-red-300" aria-label="Not sent" />;
   if (status === "sending" || !status) return <Clock className="h-3 w-3 text-white/40" aria-label="Sending" />;
   if (status === "read") {
-    return (
-      <>
-        <CheckCheck className="h-3 w-3" style={{ color: "var(--accent)" }} aria-label="Seen" />
-        {seenAt ? (
-          <span className="tabular-nums text-white/75" aria-label={`Seen at ${clockTime(seenAt)}`}>
-            Read {clockTime(seenAt)}
-          </span>
-        ) : null}
-      </>
-    );
+    return <CheckCheck className="h-3 w-3 text-white/60" aria-label={seenAt ? `Seen at ${clockTime(seenAt)}` : "Seen"} />;
   }
   // "sent" (the brief demo beat) and "delivered" both read as: one tick
-  return <Check className="h-3 w-3 text-white/70" aria-label="Delivered" />;
+  return <Check className="h-3 w-3 text-white/60" aria-label="Delivered" />;
 }
 
 function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: number; mine: boolean }) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Mic, Plus, Smile, X } from "lucide-react";
+import { ArrowUp, ImagePlus, Mic, Plus, Smile, X } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { PulseButton } from "./pulse-button";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
@@ -67,7 +67,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="relative z-20 border-t border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
+    <div className="relative z-20">
       <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-2">
         {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
 
@@ -137,7 +137,7 @@ export function ChatInput({
           )}
         </AnimatePresence>
 
-        <div className="flex items-end gap-1.5">
+        <div className="flex items-end gap-0.5 rounded-[28px] bg-[#1C1C1E] px-2 py-1.5 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65)]">
           <motion.button
             type="button"
             onClick={onAttach}
@@ -148,7 +148,7 @@ export function ChatInput({
             <Plus className="h-6 w-6" strokeWidth={1.8} />
           </motion.button>
 
-          <div className="flex flex-1 items-end rounded-full bg-[#1C1C1E] px-4 py-3">
+          <div className="flex min-w-0 flex-1 items-end px-1 py-2">
             <textarea
               ref={area}
               rows={1}
@@ -165,9 +165,19 @@ export function ChatInput({
                   submit();
                 }
               }}
-              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-zinc-200 outline-none placeholder:text-zinc-500"
+              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-white outline-none placeholder:text-zinc-500"
             />
           </div>
+
+          <motion.button
+            type="button"
+            onClick={onAttach}
+            aria-label="Add a photo or file"
+            whileTap={{ scale: 0.9 }}
+            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+          >
+            <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
+          </motion.button>
 
           <motion.button
             type="button"
@@ -199,8 +209,7 @@ export function ChatInput({
                   // The tap must not steal focus from the field — that's what
                   // made the keyboard dip away and come back on send.
                   onPointerDown={(e) => e.preventDefault()}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-white"
-                  style={{ background: "var(--sent-bg)", boxShadow: "var(--sent-rim), 0 6px 18px -8px var(--glow-send)" }}
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-[#FF5C7A] transition-colors hover:text-[#ff8198]"
                 >
                   <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
                 </motion.button>

@@ -7,6 +7,7 @@ import {
   BellOff,
   Phone,
   PhoneIncoming,
+  Palette,
   RotateCcw,
   ShieldOff,
   Sparkles,
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
 import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { ChatThemeSheet } from "@/components/chat/ChatThemePicker";
 import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -25,6 +27,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { PulseOverlay } from "@/components/chat/pulse-overlay";
 import { ReactionPicker, type BubbleAnchor, type MessageAction } from "@/components/chat/ReactionPicker";
 import { authMode } from "@/lib/auth";
+import { isChatThemeId, resolveChatTheme } from "@/lib/chat-themes";
 import { demoConversations } from "@/lib/chat";
 import { markRead, patchMeta, useChatMetaFor } from "@/lib/conversation-meta";
 import { formatAgo, usePresence } from "@/lib/presence";
@@ -53,6 +56,7 @@ function ThreadScreen() {
   const live = useLiveCall();
   const prefs = usePrefs();
   const meta = useChatMetaFor(conversationId);
+  const theme = resolveChatTheme(meta.chatTheme, prefs.chatTheme);
   const local = useThread(conversationId, { enabled: !REMOTE });
   const remote = useRemoteThread(conversationId, REMOTE, { shareReads: prefs.readReceipts });
 
@@ -82,6 +86,8 @@ function ThreadScreen() {
   });
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const closeTheme = useCallback(() => setThemeOpen(false), []);
   const [picker, setPicker] = useState<{ message: ChatMessage; anchor: BubbleAnchor } | null>(null);
   const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
@@ -358,6 +364,13 @@ function ThreadScreen() {
       onSelect: () => router.push(`/app/room/${conversationId}`),
     },
     {
+      key: "theme",
+      label: "Chat background",
+      hint: theme.name,
+      icon: <Palette className="h-[18px] w-[18px]" />,
+      onSelect: () => setThemeOpen(true),
+    },
+    {
       key: "mute",
       label: meta.muted ? "Unmute" : "Mute",
       icon: <BellOff className="h-[18px] w-[18px]" />,
@@ -424,8 +437,15 @@ function ThreadScreen() {
     >
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,92,122,0.06),transparent_60%)]"
+        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(124,58,237,0.08),transparent_45%),radial-gradient(ellipse_at_85%_65%,rgba(59,130,246,0.07),transparent_48%),radial-gradient(ellipse_at_40%_100%,rgba(255,92,122,0.06),transparent_45%)]"
       />
+
+      {theme.image && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: `url(${theme.image})` }}>
+          <div className="absolute inset-0 bg-[#09090B]/55" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#09090B]/45 via-transparent to-[#09090B]/55" />
+        </div>
+      )}
 
       {edgePull > 0 && (
         <div
@@ -501,6 +521,15 @@ function ThreadScreen() {
           replyTo ? { author: replyTo.author === "me" ? "You" : partnerName, text: replyTo.text } : null
         }
         onCancelReply={() => setReplyTo(null)}
+      />
+
+      <ChatThemeSheet
+        open={themeOpen}
+        value={theme.id}
+        inherited={!isChatThemeId(meta.chatTheme)}
+        onChange={(id) => patchMeta(conversationId, { chatTheme: id })}
+        onReset={() => patchMeta(conversationId, { chatTheme: undefined })}
+        onClose={closeTheme}
       />
 
       <ChatMenuSheet

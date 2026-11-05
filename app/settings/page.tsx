@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
+import { ChatThemePicker } from "@/components/chat/ChatThemePicker";
+import { getChatTheme } from "@/lib/chat-themes";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -572,6 +574,16 @@ function SettingsContent() {
               checked={prefs.haptics}
               onChange={(v) => setPref("haptics", v)}
             />
+          </div>
+        </Section>
+
+        <Section title="Chat backgrounds">
+          <div className="py-4">
+            <p className="text-[14.5px] font-medium text-zinc-200">Find your kind of free</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-500">A default for your chats. You can also choose a different one inside each chat. Saved only on this device.</p>
+            <div className="mt-4">
+              <ChatThemePicker value={getChatTheme(prefs.chatTheme).id} onChange={(id) => setPref("chatTheme", id)} />
+            </div>
           </div>
         </Section>
 

@@ -30,6 +30,7 @@ export function useDoremon(
     partner,
     meId = null,
     partnerId = null,
+    analysisEnabled = false,
   }: {
     remote: boolean;
     me: string;
@@ -37,6 +38,7 @@ export function useDoremon(
     /** user ids — let the closing summary read the talking census */
     meId?: string | null;
     partnerId?: string | null;
+    analysisEnabled?: boolean;
   }
 ) {
   const [memory, setMemory] = useState<DoremonMemory | null>(null);
@@ -45,6 +47,8 @@ export function useDoremon(
   const [watching, setWatching] = useState(false);
 
   const memoryRef = useRef<DoremonMemory | null>(null);
+  const analysisEnabledRef = useRef(analysisEnabled);
+  analysisEnabledRef.current = analysisEnabled;
   const lastAnalyzedId = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,7 +85,7 @@ export function useDoremon(
       memoryRef.current = mem;
       setMemory(mem);
       // keep the partner's handle in the record, even before the first analysis
-      if (mem && mem.partnerUsername !== partner) commitMemory(mem);
+      if (analysisEnabledRef.current && mem && mem.partnerUsername !== partner) commitMemory(mem);
     });
   }, [conversationId, remote, partner, commitMemory]);
 
@@ -90,6 +94,11 @@ export function useDoremon(
   const tail = humanMessages[humanMessages.length - 1];
 
   useEffect(() => {
+    if (!analysisEnabled) {
+      if (timer.current) clearTimeout(timer.current);
+      setWatching(false);
+      return;
+    }
     if (!tail || tail.id === lastAnalyzedId.current) return;
     setWatching(true);
     if (timer.current) clearTimeout(timer.current);
@@ -99,7 +108,7 @@ export function useDoremon(
       void runAnalysis();
     }, 2600);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tail?.id, conversationId]);
+  }, [tail?.id, conversationId, analysisEnabled]);
 
   useEffect(() => {
     return () => {
@@ -127,7 +136,7 @@ export function useDoremon(
   useEffect(() => {
     const conversation = conversationId;
     return () => {
-      if (!remote || finalizing.current) return;
+      if (!remote || !analysisEnabledRef.current || finalizing.current) return;
       const mem = memoryRef.current;
       if (!mem || !mem.summary) return; // nothing worth closing yet
       if (Date.now() - (mem.endedAt ?? 0) < 10 * 60_000) return; // already closed recently

@@ -8,6 +8,7 @@ import {
   fetchMessageQuote,
   loadReactions,
   loadThread,
+  loadOlderMessages,
   listConversations,
   markThreadRead,
   postMessage,
@@ -38,8 +39,9 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
       kind: "call",
       text: row.body,
       at: row.at,
+      createdAt: row.createdAt,
       editedAt: row.editedAt ?? null,
-      status: mine ? (pending ? "sending" : "delivered") : undefined,
+      status: mine ? (pending ? "sending" : "sent") : undefined,
       call: { type: lower.startsWith("video") ? "video" : "voice", durationMs: 0, missed: lower.includes("missed") },
     };
   }
@@ -51,6 +53,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
       kind: "presence",
       text: row.body,
       at: row.at,
+      createdAt: row.createdAt,
       editedAt: row.editedAt ?? null,
     };
   }
@@ -73,8 +76,9 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
         row.body ||
         (row.kind === "image" ? "Photo" : row.kind === "audio" ? "Voice note" : "File"),
       at: row.at,
+      createdAt: row.createdAt,
       editedAt: row.editedAt ?? null,
-      status: mine ? (pending ? "sending" : "delivered") : undefined,
+      status: mine ? (pending ? "sending" : "sent") : undefined,
       reactions: row.reactions,
       media,
       replyTo: row.replyTo ?? undefined,
@@ -87,8 +91,9 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
     kind: row.kind === "sticker" ? "sticker" : "text",
     text: row.kind === "sticker" ? "" : row.body,
     at: row.at,
+    createdAt: row.createdAt,
     editedAt: row.editedAt ?? null,
-    status: mine ? (pending ? "sending" : "delivered") : undefined,
+    status: mine ? (pending ? "sending" : "sent") : undefined,
     reactions: row.reactions,
     sticker: row.kind === "sticker" ? (sticker || "dil") : undefined,
     replyTo: row.replyTo ?? undefined,
@@ -136,10 +141,14 @@ export type RemoteSendOptions = {
 export function useRemoteThread(
   conversationId: string,
   enabled = true,
-  { shareReads = true }: { shareReads?: boolean } = {}
+  { shareReads = true, sharePresence = true, shareTyping = true }: { shareReads?: boolean; sharePresence?: boolean; shareTyping?: boolean } = {}
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [me, setMe] = useState<string | null>(null);
   const [partner, setPartner] = useState<DbConversation | null>(null);
   const [typing, setTyping] = useState(false);
@@ -197,6 +206,8 @@ export function useRemoteThread(
     }
     let cancelled = false;
     setReady(false);
+    setLoadError(false);
+    setHasOlder(false);
     setMessages([]);
     setMe(null);
     setPartner(null);
@@ -211,16 +222,17 @@ export function useRemoteThread(
     void loadThread(conversationId).then((result) => {
       if (cancelled) return;
       setMe(result.me);
+      setHasOlder(result.messages.length >= 400);
       setMessages(result.messages.map((row) => toChatMessage(row, result.me)));
     }).catch(() => {
-      if (!cancelled) setMessages([]);
+      if (!cancelled) setLoadError(true);
     }).finally(() => {
       if (!cancelled) setReady(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [conversationId, enabled]);
+  }, [conversationId, enabled, loadAttempt]);
 
   useEffect(() => {
     if (partnerReadAt != null) setMessages((prev) => applyReadCursor(prev, partnerReadAt));
@@ -230,8 +242,11 @@ export function useRemoteThread(
   useEffect(() => {
     if (!enabled || !me) return;
     let active = true;
+    let generation = 0;
+    let changed = new Set<string>();
     const stop = watchMessages(conversationId, {
       onInsert: (row) => {
+        changed.add(row.id);
         setMessages((prev) => {
           if (prev.some((m) => m.id === row.id)) return prev;
           // A realtime echo can arrive before its POST response. Do not guess
@@ -250,12 +265,35 @@ export function useRemoteThread(
         }
       },
       onUpdate: (row) => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === row.id ? { ...m, text: row.body, editedAt: row.editedAt ?? null } : m))
-        );
+        changed.add(row.id);
+        setMessages((prev) => {
+          if (!prev.some((m) => m.id === row.id)) {
+            return [...prev, toChatMessage(row, me)].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+          }
+          return prev.map((m) => (m.id === row.id ? { ...m, text: row.body, editedAt: row.editedAt ?? null } : m));
+        });
       },
       onDelete: (id) => {
+        changed.add(id);
         setMessages((prev) => prev.filter((m) => m.id !== id));
+      },
+      onSubscribed: () => {
+        // Close the snapshot/subscription gap and catch up after reconnect.
+        // Keep changes observed while the snapshot was in flight, including
+        // deletions, rather than overwriting them with stale rows.
+        const currentGeneration = ++generation;
+        changed = new Set();
+        void loadThread(conversationId).then((result) => {
+          if (!active || generation !== currentGeneration) return;
+          const events = changed;
+          setMessages((prev) => {
+            const stable = result.messages.filter((row) => !events.has(row.id)).map((row) => toChatMessage(row, result.me));
+            const first = stable[0];
+            const snapshotIds = new Set(result.messages.map((row) => row.id));
+            const recentChanges = prev.filter((m) => events.has(m.id) || m.id.startsWith("tmp_") || (first && !snapshotIds.has(m.id) && m.at < first.at));
+            return [...stable, ...recentChanges].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+          });
+        }).catch(() => undefined);
       },
       onRead: (at) => {
         setPartnerReadAt((prev) => (prev == null || at > prev ? at : prev));
@@ -278,18 +316,37 @@ export function useRemoteThread(
     const b = typingBus(conversationId, me, (state) => {
       setTyping(state.typing);
       setOnline(state.online);
-    });
+    }, { sharePresence, shareTyping });
     bus.current = b;
     return () => {
       b.stop();
       bus.current = null;
     };
-  }, [conversationId, me, enabled]);
+  }, [conversationId, me, enabled, sharePresence, shareTyping]);
 
-  useEffect(() => {
-    if (!ready || !enabled) return;
-    void markThreadRead(conversationId, shareReads);
-  }, [ready, conversationId, enabled, shareReads]);
+  const markRead = useCallback(() => {
+    if (ready && enabled) void markThreadRead(conversationId, shareReads);
+  }, [ready, enabled, conversationId, shareReads]);
+
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder || !hasOlder || !me) return;
+    const first = messagesRef.current.find((m) => m.createdAt && !m.id.startsWith("tmp_"));
+    if (!first?.createdAt) return;
+    setLoadingOlder(true);
+    try {
+      const rows = await loadOlderMessages(conversationId, { createdAt: first.createdAt, id: first.id }, me);
+      if (activeConversation.current !== conversationId) return;
+      setHasOlder(rows.length >= 100);
+      setMessages((prev) => {
+        const existing = new Set(prev.map((message) => message.id));
+        return [...rows.filter((row) => !existing.has(row.id)).map((row) => toChatMessage(row, me)), ...prev];
+      });
+    } catch {
+      toast.error("Couldn't load older messages. Try again.");
+    } finally {
+      if (activeConversation.current === conversationId) setLoadingOlder(false);
+    }
+  }, [conversationId, me, hasOlder, loadingOlder]);
 
   const deliver = useCallback(
     async (
@@ -331,7 +388,7 @@ export function useRemoteThread(
               m.id === row.id ? { ...m, replyTo: quote ?? m.replyTo } : m
             );
           }
-          return prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "delivered", replyTo: quote ?? m.replyTo } : m));
+          return prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "sent", replyTo: quote ?? m.replyTo } : m));
         });
       } catch (error) {
         if (activeConversation.current !== conversationId) { pending.current.delete(id); return; }
@@ -457,32 +514,45 @@ export function useRemoteThread(
     [refreshReactions]
   );
 
-  const remove = useCallback((messageId: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== messageId));
-    // real messages are deleted in Postgres too; optimistic bubbles only exist locally
-    if (!messageId.startsWith("tmp_")) void deleteMessage(messageId).catch(() => undefined);
-  }, []);
+  const remove = useCallback(async (messageId: string) => {
+    const message = messagesRef.current.find((m) => m.id === messageId);
+    if (!message || message.author !== "me") throw new Error("Only your own messages can be deleted.");
+    if (messageId.startsWith("tmp_")) {
+      if (message.status === "sending") throw new Error("Wait for sending to finish before deleting.");
+      pending.current.delete(messageId);
+    } else {
+      await deleteMessage(messageId);
+    }
+    if (activeConversation.current === conversationId) setMessages((prev) => prev.filter((m) => m.id !== messageId));
+  }, [conversationId]);
 
   /** Rewrite my own text. Fails quietly for the other person's messages (RLS). */
   const edit = useCallback(async (messageId: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const before = messagesRef.current.find((m) => m.id === messageId)?.text ?? "";
+    if (messageId.startsWith("tmp_")) throw new Error("Wait until the message is sent before editing.");
+    const previous = messagesRef.current.find((m) => m.id === messageId);
+    const before = previous?.text ?? "";
     setMessages((prev) =>
       prev.map((m) => (m.id === messageId ? { ...m, text: trimmed, editedAt: Date.now() } : m))
     );
     try {
-      if (messageId.startsWith("tmp_")) return;
       const at = await editMessage(messageId, trimmed);
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, editedAt: at } : m)));
     } catch (error) {
-      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, text: before } : m)));
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, text: before, editedAt: previous?.editedAt } : m)));
       throw error;
     }
   }, []);
 
   return {
     ready,
+    loadError,
+    hasOlder,
+    loadingOlder,
+    loadOlder,
+    markRead,
+    reload: () => setLoadAttempt((n) => n + 1),
     me,
     messages,
     typing,

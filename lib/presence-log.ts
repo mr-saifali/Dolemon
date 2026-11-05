@@ -10,7 +10,9 @@
 
 export type PresenceSession = { id: string; start: number; end: number };
 
-const key = (conversationId: string) => `dolemon:presence:${conversationId}`;
+// The legacy key could contain seeded demo history in real chats. Keep it
+// untouched; live observations start in a separate, clean namespace.
+const key = (conversationId: string, demo: boolean) => `dolemon:presence:${demo ? "" : "verified-v2:"}${conversationId}`;
 const DAY = 86_400_000;
 const uid = () => `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -35,32 +37,33 @@ function seed(now = Date.now()): PresenceSession[] {
   return out.sort((a, b) => a.start - b.start);
 }
 
-export function loadSessions(conversationId: string): PresenceSession[] {
+export function loadSessions(conversationId: string, demo = false): PresenceSession[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(key(conversationId));
+    const raw = window.localStorage.getItem(key(conversationId, demo));
     if (raw) return JSON.parse(raw) as PresenceSession[];
   } catch {
     /* fall through to seed */
   }
+  if (!demo) return [];
   const seeded = seed();
-  saveSessions(conversationId, seeded);
+  saveSessions(conversationId, seeded, true);
   return seeded;
 }
 
-export function saveSessions(conversationId: string, sessions: PresenceSession[]) {
+export function saveSessions(conversationId: string, sessions: PresenceSession[], demo = false) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(key(conversationId), JSON.stringify(sessions.slice(-400)));
+    window.localStorage.setItem(key(conversationId, demo), JSON.stringify(sessions.slice(-400)));
   } catch {
     /* ignore */
   }
 }
 
-export function appendSession(conversationId: string, session: Omit<PresenceSession, "id">) {
+export function appendSession(conversationId: string, session: Omit<PresenceSession, "id">, demo = false) {
   if (session.end - session.start < 3_000) return;
-  const sessions = loadSessions(conversationId);
-  saveSessions(conversationId, [...sessions, { ...session, id: uid() }]);
+  const sessions = loadSessions(conversationId, demo);
+  saveSessions(conversationId, [...sessions, { ...session, id: uid() }], demo);
 }
 
 const startOfDay = (ts: number) => {
@@ -82,8 +85,11 @@ export function minutesTogetherToday(sessions: PresenceSession[], now = Date.now
 export function lastSevenDays(sessions: PresenceSession[], now = Date.now()) {
   const today = startOfDay(now);
   return Array.from({ length: 7 }).map((_, i) => {
-    const dayStart = today - (6 - i) * DAY;
-    const dayEnd = dayStart + DAY;
+    const day = new Date(today);
+    day.setDate(day.getDate() - (6 - i));
+    const dayStart = day.getTime();
+    day.setDate(day.getDate() + 1);
+    const dayEnd = day.getTime();
     const ms = sessions.reduce((sum, s) => {
       const start = Math.max(s.start, dayStart);
       const end = Math.min(s.end, dayEnd);
@@ -101,8 +107,11 @@ export function lastSevenDays(sessions: PresenceSession[], now = Date.now()) {
 export function streakDays(sessions: PresenceSession[], now = Date.now()) {
   let streak = 0;
   for (let i = 0; i < 60; i++) {
-    const dayStart = startOfDay(now) - i * DAY;
-    const dayEnd = dayStart + DAY;
+    const day = new Date(startOfDay(now));
+    day.setDate(day.getDate() - i);
+    const dayStart = day.getTime();
+    day.setDate(day.getDate() + 1);
+    const dayEnd = day.getTime();
     const has = sessions.some((s) => s.start < dayEnd && s.end > dayStart);
     if (has) streak += 1;
     else if (i > 0) break;

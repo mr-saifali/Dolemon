@@ -1,6 +1,7 @@
 -- ============================================================================
 -- Dolemon · migration 010 — Doremon's room (private observer)
--- Run this once in the Supabase SQL editor. Idempotent: safe to re-run.
+-- Run this once in the Supabase SQL editor, BEFORE migration 011.
+-- Do not rerun after 011: it reinstates the older foreign key and policy.
 --
 -- What changes:
 --   * doremon_memory becomes PER-USER (each member has their own private
@@ -61,6 +62,7 @@ alter table public.doremon_memory
 
 -- PRIVATE: each member sees only their own Doremon's record
 drop policy if exists "doremon own conversation" on public.doremon_memory;
+drop policy if exists "doremon record is private" on public.doremon_memory;
 
 create policy "doremon record is private" on public.doremon_memory
   for all

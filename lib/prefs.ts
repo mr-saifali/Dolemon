@@ -14,6 +14,8 @@ export type Prefs = {
   readReceipts: boolean;
   /** show "typing…" in both directions */
   typingIndicator: boolean;
+  /** Optional automatic, local Doremon analysis of chat text. */
+  doremonAnalysis: boolean;
   /** vibration/haptic feedback on incoming pulses and calls */
   haptics: boolean;
   /** how long Dolemon stays open after you leave it, once app-lock is set */
@@ -39,6 +41,7 @@ const DEFAULT: Prefs = {
   lampOn: false,
   readReceipts: true,
   typingIndicator: true,
+  doremonAnalysis: false,
   haptics: true,
   autoLock: "1m",
   appearance: "feminine",
@@ -95,6 +98,11 @@ export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
     window.localStorage.setItem(KEY, JSON.stringify(next));
   }
   listeners.forEach((l) => l());
+}
+
+/** Snapshot for non-React services such as presence heartbeats. */
+export function getPrefs(): Prefs {
+  return snapshot();
 }
 
 export function usePrefs(): Prefs {

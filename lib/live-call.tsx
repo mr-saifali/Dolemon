@@ -424,7 +424,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
   const handleCallSignal = useCallback(
     async (signal: Signal) => {
       const current = callRef.current;
-      if (!current || signal.from === meRef.current) return;
+      if (!current || signal.from !== current.partnerId || signal.conversationId !== current.conversationId) return;
 
       if (signal.kind === "end") {
         finish("Call ended");
@@ -438,6 +438,13 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
       // the other side flipped voice ↔ video — their renegotiation offer follows
       if (signal.kind === "switch" && signal.type) {
+        if (signal.type === "voice") {
+          const sender = pcRef.current?.getSenders().find((item) => item.track?.kind === "video");
+          localRef.current?.getVideoTracks().forEach((track) => { track.stop(); localRef.current?.removeTrack(track); });
+          if (sender) await sender.replaceTrack(null).catch(() => undefined);
+          if (localRef.current) setLocalStream(new MediaStream(localRef.current.getTracks()));
+          setCameraOn(false);
+        }
         const next: ActiveCall = { ...current, type: signal.type };
         callRef.current = next;
         setCall(next);
@@ -488,8 +495,8 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
   );
 
   const handleUserSignal = useCallback(
-    (signal: Signal) => {
-      if (signal.from === meRef.current) return;
+    async (signal: Signal) => {
+      if (!signal.from || signal.from === meRef.current) return;
 
       if (signal.kind === "invite") {
         if (callRef.current) {
@@ -500,11 +507,16 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
           });
           return;
         }
+        // Payload fields are not identity proof. Only present invitations
+        // from a user in an existing conversation visible to this account.
+        const conversations = await listConversations().catch(() => []);
+        const known = conversations.find((row) => row.id === signal.conversationId && row.partnerId === signal.from);
+        if (!known || callRef.current) return;
         const incoming: ActiveCall = {
           conversationId: signal.conversationId,
-          partnerId: signal.from ?? "",
-          peerName: signal.name ?? "Someone",
-          peerAvatarUrl: signal.avatar ?? null,
+          partnerId: known.partnerId,
+          peerName: known.partnerUsername,
+          peerAvatarUrl: known.partnerAvatarUrl,
           type: signal.type ?? "voice",
           direction: "incoming",
           phase: "ringing",
@@ -527,14 +539,14 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
       if (signal.kind === "accept") {
         const current = callRef.current;
-        if (!current || current.direction !== "outgoing") return;
+        if (!current || current.direction !== "outgoing" || signal.from !== current.partnerId || signal.conversationId !== current.conversationId) return;
         void beginCaller();
         return;
       }
 
       if (signal.kind === "decline") {
         const current = callRef.current;
-        if (!current || current.direction !== "outgoing") return;
+        if (!current || current.direction !== "outgoing" || signal.from !== current.partnerId || signal.conversationId !== current.conversationId) return;
         finish(current.phase === "inviting" ? "No one picked up" : "Call declined");
       }
     },
@@ -762,27 +774,45 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       if (!current || !pc || current.phase !== "connected" || current.type === target) return;
 
       if (target === "video") {
+        let fresh: MediaStream | null = null;
         try {
-          const fresh = await navigator.mediaDevices.getUserMedia({
+          fresh = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: facing.current, width: { ideal: 1280 }, height: { ideal: 720 } },
             audio: false,
           });
+          // Permission prompts can outlive the call; don't leave a camera on.
+          if (callRef.current !== current || pcRef.current !== pc || !localRef.current) {
+            fresh.getTracks().forEach((track) => track.stop());
+            return;
+          }
           const [track] = fresh.getVideoTracks();
+          if (!track) throw new Error("No camera track");
           const sender = pc.getSenders().find((item) => item.track?.kind === "video");
           if (sender) await sender.replaceTrack(track);
-          else await pc.addTrack(track, fresh);
-          if (localRef.current) {
-            localRef.current.addTrack(track);
-            setLocalStream(new MediaStream(localRef.current.getTracks()));
+          else pc.addTrack(track, fresh);
+          if (callRef.current !== current || !localRef.current) {
+            fresh.getTracks().forEach((item) => item.stop());
+            return;
           }
+          localRef.current.addTrack(track);
+          setLocalStream(new MediaStream(localRef.current.getTracks()));
         } catch {
+          fresh?.getTracks().forEach((track) => track.stop());
           setNotice("Camera permission is needed for video");
           return;
         }
       } else {
         const sender = pc.getSenders().find((item) => item.track?.kind === "video");
+        // Replacing a sender does not stop the device capture itself.
+        localRef.current?.getVideoTracks().forEach((track) => {
+          track.stop();
+          localRef.current?.removeTrack(track);
+        });
         if (sender) await sender.replaceTrack(null).catch(() => undefined);
+        if (localRef.current) setLocalStream(new MediaStream(localRef.current.getTracks()));
+        setCameraOn(false);
       }
+      if (target === "video") setCameraOn(true);
 
       const next: ActiveCall = { ...current, type: target };
       callRef.current = next;

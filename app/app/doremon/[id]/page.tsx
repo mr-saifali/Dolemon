@@ -4,7 +4,8 @@ import { doremonFetch } from "@/lib/doremon/api";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Play, Send, Sunrise, Volume2, VolumeX } from "lucide-react";
+import { toast } from "sonner";
+import { ChevronLeft, Download, Pencil, Play, Send, Sunrise, Trash2, Volume2, VolumeX } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { DoremonFace } from "@/components/chat/doremon";
 import { authMode } from "@/lib/auth";
@@ -14,6 +15,8 @@ import { clockTime } from "@/lib/thread";
 import {
   loadDoremonMemory,
   loadDoremonStats,
+  deleteDoremonMemory,
+  replaceDoremonMemory,
   saveDoremonMemory,
 } from "@/lib/doremon/memory";
 import {
@@ -302,6 +305,9 @@ function Room({ conversationId }: { conversationId: string }) {
   const [brainDetail, setBrainDetail] = useState("");
   const brainAsked = useRef(false);
   const [dailyBusy, setDailyBusy] = useState(false);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [memoryBusy, setMemoryBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const music = useRoomMusic();
   const dataRef = useRef<Loaded | null>(null);
@@ -434,7 +440,10 @@ function Room({ conversationId }: { conversationId: string }) {
         clearTimeout(timeout);
       }
     }
-    if (!text) text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
+    if (!text) {
+      text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
+      if (REMOTE) toast("Gemini did not answer. This briefing was generated locally.");
+    }
     setDailyBusy(false);
     // land the two daily fields on whatever the FRESHEST memory is
     setData((prev) => (prev ? { ...prev, memory: { ...prev.memory, dailyDay: today, dailyBriefing: text } } : prev));
@@ -610,6 +619,30 @@ function Room({ conversationId }: { conversationId: string }) {
         </div>
       </header>
 
+      <div className="mx-auto flex w-full max-w-2xl flex-wrap gap-2 px-4 pt-3">
+        <button type="button" disabled={!data.alive || memoryBusy} onClick={() => { setSummaryDraft(data.memory.summary); setEditingSummary(true); }} className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-300 disabled:opacity-40"><Pencil className="h-3 w-3" /> Edit summary</button>
+        <button type="button" onClick={() => {
+          const blob = new Blob([JSON.stringify({ conversationId, exportedAt: new Date().toISOString(), memory: data.memory }, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a"); link.href = url; link.download = `doremon-memory-${conversationId}.json`; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }} className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs text-zinc-300"><Download className="h-3 w-3" /> Export memory</button>
+        <button type="button" disabled={memoryBusy} onClick={() => {
+          if (!window.confirm("Delete your Doremon memory and this device’s Doremon chat for this conversation? Automatic analysis on any device can create a new memory. This cannot be undone.")) return;
+          setMemoryBusy(true);
+          void deleteDoremonMemory(conversationId, REMOTE).then(() => { toast.success("Memory deleted"); router.push("/app"); }).catch(() => { toast.error("Could not delete memory. Try again."); setMemoryBusy(false); });
+        }} className="flex items-center gap-1 rounded-full border border-rose/20 px-3 py-1.5 text-xs text-rose disabled:opacity-40"><Trash2 className="h-3 w-3" /> Delete memory</button>
+      </div>
+      {editingSummary && <div className="mx-auto w-full max-w-2xl px-4 pt-3">
+        <label htmlFor="memory-summary" className="text-xs text-zinc-400">Edit your summary (other memory fields are unchanged)</label>
+        <textarea id="memory-summary" value={summaryDraft} maxLength={2000} onChange={(e) => setSummaryDraft(e.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-zinc-100" />
+        <div className="mt-2 flex gap-2"><button type="button" disabled={memoryBusy} onClick={() => {
+          setMemoryBusy(true);
+          const next = { ...data.memory, summary: summaryDraft.trim(), updatedAt: Date.now() };
+          void replaceDoremonMemory(conversationId, next, REMOTE).then(() => { setData((prev) => prev ? { ...prev, memory: next } : prev); setEditingSummary(false); toast.success("Summary saved"); }).catch(() => toast.error("Could not save summary. Try again.")).finally(() => setMemoryBusy(false));
+        }} className="rounded-full bg-sky-500 px-4 py-2 text-xs text-white disabled:opacity-40">Save</button><button type="button" onClick={() => setEditingSummary(false)} className="px-3 text-xs text-zinc-400">Cancel</button></div>
+      </div>}
+
       {brainState === "offline" && brainDetail && (
         <p role="status" className="mx-auto w-full max-w-2xl px-4 pt-2 text-[12px] leading-relaxed text-amber-200">{brainDetail}</p>
       )}
@@ -761,6 +794,7 @@ function Room({ conversationId }: { conversationId: string }) {
       </div>
 
       {/* input */}
+      <p className="mx-auto w-full max-w-2xl px-4 py-2 text-xs leading-relaxed text-zinc-500">Asking or requesting a daily briefing can send chat excerpts and memory to Google Gemini. Consider the other person’s consent. Interpretations may be wrong.</p>
       <div className="border-t border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2 px-3 py-3"

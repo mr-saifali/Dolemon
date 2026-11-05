@@ -10,8 +10,8 @@ const MAX_MSGS = 40;
 /**
  * Doremon's compressed record for one conversation.
  *
- * Live mode → the `doremon_memory` table (migration 008), shared between both
- * members, instant to fetch. Demo mode → a localStorage ring.
+ * Live mode → per-user `doremon_memory` (migration 010 or later).
+ * Demo mode → a localStorage ring.
  */
 
 export async function loadDoremonMemory(conversationId: string, remote: boolean): Promise<DoremonMemory | null> {
@@ -19,9 +19,12 @@ export async function loadDoremonMemory(conversationId: string, remote: boolean)
   try {
     const sb = getSupabase();
     if (!sb) return null;
+    const { data: auth } = await sb.auth.getUser();
+    if (!auth.user?.id) return null;
     const { data, error } = await sb
       .from("doremon_memory")
       .select("memory")
+      .eq("user_id", auth.user.id)
       .eq("conversation_id", conversationId)
       .maybeSingle<{ memory: DoremonMemory }>();
     if (error) return null; // table missing (migration 008 not run yet) — Doremon keeps a session memory
@@ -31,34 +34,42 @@ export async function loadDoremonMemory(conversationId: string, remote: boolean)
   }
 }
 
-export async function saveDoremonMemory(
-  conversationId: string,
-  memory: DoremonMemory,
-  remote: boolean
-): Promise<void> {
-  if (!remote) return void writeLocalMem(conversationId, memory);
-  try {
+/** Explicit edits report failures instead of silently pretending they saved. */
+export async function replaceDoremonMemory(conversationId: string, memory: DoremonMemory, remote: boolean): Promise<void> {
+  if (!remote) {
+    if (typeof window === "undefined") throw new Error("Local storage is unavailable");
+    window.localStorage.setItem(MEM_PREFIX + conversationId, JSON.stringify(memory));
+    return;
+  }
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase is unavailable");
+  const { data, error: authError } = await sb.auth.getUser();
+  if (authError || !data.user?.id) throw new Error("Sign in to update memory");
+  const { error } = await sb.from("doremon_memory").upsert({
+    conversation_id: conversationId, user_id: data.user.id,
+    memory: memory as unknown as Record<string, unknown>, updated_at: new Date().toISOString(),
+  }, { onConflict: "conversation_id,user_id" });
+  if (error) throw new Error(error.message);
+}
+
+/** Automatic memory persistence remains best-effort and must not break chat. */
+export async function saveDoremonMemory(conversationId: string, memory: DoremonMemory, remote: boolean): Promise<void> {
+  try { await replaceDoremonMemory(conversationId, memory, remote); } catch { /* chat remains usable */ }
+}
+
+/** Delete only this user's copy and this device's local Doremon messages. */
+export async function deleteDoremonMemory(conversationId: string, remote: boolean): Promise<void> {
+  if (remote) {
     const sb = getSupabase();
-    if (!sb) return;
-    const { data } = await sb.auth.getUser();
-    const me = data.user?.id;
-    if (!me) return;
-    // The record is per-user: my Doremon keeps MY private copy of this
-    // conversation (migration 010). It also survives the chat being deleted.
-    const { error } = await sb
-      .from("doremon_memory")
-      .upsert(
-        {
-          conversation_id: conversationId,
-          user_id: me,
-          memory: memory as unknown as Record<string, unknown>,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "conversation_id,user_id" }
-      );
-    if (error) return; // e.g. migration 010 pending — stay on the session copy
-  } catch {
-    /* Doremon's memory is best-effort; the chat must never break because of it */
+    if (!sb) throw new Error("Supabase is unavailable");
+    const { data, error: authError } = await sb.auth.getUser();
+    if (authError || !data.user?.id) throw new Error("Sign in to delete memory");
+    const { error } = await sb.from("doremon_memory").delete().eq("user_id", data.user.id).eq("conversation_id", conversationId);
+    if (error) throw new Error(error.message);
+  }
+  if (typeof window !== "undefined") {
+    if (!remote) window.localStorage.removeItem(MEM_PREFIX + conversationId);
+    window.localStorage.removeItem(MSG_PREFIX + conversationId);
   }
 }
 
@@ -119,28 +130,10 @@ export async function loadDoremonStats(
   }
 }
 
-/**
- * Ephemeral Doremon messages.
- *
- * Since "Doremon only speaks when summoned" we wipe his old greetings and
- * interventions once, on the first load after the update — he starts every
- * conversation silent, and only new /doremon answers accumulate again.
- */
-const WIPED_FLAG = "dolemon:msgs-cleared-v2";
-
+/** Doremon responses stored locally for this conversation. */
 export function loadDoremonMessages(conversationId: string): DoremonMessage[] {
   if (typeof window === "undefined") return [];
   try {
-    if (window.localStorage.getItem(WIPED_FLAG) !== "1") {
-      const doomed: string[] = [];
-      for (let i = 0; i < window.localStorage.length; i++) {
-        const key = window.localStorage.key(i);
-        if (key && key.startsWith(MSG_PREFIX)) doomed.push(key);
-      }
-      doomed.forEach((key) => window.localStorage.removeItem(key));
-      window.localStorage.setItem(WIPED_FLAG, "1");
-      return [];
-    }
     const raw = window.localStorage.getItem(MSG_PREFIX + conversationId);
     return raw ? ((JSON.parse(raw) as DoremonMessage[]).slice(-MAX_MSGS) ?? []) : [];
   } catch {
@@ -164,15 +157,6 @@ function readLocalMem(conversationId: string): DoremonMemory | null {
     return raw ? (JSON.parse(raw) as DoremonMemory) : null;
   } catch {
     return null;
-  }
-}
-
-function writeLocalMem(conversationId: string, memory: DoremonMemory): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(MEM_PREFIX + conversationId, JSON.stringify(memory));
-  } catch {
-    /* quota — keep going with in-memory state */
   }
 }
 

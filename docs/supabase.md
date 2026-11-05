@@ -236,6 +236,8 @@ Realtime channel plugs into.
 
 ## 7a. Chat media — photos, voice notes, files
 
+> **Warning:** This legacy setup creates a public bucket. Anyone who obtains a file URL can open it, and deleting a chat or message does not remove stored files. Do not use for sensitive attachments. Do not flip an existing bucket private without first migrating reads to authorized signed URLs and planning cleanup of existing files.
+
 Run this in the SQL editor. It adds the media columns to `messages` and a
 public `chat-media` storage bucket whose folder-per-conversation RLS policy
 only lets members of that 1:1 upload.

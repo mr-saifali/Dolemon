@@ -18,6 +18,7 @@ import {
   conversationReadState,
   listConversations,
   openDirectConversation,
+  watchInbox,
   type DbConversation,
 } from "@/lib/db";
 import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
@@ -39,6 +40,7 @@ function HomeScreen() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [remoteChats, setRemoteChats] = useState<DbConversation[] | null>(null);
+  const [inboxError, setInboxError] = useState(false);
   /** per-conversation partner read cursor (live mode) — powers the list ticks */
   const [readStates, setReadStates] = useState<Record<string, number | null>>({});
 
@@ -46,11 +48,29 @@ function HomeScreen() {
     if (!REMOTE) return;
     let alive = true;
     listConversations()
-      .then((rows) => alive && setRemoteChats(rows))
-      .catch(() => alive && setRemoteChats([]));
+      .then((rows) => { if (alive) { setRemoteChats(rows); setInboxError(false); } })
+      .catch(() => { if (alive) setInboxError(true); });
     return () => {
       alive = false;
     };
+  }, []);
+
+  // Reconcile inbox previews after live changes, reconnects and returning
+  // from the background. Keep the previous list if a refresh fails.
+  useEffect(() => {
+    if (!REMOTE) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void listConversations().then((rows) => { if (alive) { setRemoteChats(rows); setInboxError(false); } }).catch(() => { if (alive) setInboxError(true); });
+      }, 250);
+    };
+    const stop = watchInbox(refresh);
+    const resume = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", resume);
+    return () => { alive = false; if (timer) clearTimeout(timer); stop(); document.removeEventListener("visibilitychange", resume); };
   }, []);
 
   // The little opening jingle — once per app session, not per visit.
@@ -122,7 +142,7 @@ function HomeScreen() {
           at: c.lastAt,
           unread: c.unread,
           lastMine,
-          lastStatus: lastMine ? (readReceipts && seen ? "read" : "delivered") : null,
+          lastStatus: lastMine ? (readReceipts && seen ? "read" : "sent") : null,
         };
       });
     }
@@ -248,7 +268,10 @@ function HomeScreen() {
         )}
 
         <div className="flex-1 pb-10">
-          {rows.length === 0 ? (
+          {REMOTE && inboxError && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-amber-400/10 p-3 text-xs text-amber-100"><span>Couldn’t refresh your chats. Your existing messages may still be on the server.</span><button type="button" className="underline" onClick={() => { void listConversations().then((rows) => { setRemoteChats(rows); setInboxError(false); }).catch(() => setInboxError(true)); }}>Retry</button></div>}
+          {REMOTE && !remoteChats ? (
+            !inboxError && <p className="py-8 text-center text-sm text-zinc-500">Loading chats…</p>
+          ) : rows.length === 0 ? (
             <HomeEmptyState onInvite={openStart} />
           ) : (
             <div className="flex flex-col">
@@ -265,7 +288,7 @@ function HomeScreen() {
                 <DoremonFace size={16} /> Doremon&apos;s memory
               </p>
               <div className="flex flex-col">
-                {doremonRecords.slice(0, 6).map((rec) => {
+                {doremonRecords.map((rec) => {
                   const name = rec.memory.partnerUsername || "a deleted chat";
                   return (
                     <Link
@@ -286,7 +309,7 @@ function HomeScreen() {
                           )}
                         </p>
                         <p className="truncate text-[12.5px] text-zinc-500">
-                          {rec.memory.summary || rec.memory.finalSummary || "keeps watching…"}
+                          {rec.memory.summary || rec.memory.finalSummary || "No summary yet"}
                         </p>
                       </div>
                     </Link>

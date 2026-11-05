@@ -25,6 +25,7 @@ export function ChatInput({
   replyTo,
   onCancelReply,
   hint,
+  disabled = false,
 }: {
   onSend: (text: string) => void;
   onSticker: (type: ReactionType) => void;
@@ -40,6 +41,7 @@ export function ChatInput({
   replyTo?: { author: string; text: string } | null;
   onCancelReply?: () => void;
   hint?: React.ReactNode;
+  disabled?: boolean;
 }) {
   const [value, setValue] = useState("");
   const [trayOpen, setTrayOpen] = useState(false);
@@ -55,7 +57,7 @@ export function ChatInput({
 
   const submit = () => {
     const text = value.trim();
-    if (!text) return;
+    if (!text || disabled) return;
     onSend(text);
     setValue("");
     setTrayOpen(false);
@@ -70,6 +72,7 @@ export function ChatInput({
     <div className="relative z-20">
       <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-2">
         {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
+        {/^\/doremon\b/i.test(value.trim()) && <p className="mb-2 px-1 text-xs leading-relaxed text-sky-200">Asking can send recent chat excerpts and memory to Google Gemini. Consider the other person’s consent; AI interpretations can be wrong.</p>}
 
         <AnimatePresence>
           {replyTo && (
@@ -116,6 +119,7 @@ export function ChatInput({
                     key={type}
                     type="button"
                     onClick={() => {
+                      if (disabled) return;
                       onSticker(type);
                       setTrayOpen(false);
                     }}
@@ -141,6 +145,7 @@ export function ChatInput({
           <motion.button
             type="button"
             onClick={onAttach}
+            disabled={disabled}
             aria-label="Add attachment"
             whileTap={{ scale: 0.9 }}
             className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
@@ -172,6 +177,7 @@ export function ChatInput({
           <motion.button
             type="button"
             onClick={onAttach}
+            disabled={disabled}
             aria-label="Add a photo or file"
             whileTap={{ scale: 0.9 }}
             className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
@@ -181,7 +187,8 @@ export function ChatInput({
 
           <motion.button
             type="button"
-            onClick={() => setTrayOpen((o) => !o)}
+            onClick={() => !disabled && setTrayOpen((o) => !o)}
+            disabled={disabled}
             aria-label="Reactions"
             aria-expanded={trayOpen}
             whileTap={{ scale: 0.9 }}
@@ -200,6 +207,7 @@ export function ChatInput({
                   key="send"
                   type="button"
                   onClick={submit}
+                  disabled={disabled}
                   aria-label="Send message"
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
@@ -218,6 +226,7 @@ export function ChatInput({
                   key="mic"
                   type="button"
                   onClick={onVoice}
+                  disabled={disabled}
                   aria-label="Record a voice note"
                   initial={{ scale: 0.85, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}

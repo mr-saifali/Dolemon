@@ -9,4 +9,19 @@
  * answer in remote mode.
  */
 export const OFFLINE_NOTICE =
-  "Arre Nobita, abhi mera Gemini brain offline hai (quota ya network), isliye yeh jawab abhi nahi de sakta. Thodi der baad phir poochhna. 🐱";
+  "Arre Nobita, abhi mera Gemini brain offline hai, isliye yeh jawab abhi nahi de sakta. Thodi der baad phir poochhna. 🐱";
+
+/**
+ * Copilot-style transparency: turn the server's raw detail into a short
+ * human reason, appended to the offline notice so the person knows WHY
+ * (and whether it will recover on its own).
+ */
+export function offlineReason(detail: string | null | undefined): string {
+  if (!detail) return "";
+  if (/quota|429|limit exceeded/i.test(detail)) return "free quota abhi khatam hai — window reset hote hi wapas aaunga";
+  if (/timeout|no response in/i.test(detail)) return "models respond nahi kar rahe (busy hain) — retry chal gaya";
+  if (/503|high demand|unavailable/i.test(detail)) return "models overloaded hain";
+  if (/404|not found/i.test(detail)) return "models abhi available nahi hain";
+  if (/401|403|api key/i.test(detail)) return "API key mein issue hai";
+  return "";
+}

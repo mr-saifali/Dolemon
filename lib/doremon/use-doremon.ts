@@ -185,10 +185,11 @@ export function useDoremon(
       let answer: string | null = null;
       if (remote && (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS)) {
         try {
-          // 12s hang-guard: one stalled call falls back locally without
-          // disabling Gemini for the next 10 minutes.
+          // 25s hang-guard: covers the server-side fallback chain (8s
+          // per-model hang timeout + the next model's answer) before
+          // falling back — without disabling Gemini for 10 minutes.
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 12_000);
+          const timeout = setTimeout(() => controller.abort(), 25_000);
           const res = await fetch("/api/doremon", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

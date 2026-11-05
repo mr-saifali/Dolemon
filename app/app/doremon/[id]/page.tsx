@@ -408,7 +408,7 @@ function Room({ conversationId }: { conversationId: string }) {
     if (REMOTE) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 12_000);
+        const timeout = setTimeout(() => controller.abort(), 25_000);
         const res = await fetch("/api/doremon", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -489,9 +489,11 @@ function Room({ conversationId }: { conversationId: string }) {
       let answer: string | null = null;
       if (REMOTE) {
         try {
-          // 12s hang-guard: if Gemini stalls, fall back to the local brain
+          // 25s hang-guard: covers the server-side fallback chain (8s
+          // per-model hang timeout + the next model's answer) before falling
+          // back honestly
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 12_000);
+          const timeout = setTimeout(() => controller.abort(), 25_000);
           const res = await fetch("/api/doremon", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

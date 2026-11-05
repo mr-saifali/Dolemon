@@ -367,8 +367,22 @@ function isModelLevelError(err: unknown): boolean {
     if (/^gemini 429/.test(err.message)) return true; // per-model quota
     if (/^gemini 5\d{2}/.test(err.message)) return true; // 5xx: this model is down/overloaded
     if (/^empty completion/.test(err.message)) return true; // 200 but nothing visible
+    if (/^gemini timeout/.test(err.message)) return true; // hung — no response at all
   }
   return false;
+}
+
+/* A model that HUNG (no response) or 5xx'd is "dead" for a while, so the
+   chain reaches a healthy model on the NEXT question instead of waiting it
+   out again for 8+ seconds. */
+const DEAD_MODEL_MS = 10 * 60_000;
+const deadModels: Record<string, number> = {};
+
+function isDeadModel(m: string): boolean {
+  return (deadModels[m] ?? 0) > Date.now();
+}
+function markDeadModel(m: string) {
+  deadModels[m] = Date.now() + DEAD_MODEL_MS;
 }
 
 /** One attempt against one model — classifies Google's failure precisely. */
@@ -397,16 +411,30 @@ async function callGemini(
   );
   url.searchParams.set("key", key);
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
+  // Per-model hang guard: a stuck model must not stall the whole chain.
+  // 8s is plenty for a flash model; a hang means "try the next model".
+  const controller = new AbortController();
+  const hangTimer = setTimeout(() => controller.abort(), 8000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch {
+    clearTimeout(hangTimer);
+    markDeadModel(model);
+    throw new GeminiModelError(`gemini timeout (${model}): no response in 8s`);
+  }
+  clearTimeout(hangTimer);
 
   if (!res.ok) {
     const text = (await res.text().catch(() => "")).slice(0, 200);
     const msg = `gemini ${res.status} (${model}): ${text}`;
+    if (res.status >= 500) markDeadModel(model); // 5xx — skip this model for a while
     // "models/X is not found for API key (id: …)" — the KEY is fine, the
     // MODEL isn't allowed to it. Checked BEFORE the key patterns, because
     // that message also contains the words "API key".
@@ -461,6 +489,7 @@ async function generateContent(
   let lastError: Error | null = null;
   const tried = new Set(modelChain(configuredModel));
   for (const model of modelChain(configuredModel)) {
+    if (isDeadModel(model)) continue; // proven to hang/5xx — don't wait it out again
     try {
       const text = await callGemini(key, model, system, user, wantJson, action);
       provenModel = model;
@@ -487,7 +516,10 @@ async function generateContent(
       if (err instanceof GeminiKeyError) throw err;
       listNote = `model list failed: ${err instanceof Error ? err.message.slice(0, 100) : "unknown"}`;
     }
-    for (const model of discovered.slice(0, 3)) {
+    // the best LIVE models — a model that hung/5xx'd recently is skipped
+    // so the chain reaches a healthy one on the first question
+    const live = discovered.filter((m) => !isDeadModel(m));
+    for (const model of live.slice(0, 3)) {
       if (tried.has(model)) continue;
       tried.add(model);
       try {

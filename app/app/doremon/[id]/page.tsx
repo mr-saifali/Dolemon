@@ -264,23 +264,25 @@ export default function DoremonRoomPage({ params }: { params: { id: string } }) 
   );
 }
 
-type BrainState = "unknown" | "online" | "no-key" | "bad-key" | "offline" | "demo";
+type BrainState = "unknown" | "ready" | "online" | "no-key" | "bad-key" | "offline" | "demo";
 
 const BRAIN_LABEL: Record<BrainState, string> = {
   unknown: "",
+  ready: "key connected",
   online: "online",
-  "no-key": "no key · local",
-  "bad-key": "key rejected · local",
-  offline: "offline · local",
+  "no-key": "no key",
+  "bad-key": "key rejected",
+  offline: "offline",
   demo: "demo · local",
 };
 
 const BRAIN_DETAIL: Record<BrainState, string> = {
   unknown: "",
+  ready: "Google accepted the key; model availability and quota are checked on the first question.",
   online: "Gemini is answering live.",
-  "no-key": "GEMINI_API_KEY is not set, so Doremon answers from his pocket (local) brain.",
+  "no-key": "GEMINI_API_KEY is not set. Live answers require a key.",
   "bad-key": "Google rejected the API key. Valid keys start with “AIza” — set the right one and this turns green.",
-  offline: "The server could not reach Gemini (network). Doremon answers from his pocket (local) brain.",
+  offline: "Gemini could not answer. Check the reason or try again later.",
   demo: "Demo mode has no backend, so Doremon runs on his pocket (local) brain.",
 };
 
@@ -319,7 +321,7 @@ function Room({ conversationId }: { conversationId: string }) {
         if (!alive) return;
         setBrainState((s) => {
           if (s !== "unknown") return s;
-          if (out.ok) return "online";
+          if (out.ok) return "ready";
           if (out.error === "NO_KEY") return "no-key";
           if (out.error === "BAD_KEY") return "bad-key";
           return "offline";
@@ -371,7 +373,7 @@ function Room({ conversationId }: { conversationId: string }) {
       setData(next);
       // offline notices were saved before they became history-free —
       // drop them so the room doesn't replay a wall of "offline" lines
-      setTurns((next.memory.chat ?? []).filter((t) => t.a !== OFFLINE_NOTICE));
+      setTurns((next.memory.chat ?? []).filter((t) => !t.a.startsWith(OFFLINE_NOTICE)));
     })();
     return () => {
       alive = false;
@@ -406,9 +408,9 @@ function Room({ conversationId }: { conversationId: string }) {
       }));
     let text: string | null = null;
     if (REMOTE) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 25_000);
         const res = await fetch("/api/doremon", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -426,11 +428,12 @@ function Room({ conversationId }: { conversationId: string }) {
           }),
           signal: controller.signal,
         });
-        clearTimeout(timeout);
         const out = (await res.json()) as { ok?: boolean; answer?: string };
         if (res.ok && out.ok && out.answer) text = out.answer;
       } catch {
         // offline / timeout — his pocket brain still writes the day (free)
+      } finally {
+        clearTimeout(timeout);
       }
     }
     if (!text) text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
@@ -455,13 +458,13 @@ function Room({ conversationId }: { conversationId: string }) {
       setTurns((prev) => [...prev, turn]);
       // The offline notice is live feedback, not conversation — it shows on
       // screen but is never written to the room's saved history.
-      if (a === OFFLINE_NOTICE || !REMOTE) return;
+      if (a.startsWith(OFFLINE_NOTICE) || !REMOTE) return;
       setData((prev) => {
         if (!prev) return prev;
         const nextMemory: DoremonMemory = {
           ...prev.memory,
           partnerUsername: prev.partnerName,
-          chat: [...(prev.memory.chat ?? []).filter((t) => t.a !== OFFLINE_NOTICE), turn].slice(-40),
+          chat: [...(prev.memory.chat ?? []).filter((t) => !t.a.startsWith(OFFLINE_NOTICE)), turn].slice(-40),
           updatedAt: Date.now(),
         };
         void saveDoremonMemory(conversationId, nextMemory, REMOTE);
@@ -488,58 +491,37 @@ function Room({ conversationId }: { conversationId: string }) {
       setThinking(true);
       let answer: string | null = null;
       let lastDetail: string | null = null;
-      let keyProblem = false;
+      let retryAfter: number | null = null;
       if (REMOTE) {
-        // Copilot-style: one SILENT retry, 6s later, when the first attempt
-        // fails for a model-level reason (hang/overload/quota window) —
-        // the server's dead-model skip list usually makes the second
-        // attempt much faster. A dead key is not retried.
-        for (let attempt = 0; attempt < 2 && !answer; attempt++) {
-          if (attempt === 1) await new Promise((r) => setTimeout(r, 6_000));
-          try {
-            // 22s hang-guard: covers the server-side fallback chain (up to
-            // 3 models x 5s hang-timeout + the live model's answer)
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 22_000);
-            const res = await fetch("/api/doremon", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "roomAsk",
-                me: myHandle,
-                partner,
-                meId: data.meId,
-                partnerId: data.partnerId,
-                recent,
-                memory: data.memory,
-                stats: data.stats,
-                question: q,
-              }),
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string };
-            if (out.detail) {
-              lastDetail = out.detail;
-              setBrainDetail(out.detail);
-            }
-            if (res.ok && out.ok && out.answer) {
-              answer = out.answer;
-              setBrainState("online");
-              setBrainDetail("");
-            } else if (out.error === "NO_KEY") {
-              keyProblem = true;
-              setBrainState("no-key");
-            } else if (out.error === "BAD_KEY") {
-              keyProblem = true;
-              setBrainState("bad-key");
-            } else {
-              setBrainState("offline");
-            }
-          } catch {
-            setBrainState("offline");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30_000);
+        try {
+          const res = await fetch("/api/doremon", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "roomAsk", me: myHandle, partner, meId: data.meId,
+              partnerId: data.partnerId, recent, memory: data.memory,
+              stats: data.stats, question: q,
+            }),
+            signal: controller.signal,
+          });
+          const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string; retryAfterSeconds?: number | null };
+          lastDetail = out.error === "QUOTA" ? "quota" : out.detail ?? out.error ?? null;
+          retryAfter = out.retryAfterSeconds ?? null;
+          if (res.ok && out.ok && out.answer) {
+            answer = out.answer;
+            setBrainState("online");
+            setBrainDetail("");
+          } else {
+            setBrainDetail(out.error === "QUOTA" ? offlineReason("quota", retryAfter) : out.detail ?? "");
+            setBrainState(out.error === "NO_KEY" ? "no-key" : out.error === "BAD_KEY" ? "bad-key" : "offline");
           }
-          if (keyProblem) break; // a bad/missing key is not fixed by retrying
+        } catch {
+          lastDetail = "timeout or network error";
+          setBrainState("offline");
+        } finally {
+          clearTimeout(timeout);
         }
       }
       if (!answer) {
@@ -547,7 +529,7 @@ function Room({ conversationId }: { conversationId: string }) {
           // No canned demo answers in remote mode — an honest offline
           // status WITH THE REASON, so the room never parrots scripted
           // lines while the brain is down.
-          const reason = offlineReason(lastDetail);
+          const reason = offlineReason(lastDetail, retryAfter);
           answer = OFFLINE_NOTICE + (reason ? ` (${reason})` : "");
         } else {
           // Pure demo mode (no backend): the pocket brain IS the brain.

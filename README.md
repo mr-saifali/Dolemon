@@ -33,6 +33,30 @@ No backend needed to click through onboarding: without Supabase keys the app use
 self-contained local provider, and the emailed code is shown on the verify screen
 (any code also accepts `123456` in demo mode).
 
+## Doremon and Gemini free tier
+
+For AI replies in live (Supabase) mode, set the server-only `GEMINI_API_KEY` in
+`.env.local` or your deployment environment. The default model is
+`gemini-2.5-flash-lite`; an existing `GEMINI_MODEL` environment variable
+**overrides** that default. To use the lighter model on an existing deployment,
+set `GEMINI_MODEL=gemini-2.5-flash-lite` there and redeploy. Never use a
+`NEXT_PUBLIC_` prefix for the key. Demo mode uses the local heuristic brain.
+
+Each question makes one generation request, without automatic retries or model
+switching; Sunrise is a separate, optional request. A timeout can still consume
+quota even if no reply arrives. Google enforces per-project/model rate, token,
+and daily limits, and availability can differ by account and change over time.
+If you see a quota message, wait for the indicated retry time, or check your
+project's quota and reset time in Google AI Studio. A daily limit or a model
+with no free quota cannot be fixed by retries. If the model is unavailable,
+choose a model with free-tier generation access and set `GEMINI_MODEL` to its
+exact ID. `/api/doremon?models=1` lists models visible to the key, but the list
+and room status check do not guarantee free quota. No generation is spent on
+that check. Conversation data sent to Gemini includes the recent chat, a
+compressed memory, and up to four recent private room exchanges.
+
+Run the mocked API tests with `node --test tests/doremon-api.test.cjs`.
+
 ## Onboarding flow
 
 | Step | Route | What happens |

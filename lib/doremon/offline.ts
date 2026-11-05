@@ -16,12 +16,17 @@ export const OFFLINE_NOTICE =
  * human reason, appended to the offline notice so the person knows WHY
  * (and whether it will recover on its own).
  */
-export function offlineReason(detail: string | null | undefined): string {
+export function offlineReason(detail: string | null | undefined, retryAfterSeconds?: number | null): string {
   if (!detail) return "";
-  if (/quota|429|limit exceeded/i.test(detail)) return "free quota abhi khatam hai — window reset hote hi wapas aaunga";
-  if (/timeout|no response in/i.test(detail)) return "models respond nahi kar rahe (busy hain) — retry chal gaya";
+  if (/quota|429|limit exceeded/i.test(detail)) {
+    const wait = retryAfterSeconds && retryAfterSeconds > 0
+      ? `Google ke mutabik ${retryAfterSeconds} seconds baad phir try karo`
+      : "thodi der baad phir try karo; daily quota khatam ho toh reset ka wait karo";
+    return `free-tier rate ya quota limit hit hui — ${wait}`;
+  }
+  if (/timeout|no response in/i.test(detail)) return "server se response nahi mila — thodi der baad try karo";
   if (/503|high demand|unavailable/i.test(detail)) return "models overloaded hain";
   if (/404|not found/i.test(detail)) return "models abhi available nahi hain";
-  if (/401|403|api key/i.test(detail)) return "API key mein issue hai";
+  if (/401|403|api key|BAD_KEY|NO_KEY/i.test(detail)) return "API key mein issue hai";
   return "";
 }

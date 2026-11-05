@@ -99,8 +99,8 @@ export function compactTranscript(
 
 /** Coerce an untrusted client payload into a safe, complete memory shape. */
 function safeMemory(raw: DoremonMemory | null): DoremonMemory {
-  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(-8).map((x) => x.slice(0, 180)) : []);
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim().slice(0, 600) : null);
   return {
     summary: str(raw?.summary) ?? "",
     notes: arr(raw?.notes),

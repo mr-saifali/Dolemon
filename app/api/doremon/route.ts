@@ -112,7 +112,9 @@ export async function GET(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: "Reply with exactly one word." }] }],
-            generationConfig: { temperature: 0.9, maxOutputTokens: 32 },
+            // 3.x thinking models burn output budget on internal thought —
+            // 256 keeps enough left for the visible word
+            generationConfig: { temperature: 0.9, maxOutputTokens: 256 },
           }),
           cache: "no-store",
           signal: controller.signal,
@@ -204,7 +206,7 @@ export async function POST(req: NextRequest) {
       if (!summary) throw new Error("empty final summary");
       return ok({ ok: true, final: { summary, note } });
     }
-    return ok({ ok: true, answer: raw.slice(0, 1400) });
+    return ok({ ok: true, answer: raw.slice(0, 4000) });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[doremon] gemini failure:", msg);
@@ -278,13 +280,17 @@ function promptsFor(body: RequestBody): { system: string; user: string } {
  * Per-action output budgets: cap the answer at the length the format needs.
  * Smaller cap = faster first token, less spend, no run-on answers.
  */
+/* Gemini 3.x spends a large share of the output budget on its internal
+   "thinking" before the visible answer. 300 tokens left only a handful of
+   words of visible text — replies arrived cut off at 4-5 words. The free
+   tier is limited by request COUNT (not tokens), so the headroom is free. */
 const OUTPUT_CAPS: Record<string, number> = {
-  analyze: 500,
-  finalize: 450,
-  ask: 300,
-  roomAsk: 320,
+  analyze: 1000,
+  finalize: 900,
+  ask: 1200,
+  roomAsk: 1200,
   /** three lines, ~150 chars each */
-  daily: 480,
+  daily: 1000,
 };
 
 /* ------------------------------------------------------------------ */

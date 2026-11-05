@@ -24,7 +24,7 @@ import {
   type StatsView,
 } from "@/lib/doremon/insights";
 import { emptyMemory, type DoremonMemory, type DoremonStats, type RoomTurn } from "@/lib/doremon/types";
-import { OFFLINE_NOTICE, offlineReason } from "@/lib/doremon/offline";
+import { OFFLINE_NOTICE, isOfflineNotice, offlineReason } from "@/lib/doremon/offline";
 
 const REMOTE = authMode === "supabase";
 
@@ -273,7 +273,7 @@ const BRAIN_LABEL: Record<BrainState, string> = {
   online: "online",
   "no-key": "no key",
   "bad-key": "key rejected",
-  offline: "offline",
+  offline: "couldn't answer",
   demo: "demo · local",
 };
 
@@ -282,7 +282,7 @@ const BRAIN_DETAIL: Record<BrainState, string> = {
   ready: "Google accepted the key; model availability and quota are checked on the first question.",
   online: "Gemini is answering live.",
   "no-key": "GEMINI_API_KEY is not set. Live answers require a key.",
-  "bad-key": "Google rejected the API key. Valid keys start with “AIza” — set the right one and this turns green.",
+  "bad-key": "Google rejected the key or its permissions. Check the key and project access.",
   offline: "Gemini could not answer. Check the reason or try again later.",
   demo: "Demo mode has no backend, so Doremon runs on his pocket (local) brain.",
 };
@@ -295,10 +295,12 @@ function Room({ conversationId }: { conversationId: string }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [turns, setTurns] = useState<RoomTurn[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [pendingQuestion, setPendingQuestion] = useState<{ text: string; at: number } | null>(null);
   const [draft, setDraft] = useState("");
   const [brainState, setBrainState] = useState<BrainState>("unknown");
   /** Google's own words when the brain is down — shown in the chip tooltip */
   const [brainDetail, setBrainDetail] = useState("");
+  const brainAsked = useRef(false);
   const [dailyBusy, setDailyBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const music = useRoomMusic();
@@ -319,7 +321,7 @@ function Room({ conversationId }: { conversationId: string }) {
     fetch("/api/doremon")
       .then((r) => r.json() as Promise<{ ok?: boolean; error?: string; detail?: string }>)
       .then((out) => {
-        if (!alive) return;
+        if (!alive || brainAsked.current) return;
         setBrainState((s) => {
           if (s !== "unknown") return s;
           if (out.ok) return "ready";
@@ -374,7 +376,7 @@ function Room({ conversationId }: { conversationId: string }) {
       setData(next);
       // offline notices were saved before they became history-free —
       // drop them so the room doesn't replay a wall of "offline" lines
-      setTurns((next.memory.chat ?? []).filter((t) => !t.a.startsWith(OFFLINE_NOTICE)));
+      setTurns((next.memory.chat ?? []).filter((t) => !isOfflineNotice(t.a)));
     })();
     return () => {
       alive = false;
@@ -410,7 +412,7 @@ function Room({ conversationId }: { conversationId: string }) {
     let text: string | null = null;
     if (REMOTE) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), 50_000);
       try {
         const res = await doremonFetch({
           action: "daily",
@@ -454,13 +456,13 @@ function Room({ conversationId }: { conversationId: string }) {
       setTurns((prev) => [...prev, turn]);
       // The offline notice is live feedback, not conversation — it shows on
       // screen but is never written to the room's saved history.
-      if (a.startsWith(OFFLINE_NOTICE) || !REMOTE) return;
+      if (isOfflineNotice(a) || !REMOTE) return;
       setData((prev) => {
         if (!prev) return prev;
         const nextMemory: DoremonMemory = {
           ...prev.memory,
           partnerUsername: prev.partnerName,
-          chat: [...(prev.memory.chat ?? []).filter((t) => !t.a.startsWith(OFFLINE_NOTICE)), turn].slice(-40),
+          chat: [...(prev.memory.chat ?? []).filter((t) => !isOfflineNotice(t.a)), turn].slice(-40),
           updatedAt: Date.now(),
         };
         void saveDoremonMemory(conversationId, nextMemory, REMOTE);
@@ -485,32 +487,37 @@ function Room({ conversationId }: { conversationId: string }) {
         }));
 
       setThinking(true);
+      setPendingQuestion({ text: q, at: Date.now() });
       let answer: string | null = null;
       let lastDetail: string | null = null;
       let retryAfter: number | null = null;
+      let quotaScope: "day" | "minute" | "unknown" = "unknown";
       if (REMOTE) {
+        brainAsked.current = true;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30_000);
+        const timeout = setTimeout(() => controller.abort(), 50_000);
         try {
           const res = await doremonFetch({
             action: "roomAsk", me: myHandle, partner, meId: data.meId,
             partnerId: data.partnerId, recent, memory: data.memory,
             stats: data.stats, question: q,
           }, controller.signal);
-          const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string; retryAfterSeconds?: number | null };
+          const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string; retryAfterSeconds?: number | null; quotaScope?: "day" | "minute" | "unknown" };
           lastDetail = (out.error === "QUOTA" || out.error === "MODEL_QUOTA") ? out.error : out.detail ?? out.error ?? null;
           retryAfter = out.retryAfterSeconds ?? null;
+          quotaScope = out.quotaScope ?? "unknown";
           if (res.ok && out.ok && out.answer) {
             answer = out.answer;
             setBrainState("online");
             setBrainDetail("");
           } else {
-            setBrainDetail((out.error === "QUOTA" || out.error === "MODEL_QUOTA") ? offlineReason(out.error, retryAfter) : out.detail ?? "");
+            setBrainDetail(offlineReason(lastDetail, retryAfter, quotaScope));
             setBrainState(out.error === "NO_KEY" ? "no-key" : out.error === "BAD_KEY" ? "bad-key" : "offline");
           }
         } catch (err) {
-          lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : "timeout or network error";
+          lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : err instanceof Error && err.name === "AbortError" ? "timeout" : "NETWORK";
           setBrainState("offline");
+          setBrainDetail(offlineReason(lastDetail));
         } finally {
           clearTimeout(timeout);
         }
@@ -520,7 +527,7 @@ function Room({ conversationId }: { conversationId: string }) {
           // No canned demo answers in remote mode — an honest offline
           // status WITH THE REASON, so the room never parrots scripted
           // lines while the brain is down.
-          const reason = offlineReason(lastDetail, retryAfter);
+          const reason = offlineReason(lastDetail, retryAfter, quotaScope);
           answer = OFFLINE_NOTICE + (reason ? ` (${reason})` : "");
         } else {
           // Pure demo mode (no backend): the pocket brain IS the brain.
@@ -528,9 +535,8 @@ function Room({ conversationId }: { conversationId: string }) {
         }
       }
 
-      // a short beat so it reads as thought, not a parrot — kept snappy
-      await new Promise((r) => setTimeout(r, 250));
       setThinking(false);
+      setPendingQuestion(null);
       persistTurn(q, answer);
     },
     [data, thinking, myHandle, view, persistTurn]
@@ -603,6 +609,10 @@ function Room({ conversationId }: { conversationId: string }) {
           </div>
         </div>
       </header>
+
+      {brainState === "offline" && brainDetail && (
+        <p role="status" className="mx-auto w-full max-w-2xl px-4 pt-2 text-[12px] leading-relaxed text-amber-200">{brainDetail}</p>
+      )}
 
       {/* the room track — autoplay was blocked or YouTube is unreachable */}
       {(music.state === "needs-tap" || music.state === "blocked") && (
@@ -728,6 +738,7 @@ function Room({ conversationId }: { conversationId: string }) {
             </div>
           ))}
 
+          {pendingQuestion && <UserBubble text={pendingQuestion.text} at={pendingQuestion.at} />}
           {thinking && (
             <div className="flex w-full justify-start">
               <div className="flex items-center gap-2.5 rounded-[20px] rounded-bl-[4px] px-4 py-3" style={{ background: "rgba(41,171,226,0.10)", boxShadow: "inset 0 0 0 1px rgba(41,171,226,0.35)" }}>
@@ -755,6 +766,7 @@ function Room({ conversationId }: { conversationId: string }) {
           className="mx-auto flex w-full max-w-2xl items-end gap-2 px-3 py-3"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!draft.trim() || thinking) return;
             void ask(draft);
             setDraft("");
           }}
@@ -765,6 +777,7 @@ function Room({ conversationId }: { conversationId: string }) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
+                if (!draft.trim() || thinking) return;
                 void ask(draft);
                 setDraft("");
               }

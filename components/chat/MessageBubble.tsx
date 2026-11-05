@@ -123,7 +123,26 @@ export function MessageBubble({
             {clockTime(message.at)}
             {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
           </span>
-          <ReactionIcon type={message.sticker} size={44} />
+          <motion.div
+            drag={onSwipeReply ? "x" : false}
+            dragDirectionLock
+            dragConstraints={{ left: 0, right: 92 }}
+            dragElastic={0.14}
+            dragSnapToOrigin
+            onDragEnd={(_, info) => {
+              if (info.offset.x > 54) { buzz(12); onSwipeReply?.(message); }
+            }}
+            style={{ touchAction: "pan-y" }}
+            className="flex max-w-[220px] flex-col gap-1"
+          >
+            {message.replyTo && (
+              <div className="rounded-xl bg-white/[0.08] px-2 py-1.5 text-[11.5px] text-zinc-300">
+                <span className="font-medium">{message.replyTo.author === "me" ? "You" : partnerName}:</span>{" "}
+                <span className="line-clamp-2">{message.replyTo.text || "attachment"}</span>
+              </div>
+            )}
+            <ReactionIcon type={message.sticker} size={44} />
+          </motion.div>
         </div>
       </motion.div>
     );

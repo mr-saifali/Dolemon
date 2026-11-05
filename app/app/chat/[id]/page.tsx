@@ -1,5 +1,7 @@
 "use client";
 
+import { toRemoteSendOptions } from "@/lib/remote-send-options";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -228,29 +230,7 @@ function ThreadScreen() {
   // one call site, two backends — remote uploads the media before inserting the row
   const sendNow = (text: string, options?: Parameters<typeof local.send>[1]) => {
     if (REMOTE) {
-      const kind =
-        options?.kind === "sticker"
-          ? "sticker"
-          : options?.kind === "image"
-            ? "image"
-            : options?.kind === "audio"
-              ? "audio"
-              : options?.kind === "file"
-                ? "file"
-                : "text";
-      remote.send(text, {
-        kind,
-        sticker: options?.sticker,
-        media: options?.media
-          ? {
-              dataUrl: options.media.url,
-              name: options.media.name,
-              sizeBytes: options.media.sizeBytes,
-              durationMs: options.media.durationMs,
-              ext: options.media.ext,
-            }
-          : undefined,
-      });
+      remote.send(text, toRemoteSendOptions(options));
       return;
     }
     local.send(text, options);
@@ -285,12 +265,17 @@ function ThreadScreen() {
   };
 
   const handleSticker = (type: ReactionType) => {
-    sendNow("", { kind: "sticker", sticker: type });
+    sendNow("", { kind: "sticker", sticker: type, replyTo: replyTo ?? undefined });
+    setReplyTo(null);
   };
 
   const runAction = (action: MessageAction, message: ChatMessage) => {
     switch (action) {
       case "reply":
+        if (message.id.startsWith("tmp_") || message.status === "failed") {
+          toast.error("Wait until this message is sent before replying.");
+          break;
+        }
         setReplyTo({ id: message.id, author: message.author, text: previewFor(message) });
         break;
       case "copy": {
@@ -490,9 +475,13 @@ function ThreadScreen() {
         onRemoveMyReaction={(message) => clearReactionNow(message.id)}
         onRetry={(message) => retryNow(message.id)}
         onOpenImage={setViewerUrl}
-        onSwipeReply={(message) =>
-          setReplyTo({ id: message.id, author: message.author, text: previewFor(message) })
-        }
+        onSwipeReply={(message) => {
+          if (message.id.startsWith("tmp_") || message.status === "failed") {
+            toast.error("Wait until this message is sent before replying.");
+            return;
+          }
+          setReplyTo({ id: message.id, author: message.author, text: previewFor(message) });
+        }}
       />
 
       <AnimatePresence>
@@ -570,24 +559,30 @@ function ThreadScreen() {
       <AttachmentSheet
         open={attachOpen}
         onClose={() => setAttachOpen(false)}
-        onPhoto={(image) =>
+        onPhoto={(image) => {
           sendNow("Photo", {
+            replyTo: replyTo ?? undefined,
             kind: "image",
             media: { url: image.dataUrl, width: image.width, height: image.height, ext: "jpg" },
-          })
-        }
-        onVoice={(audio) =>
+          });
+          setReplyTo(null);
+        }}
+        onVoice={(audio) => {
           sendNow("Voice note", {
+            replyTo: replyTo ?? undefined,
             kind: "audio",
             media: { url: audio.dataUrl, durationMs: audio.durationMs, ext: audio.ext },
-          })
-        }
-        onFile={(file) =>
+          });
+          setReplyTo(null);
+        }}
+        onFile={(file) => {
           sendNow(file.name, {
+            replyTo: replyTo ?? undefined,
             kind: "file",
             media: { url: file.dataUrl, name: file.name, sizeBytes: file.sizeBytes, ext: file.ext },
-          })
-        }
+          });
+          setReplyTo(null);
+        }}
       />
 
       <AnimatePresence>

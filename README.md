@@ -111,7 +111,7 @@ Presence lives in `lib/presence.ts` with a single seam to a realtime channel —
 
 Pick a default under **Settings → Chat backgrounds**, or open a chat's **… →
 Chat background** to give that chat its own look. Choose Soft glow, Open sky,
-Wild coast, or Golden road; “Use my default” removes the individual override.
+Wild coast, Golden road, Sky garden, Aurora dream, or Endless horizon; “Use my default” removes the individual override.
 These choices are saved on this device only and are not shared with the other
 person. The original backgrounds are bundled with the app.
 

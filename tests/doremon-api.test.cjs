@@ -162,3 +162,50 @@ test('zero quota falls back at most once and preserves a quota error', async () 
   assert.equal((await result.json()).error, 'MODEL_QUOTA');
   assert.equal(calls.filter((c) => c.method === 'POST').length, 2);
 });
+
+test('Google daily and minute quota dimensions are reported without guessing reset timing', async () => {
+  for (const [quotaId, scope] of [['GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'day'], ['GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'minute'], ['other', 'unknown']]) {
+    const out = await withResponse(() => Response.json({ error: { details: [{ violations: [{ quotaId, quotaDimensions: { model: 'gemini-2.5-flash-lite' } }] }] } }, { status: 429 }));
+    assert.equal(out.body.error, 'QUOTA');
+    assert.equal(out.body.quotaScope, scope);
+    assert.equal(out.calls.length, 1);
+  }
+});
+
+test('message-only zero model quota may use a single catalog-listed alternative', async () => {
+  process.env.GEMINI_API_KEY = `test-key-${++sequence}`;
+  delete process.env.GEMINI_MODEL;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    url = String(url);
+    if (url.includes('/auth/v1/user')) return Response.json({ id: 'user-1' });
+    calls.push({ url, method: options.method });
+    if (options.method === 'GET') return Response.json({ models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] });
+    if (url.includes('flash-lite:')) return Response.json({ error: { message: '* Quota exceeded for metric: requests, limit: 0, model: gemini-2.5-flash-lite', details: [{ violations: [{ quotaDimensions: { model: 'gemini-2.5-flash-lite' } }] }] } }, { status: 429 });
+    return Response.json({ candidates: [{ content: { parts: [{ text: 'alternate' }] } }] });
+  };
+  const result = await POST(request());
+  assert.equal((await result.json()).answer, 'alternate');
+  assert.equal(calls.filter((c) => c.method === 'POST').length, 2);
+});
+
+test('non-zero decimal quota or another model in the error text is not treated as zero quota', async () => {
+  for (const message of [
+    'Quota exceeded, limit: 0.5, model: gemini-2.5-flash-lite',
+    'Quota exceeded, limit: 0, model: gemini-2.5-flash-lite-other',
+  ]) {
+    const out = await withResponse(() => Response.json({ error: { message, details: [{ violations: [{ quotaDimensions: { model: 'gemini-2.5-flash-lite' } }] }] } }, { status: 429 }));
+    assert.equal(out.body.error, 'QUOTA');
+    assert.equal(out.calls.length, 1);
+  }
+});
+
+test('failure explanations distinguish quota scope, network and expired sessions', () => {
+  const { offlineReason, isOfflineNotice, OFFLINE_NOTICE } = require('../lib/doremon/offline.ts');
+  assert.match(offlineReason('QUOTA', 25, 'day'), /midnight Pacific/);
+  assert.match(offlineReason('QUOTA', 25, 'minute'), /per-minute.*25 seconds/);
+  assert.match(offlineReason('NETWORK'), /network/);
+  assert.match(offlineReason('AUTH_REQUIRED'), /sign in/);
+  assert.equal(isOfflineNotice(OFFLINE_NOTICE), true);
+  assert.equal(isOfflineNotice('Arre Nobita, abhi mera Gemini brain offline hai, old notice'), true);
+});

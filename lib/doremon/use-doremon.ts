@@ -12,7 +12,7 @@ import {
   saveDoremonMessages,
 } from "./memory";
 import { localFinalize, viewStats } from "./insights";
-import { OFFLINE_NOTICE, offlineReason } from "./offline";
+import { OFFLINE_NOTICE, isOfflineNotice, offlineReason } from "./offline";
 import { doremonFetch } from "./api";
 import type { DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
@@ -54,7 +54,7 @@ export function useDoremon(
         const next = [...prev, { id: uid(), kind, text, at: Date.now() }].slice(-40);
         // The offline notice is live feedback, not conversation — show it on
         // screen, but never let it pile up in the saved history.
-        if (!text.startsWith(OFFLINE_NOTICE)) saveDoremonMessages(conversationId, next);
+        if (!isOfflineNotice(text)) saveDoremonMessages(conversationId, next);
         return next;
       });
     },
@@ -76,7 +76,7 @@ export function useDoremon(
   /* ------------------------------------------------ load memory + old messages */
   useEffect(() => {
     // drop any offline notices saved before they were excluded from history
-    setDoremonMessages(loadDoremonMessages(conversationId).filter((m) => !m.text.startsWith(OFFLINE_NOTICE)));
+    setDoremonMessages(loadDoremonMessages(conversationId).filter((m) => !isOfflineNotice(m.text)));
     void loadDoremonMemory(conversationId, remote).then((mem) => {
       memoryRef.current = mem;
       setMemory(mem);
@@ -181,17 +181,19 @@ export function useDoremon(
       let answer: string | null = null;
       let lastDetail: string | null = null;
       let retryAfter: number | null = null;
+      let quotaScope: "day" | "minute" | "unknown" = "unknown";
       if (remote) {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30_000);
+        const timeout = setTimeout(() => controller.abort(), 50_000);
         try {
           const res = await doremonFetch({ action: "ask", me, partner, recent, memory: memoryRef.current, question }, controller.signal);
-          const data = (await res.json()) as { ok?: boolean; answer?: string; detail?: string; error?: string; retryAfterSeconds?: number | null };
+          const data = (await res.json()) as { ok?: boolean; answer?: string; detail?: string; error?: string; retryAfterSeconds?: number | null; quotaScope?: "day" | "minute" | "unknown" };
           lastDetail = (data.error === "QUOTA" || data.error === "MODEL_QUOTA") ? data.error : data.detail ?? data.error ?? null;
           retryAfter = data.retryAfterSeconds ?? null;
+          quotaScope = data.quotaScope ?? "unknown";
           if (res.ok && data.ok && data.answer) answer = data.answer;
         } catch (err) {
-          lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : "timeout or network error";
+          lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : err instanceof Error && err.name === "AbortError" ? "timeout" : "NETWORK";
         } finally {
           clearTimeout(timeout);
         }
@@ -201,7 +203,7 @@ export function useDoremon(
           // No canned demo answers in remote mode — an honest status WITH
           // THE REASON, so Doremon never parrots a scripted line while his
           // brain is down.
-          const reason = offlineReason(lastDetail, retryAfter);
+          const reason = offlineReason(lastDetail, retryAfter, quotaScope);
           answer = OFFLINE_NOTICE + (reason ? ` (${reason})` : "");
         } else {
           // Pure demo mode (no backend at all): the pocket brain IS the brain.
@@ -209,8 +211,6 @@ export function useDoremon(
         }
       }
 
-      // a short beat so it feels like he thought, not a parrot — kept snappy
-      await new Promise((r) => setTimeout(r, 400));
       pushDoremon("answer", answer);
       setThinking(false);
     },

@@ -57,7 +57,7 @@ class GeminiKeyError extends Error {}
  *  found for API key"). The configured model must be changed. */
 class GeminiModelError extends Error {}
 class GeminiQuotaError extends Error {
-  constructor(public retryAfterSeconds: number | null, public noModelQuota = false) {
+  constructor(public retryAfterSeconds: number | null, public noModelQuota = false, public scope: "day" | "minute" | "unknown" = "unknown") {
     super("Gemini rate or quota limit exceeded");
   }
 }
@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
     console.error("[doremon] gemini failure:", msg);
     if (error instanceof GeminiQuotaError) {
       const headers = error.retryAfterSeconds ? { "Retry-After": String(error.retryAfterSeconds) } : undefined;
-      return NextResponse.json({ ok: false, error: error.noModelQuota ? "MODEL_QUOTA" : "QUOTA", retryAfterSeconds: error.retryAfterSeconds }, { status: 429, headers });
+      return NextResponse.json({ ok: false, error: error.noModelQuota ? "MODEL_QUOTA" : "QUOTA", retryAfterSeconds: error.retryAfterSeconds, quotaScope: error.scope }, { status: 429, headers });
     }
     if (error instanceof GeminiKeyError) {
       // The key was read but Google refused it — tell the client exactly that.
@@ -393,6 +393,7 @@ async function callGemini(
   const controller = new AbortController();
   const hangTimer = setTimeout(() => controller.abort(), 20_000);
   let res: Response;
+  let responseText: string;
   try {
     res = await fetch(url, {
       method: "POST",
@@ -401,17 +402,19 @@ async function callGemini(
       cache: "no-store",
       signal: controller.signal,
     });
+    responseText = await res.text();
   } catch {
-    clearTimeout(hangTimer);
     throw new Error(`gemini timeout or network error (${model})`);
+  } finally {
+    clearTimeout(hangTimer);
   }
-  clearTimeout(hangTimer);
 
   if (!res.ok) {
-    const text = (await res.text().catch(() => "")).slice(0, 20000);
+    const text = responseText.slice(0, 20000);
     const msg = `gemini ${res.status} (${model}): ${text.slice(0, 200)}`;
     if (res.status === 429) {
       let noModelQuota = false;
+      let quotaScope: "day" | "minute" | "unknown" = "unknown";
       // Retry-After may be seconds or an HTTP date; Google may also return
       // google.rpc.RetryInfo in the JSON response body.
       const header = res.headers.get("retry-after");
@@ -419,7 +422,8 @@ async function callGemini(
       const date = header && seconds === null ? Date.parse(header) : NaN;
       let retryAfter = seconds ?? (Number.isFinite(date) ? Math.max(1, Math.ceil((date - Date.now()) / 1000)) : null);
       try {
-        const details = JSON.parse(text)?.error?.details;
+        const parsedError = JSON.parse(text)?.error;
+        const details = parsedError?.details;
         // A zero model-specific allowance is not a temporary rate limit. Only
         // then is it useful to try another model; ordinary 429s are not retried.
         noModelQuota = Array.isArray(details) && details.some((d: { violations?: { quotaValue?: string | number; quotaDimensions?: { model?: string } }[] }) =>
@@ -427,11 +431,23 @@ async function callGemini(
             v.quotaDimensions?.model === model && String(v.quotaValue) === "0"
           )
         );
+        const violations = Array.isArray(details) ? details.flatMap((d: { violations?: unknown }) => Array.isArray(d.violations) ? d.violations : []) : [];
+        const quotaNames = violations.map((v: { quotaId?: unknown; quotaMetric?: unknown }) => `${v.quotaId ?? ""} ${v.quotaMetric ?? ""}`).join(" ");
+        if (/perday|per_day/i.test(quotaNames)) quotaScope = "day";
+        else if (/perminute|per_minute/i.test(quotaNames)) quotaScope = "minute";
+        // Some Google responses omit the numeric quotaValue and only state
+        // "limit: 0" in the error message. Only trust that when the structured
+        // violation names this model; unrelated zero limits do not trigger a retry.
+        if (!noModelQuota && typeof parsedError?.message === "string") {
+          noModelQuota = parsedError.message.split("\n").some((line: string) =>
+            /limit:\s*0(?:[\s,]|$)/i.test(line) && line.split(/model:\s*/i).slice(1).some((part: string) => part.trim().split(/[\s,]+/)[0] === model)
+          ) && violations.some((v: { quotaDimensions?: { model?: string } }) => v.quotaDimensions?.model === model);
+        }
         const retry = Array.isArray(details) ? details.find((d: { retryDelay?: unknown }) => typeof d.retryDelay === "string")?.retryDelay : null;
         const parsed = typeof retry === "string" ? Number.parseFloat(retry) : NaN;
         if (!retryAfter && Number.isFinite(parsed) && parsed > 0) retryAfter = Math.ceil(parsed);
       } catch { /* Retry hint is optional. */ }
-      throw new GeminiQuotaError(retryAfter && retryAfter > 0 ? retryAfter : null, noModelQuota);
+      throw new GeminiQuotaError(retryAfter && retryAfter > 0 ? retryAfter : null, noModelQuota, quotaScope);
     }
     // "models/X is not found for API key (id: …)" — the KEY is fine, the
     // MODEL isn't allowed to it. Checked BEFORE the key patterns, because
@@ -449,7 +465,7 @@ async function callGemini(
     throw new Error(msg);
   }
 
-  const data = (await res.json()) as {
+  const data = JSON.parse(responseText) as {
     candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
     promptFeedback?: { blockReason?: string };
   };

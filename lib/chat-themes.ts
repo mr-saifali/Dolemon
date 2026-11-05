@@ -3,6 +3,9 @@ export const CHAT_THEMES = [
   { id: "open-sky", name: "Open sky", description: "A little room to breathe", image: "/chat-themes/open-sky.jpg" },
   { id: "wild-coast", name: "Wild coast", description: "Meet the open sea", image: "/chat-themes/wild-coast.jpg" },
   { id: "golden-road", name: "Golden road", description: "Go wherever you feel", image: "/chat-themes/golden-road.jpg" },
+  { id: "sky-garden", name: "Sky garden", description: "Float beyond the clouds", image: "/chat-themes/sky-garden.jpg" },
+  { id: "aurora-dream", name: "Aurora dream", description: "Follow the northern lights", image: "/chat-themes/aurora-dream.jpg" },
+  { id: "endless-horizon", name: "Endless horizon", description: "A world without limits", image: "/chat-themes/endless-horizon.jpg" },
 ] as const;
 
 export type ChatThemeId = (typeof CHAT_THEMES)[number]["id"];

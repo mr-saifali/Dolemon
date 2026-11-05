@@ -49,7 +49,7 @@ export function MessageList({
   const previousCount = useRef(0);
   /** whatever was already on screen when the thread opened stays still — no hundred springs */
   const initialIds = useRef<Set<string> | null>(null);
-  if (initialIds.current === null) initialIds.current = new Set(messages.map((m) => m.id));
+  if (initialIds.current === null && messages.length > 0) initialIds.current = new Set(messages.map((m) => m.id));
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
 

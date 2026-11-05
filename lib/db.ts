@@ -96,7 +96,6 @@ function mapRow(row: MessageRow): DbMessage {
 /** A human label for a quoted message — mirrors previewFor so the quote in
  *  the bubble matches the preview that was shown while composing. */
 function quoteLabel(kind: string, body: string, name?: string | null): string {
-  if (body) return body;
   switch (kind) {
     case "image":
       return "📷 Photo";
@@ -107,7 +106,7 @@ function quoteLabel(kind: string, body: string, name?: string | null): string {
     case "sticker":
       return "Reaction";
     default:
-      return "…";
+      return body || "…";
   }
 }
 
@@ -218,26 +217,22 @@ export async function loadThread(
   conversationId: string
 ): Promise<{ messages: DbMessage[]; me: string | null }> {
   const sb = client();
-  const me = (await sb.auth.getUser()).data.user?.id ?? null;
-
-  // "*" is deliberate: it picks up reply_to_id once migration 009 has run,
-  // and keeps threads loadable (with plain messages) before it has.
-  const { data: rows, error } = await sb
-    .from("messages")
-    .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true })
-    .limit(400);
-
-  if (error) throw new Error(error.message);
-  const messages = ((rows ?? []) as MessageRow[]).map((row) => ({
+  // Fetch the most recent window and the local session concurrently; RLS still
+  // validates the token on every database request. The old ascending limit
+  // showed the oldest 400 and hid newer messages in long conversations.
+  const [session, result] = await Promise.all([
+    sb.auth.getSession(),
+    sb.from("messages").select("*").eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false }).limit(400),
+  ]);
+  const me = session.data.session?.user.id ?? null;
+  if (result.error) throw new Error(result.error.message);
+  const messages = ((result.data ?? []) as MessageRow[]).reverse().map((row) => ({
     ...mapRow(row),
     reactions: [] as MessageReaction[],
   }));
-
-  const reactions = await loadReactions(conversationId, me);
+  const [reactions] = await Promise.all([loadReactions(conversationId, me), resolveQuotes(messages, me)]);
   const withReactions = messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] }));
-  await resolveQuotes(withReactions, me);
   return { messages: withReactions, me };
 }
 
@@ -262,11 +257,16 @@ async function resolveQuotes(messages: DbMessage[], me: string | null): Promise<
     )
   );
   if (missing.length > 0) {
-    const { data } = await client()
+    // Split out-of-window originals into bounded requests; do not silently
+    // drop quotes when a busy thread has more than 50 distinct originals.
+    const batches: string[][] = [];
+    for (let i = 0; i < missing.length; i += 50) batches.push(missing.slice(i, i + 50));
+    const results = await Promise.all(batches.map((ids) => client()
       .from("messages")
       .select("id, sender_id, kind, body, media_name")
-      .in("id", missing.slice(0, 50))
-      .limit(50);
+      .in("id", ids)
+      .limit(50)));
+    const data = results.flatMap((result) => result.data ?? []);
     for (const row of (data ?? []) as {
       id: string;
       sender_id: string;
@@ -379,8 +379,8 @@ export async function postMessage(
   replyToId?: string | null
 ): Promise<DbMessage> {
   const sb = client();
-  const { data: userData } = await sb.auth.getUser();
-  const sender = userData.user?.id;
+  const { data: sessionData } = await sb.auth.getSession();
+  const sender = sessionData.session?.user.id;
   if (!sender) throw new Error("You're signed out.");
 
   // The reply column only enters the query when a reply is actually being
@@ -405,7 +405,12 @@ export async function postMessage(
     .select(columns)
     .single<MessageRow>();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (withReply && /reply_to_id/i.test(error.message)) {
+      throw new Error("Replies aren't set up on the server yet. Ask the admin to run migration 009.");
+    }
+    throw new Error(error.message);
+  }
   return mapRow(data);
 }
 

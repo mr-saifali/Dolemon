@@ -21,7 +21,8 @@ import {
   type DbMessage,
 } from "@/lib/db";
 import type { ReactionType } from "@/lib/reactions";
-import type { ChatMessage, QuotedMessage } from "@/lib/thread";
+import { toast } from "sonner";
+import { previewFor, type ChatMessage, type QuotedMessage } from "@/lib/thread";
 
 const tmpId = () => `tmp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -101,7 +102,7 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
 function applyReadCursor(messages: ChatMessage[], readAt: number | null): ChatMessage[] {
   if (readAt == null) return messages;
   return messages.map((m) => {
-    if (m.author !== "me" || m.at > readAt) return m;
+    if (m.author !== "me" || m.at > readAt || m.status === "sending" || m.status === "failed") return m;
     if (m.status === "read" && m.seenAt) return m;
     return { ...m, status: "read", seenAt: readAt };
   });
@@ -151,6 +152,8 @@ export function useRemoteThread(
   const pending = useRef<
     Map<string, { body: string; kind: RemoteSendOptions["kind"]; media?: RemoteMediaOptions; replyTo?: QuotedMessage | null }>
   >(new Map());
+  const activeConversation = useRef(conversationId);
+  activeConversation.current = conversationId;
   const messagesRef = useRef<ChatMessage[]>([]);
   const replyToRef = useRef<QuotedMessage | null>(null);
 
@@ -176,28 +179,7 @@ export function useRemoteThread(
   /* ------------------------------------------------------------- replying */
   /** Build the short quote preview for a message (Telegram-style). */
   const quoteFor = useCallback((m: ChatMessage): QuotedMessage => {
-    let text = m.text;
-    if (!text) {
-      switch (m.kind) {
-        case "image":
-          text = "Photo";
-          break;
-        case "audio":
-          text = "Voice note";
-          break;
-        case "file":
-          text = "File";
-          break;
-        case "sticker":
-          text = "Reaction";
-          break;
-        case "call":
-          text = "Call";
-          break;
-        default:
-          text = "…";
-      }
-    }
+    const text = previewFor(m) || "…";
     return { id: m.id, author: m.author, text: text.slice(0, 140) };
   }, []);
 
@@ -214,54 +196,57 @@ export function useRemoteThread(
       return;
     }
     let cancelled = false;
-    (async () => {
-      try {
-        const [result, conversations, readAt] = await Promise.all([
-          loadThread(conversationId),
-          listConversations().catch(() => [] as DbConversation[]),
-          conversationReadState(conversationId).catch(() => null),
-        ]);
-        if (cancelled) return;
-        const myId = result.me;
-        setMe(myId);
-        setPartner(conversations.find((c) => c.id === conversationId) ?? null);
-        setPartnerReadAt(readAt);
-        setMessages(applyReadCursor(result.messages.map((row) => toChatMessage(row, myId)), readAt));
-      } catch {
-        if (!cancelled) setMessages([]);
-      } finally {
-        if (!cancelled) setReady(true);
-      }
-    })();
+    setReady(false);
+    setMessages([]);
+    setMe(null);
+    setPartner(null);
+    setPartnerReadAt(null);
+    // Metadata and read receipts must not delay opening the actual thread.
+    void listConversations().then((conversations) => {
+      if (!cancelled) setPartner(conversations.find((c) => c.id === conversationId) ?? null);
+    }).catch(() => undefined);
+    void conversationReadState(conversationId).then((at) => {
+      if (!cancelled && at != null) setPartnerReadAt((prev) => prev == null ? at : Math.max(prev, at));
+    }).catch(() => undefined);
+    void loadThread(conversationId).then((result) => {
+      if (cancelled) return;
+      setMe(result.me);
+      setMessages(result.messages.map((row) => toChatMessage(row, result.me)));
+    }).catch(() => {
+      if (!cancelled) setMessages([]);
+    }).finally(() => {
+      if (!cancelled) setReady(true);
+    });
     return () => {
       cancelled = true;
     };
   }, [conversationId, enabled]);
 
+  useEffect(() => {
+    if (partnerReadAt != null) setMessages((prev) => applyReadCursor(prev, partnerReadAt));
+  }, [partnerReadAt, messages.length]);
+
   // realtime: new messages
   useEffect(() => {
     if (!enabled || !me) return;
+    let active = true;
     const stop = watchMessages(conversationId, {
       onInsert: (row) => {
         setMessages((prev) => {
           if (prev.some((m) => m.id === row.id)) return prev;
-          // drop the matching optimistic bubble if this is our own send echoing back
-          const tmp = prev.find(
-            (m) => m.id.startsWith("tmp_") && m.author === "me" && m.text === (row.kind === "sticker" ? "" : row.body)
-          );
-          const withoutTmp = tmp ? prev.filter((m) => m.id !== tmp.id) : prev;
-          const next = toChatMessage(row, me);
-          // realtime rows carry the id but not the resolved quote — keep the
-          // optimistic one for a beat so my own bubble never loses its reply
-          if (!next.replyTo && tmp?.replyTo) next.replyTo = tmp.replyTo;
-          return [...withoutTmp, next];
+          // A realtime echo can arrive before its POST response. Do not guess
+          // which optimistic message it belongs to: identical simultaneous sends
+          // may have different quotes. Reconcile by server ID on POST success.
+          return [...prev, toChatMessage(row, me)];
         });
         // a reply just arrived (mine or theirs) — fetch the quoted message so the link renders
         if (row.replyToId) {
-          void fetchMessageQuote(row.replyToId, me).then((qt) => {
-            if (!qt) return;
+          const original = messagesRef.current.find((message) => message.id === row.replyToId);
+          const quote = original ? Promise.resolve(quoteFor(original)) : fetchMessageQuote(row.replyToId, me);
+          void quote.then((qt) => {
+            if (!qt || !active) return;
             setMessages((prev) => prev.map((m) => (m.id === row.id && !m.replyTo ? { ...m, replyTo: qt } : m)));
-          });
+          }).catch(() => undefined);
         }
       },
       onUpdate: (row) => {
@@ -276,9 +261,9 @@ export function useRemoteThread(
         setPartnerReadAt((prev) => (prev == null || at > prev ? at : prev));
         setMessages((prev) => applyReadCursor(prev, at));
       },
-    });
-    return stop;
-  }, [conversationId, me, enabled]);
+    }, me);
+    return () => { active = false; stop(); };
+  }, [conversationId, me, enabled, quoteFor]);
 
   // realtime: reactions
   useEffect(() => {
@@ -338,11 +323,20 @@ export function useRemoteThread(
           quote?.id ?? null
         );
         pending.current.delete(id);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "delivered", replyTo: quote ?? m.replyTo } : m))
-        );
-      } catch {
+        if (activeConversation.current !== conversationId) return;
+        setMessages((prev) => {
+          const echo = prev.find((m) => m.id === row.id);
+          if (echo) {
+            return prev.filter((m) => m.id !== id).map((m) =>
+              m.id === row.id ? { ...m, replyTo: quote ?? m.replyTo } : m
+            );
+          }
+          return prev.map((m) => (m.id === id ? { ...toChatMessage(row, me), status: "delivered", replyTo: quote ?? m.replyTo } : m));
+        });
+      } catch (error) {
+        if (activeConversation.current !== conversationId) { pending.current.delete(id); return; }
         setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status: "failed" } : m)));
+        if (error instanceof Error && /Replies aren't set up/.test(error.message)) toast.error(error.message);
       }
     },
     [conversationId, me]

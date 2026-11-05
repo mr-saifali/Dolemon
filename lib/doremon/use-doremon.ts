@@ -56,7 +56,9 @@ export function useDoremon(
     (kind: DoremonMessage["kind"], text: string) => {
       setDoremonMessages((prev) => {
         const next = [...prev, { id: uid(), kind, text, at: Date.now() }].slice(-40);
-        saveDoremonMessages(conversationId, next);
+        // The offline notice is live feedback, not conversation — show it on
+        // screen, but never let it pile up in the saved history.
+        if (text !== OFFLINE_NOTICE) saveDoremonMessages(conversationId, next);
         return next;
       });
     },
@@ -77,7 +79,8 @@ export function useDoremon(
 
   /* ------------------------------------------------ load memory + old messages */
   useEffect(() => {
-    setDoremonMessages(loadDoremonMessages(conversationId));
+    // drop any offline notices saved before they were excluded from history
+    setDoremonMessages(loadDoremonMessages(conversationId).filter((m) => m.text !== OFFLINE_NOTICE));
     void loadDoremonMemory(conversationId, remote).then((mem) => {
       memoryRef.current = mem;
       setMemory(mem);

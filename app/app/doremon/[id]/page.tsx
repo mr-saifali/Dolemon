@@ -369,7 +369,9 @@ function Room({ conversationId }: { conversationId: string }) {
         alive: !deleted,
       };
       setData(next);
-      setTurns(next.memory.chat ?? []);
+      // offline notices were saved before they became history-free —
+      // drop them so the room doesn't replay a wall of "offline" lines
+      setTurns((next.memory.chat ?? []).filter((t) => t.a !== OFFLINE_NOTICE));
     })();
     return () => {
       alive = false;
@@ -451,13 +453,15 @@ function Room({ conversationId }: { conversationId: string }) {
     (q: string, a: string) => {
       const turn: RoomTurn = { id: `rt_${Date.now().toString(36)}`, q, a, at: Date.now() };
       setTurns((prev) => [...prev, turn]);
-      if (!REMOTE) return;
+      // The offline notice is live feedback, not conversation — it shows on
+      // screen but is never written to the room's saved history.
+      if (a === OFFLINE_NOTICE || !REMOTE) return;
       setData((prev) => {
         if (!prev) return prev;
         const nextMemory: DoremonMemory = {
           ...prev.memory,
           partnerUsername: prev.partnerName,
-          chat: [...(prev.memory.chat ?? []), turn].slice(-40),
+          chat: [...(prev.memory.chat ?? []).filter((t) => t.a !== OFFLINE_NOTICE), turn].slice(-40),
           updatedAt: Date.now(),
         };
         void saveDoremonMemory(conversationId, nextMemory, REMOTE);

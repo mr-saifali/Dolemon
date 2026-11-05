@@ -96,23 +96,35 @@ export async function GET(req: NextRequest) {
     if (!key) return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
     try {
       const listing = await discoverModels(key);
-      const results: Record<string, unknown>[] = [];
-      for (const model of listing.usable.slice(0, 2)) {
-        const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
-        url.searchParams.set("key", key);
-        const res = await fetch(url, {
+      const model = listing.usable[0];
+      if (!model) {
+        return NextResponse.json({ ok: false, error: "MODEL", detail: "0 usable models for this key" }, { status: 502 });
+      }
+      const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
+      url.searchParams.set("key", key);
+      // Fast by design: ONE model, 8s hard timeout, minimal tokens.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      let res: Response;
+      try {
+        res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: "Reply with exactly one word." }] }],
-            generationConfig: { temperature: 0.9, maxOutputTokens: 256 },
+            generationConfig: { temperature: 0.9, maxOutputTokens: 32 },
           }),
           cache: "no-store",
+          signal: controller.signal,
         });
-        const raw = (await res.text()).slice(0, 600);
-        results.push({ model, status: res.status, raw });
+      } catch (err) {
+        clearTimeout(timer);
+        const detail = err instanceof Error ? err.message.slice(0, 120) : "fetch failed";
+        return NextResponse.json({ ok: false, model, status: 0, detail: `timed out after 8s (${detail})` }, { status: 504 });
       }
-      return NextResponse.json({ ok: true, results });
+      clearTimeout(timer);
+      const raw = (await res.text()).slice(0, 500);
+      return NextResponse.json({ ok: res.ok, model, status: res.status, raw });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       return NextResponse.json({ ok: false, error: error instanceof GeminiKeyError ? "BAD_KEY" : "ERROR", detail: msg.slice(0, 240) }, { status: 502 });

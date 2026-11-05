@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { DEFAULT_CHAT_THEME, type ChatThemeId } from "./chat-themes";
 
 export type Prefs = {
   /** let the other person see when you're in the room */
@@ -23,6 +24,8 @@ export type Prefs = {
   reduceMotion: boolean;
   /** tighter bubble spacing — more words per screen */
   compactChat: boolean;
+  /** default wallpaper for chats without a personal override (device-local) */
+  chatTheme: ChatThemeId;
   /** a soft tone when their message lands */
   sounds: boolean;
   /** the short opening jingle when the app opens */
@@ -41,6 +44,7 @@ const DEFAULT: Prefs = {
   appearance: "feminine",
   reduceMotion: false,
   compactChat: false,
+  chatTheme: DEFAULT_CHAT_THEME,
   sounds: true,
   introMusic: true,
 };
@@ -67,10 +71,19 @@ function snapshot(): Prefs {
   return cache;
 }
 
+function onStorage(event: StorageEvent) {
+  if (event.key !== KEY && event.key !== null) return;
+  cache = read();
+  loaded = true;
+  listeners.forEach((listener) => listener());
+}
+
 function subscribe(listener: () => void) {
+  if (typeof window !== "undefined" && listeners.size === 0) window.addEventListener("storage", onStorage);
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+    if (typeof window !== "undefined" && listeners.size === 0) window.removeEventListener("storage", onStorage);
   };
 }
 

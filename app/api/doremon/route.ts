@@ -57,7 +57,7 @@ class GeminiKeyError extends Error {}
  *  found for API key"). The configured model must be changed. */
 class GeminiModelError extends Error {}
 class GeminiQuotaError extends Error {
-  constructor(public retryAfterSeconds: number | null) {
+  constructor(public retryAfterSeconds: number | null, public noModelQuota = false) {
     super("Gemini rate or quota limit exceeded");
   }
 }
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
         status: 502,
       };
     } else {
-      pingCache = { at: now, body: { ok: true, model: listing.usable[0] }, status: 200 };
+      pingCache = { at: now, body: { ok: true, model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" }, status: 200 };
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -129,6 +129,28 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // This endpoint spends a shared API quota. Never let anonymous callers use it.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return NextResponse.json({ ok: false, error: "AUTH_CONFIG" }, { status: 503 });
+  const authorization = req.headers.get("authorization");
+  if (!authorization || !/^Bearer \S+$/i.test(authorization)) {
+    return NextResponse.json({ ok: false, error: "AUTH_REQUIRED" }, { status: 401 });
+  }
+  try {
+    const auth = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
+      headers: { apikey: anonKey, Authorization: authorization },
+      cache: "no-store", signal: AbortSignal.timeout(4000),
+    });
+    if (!auth.ok) {
+      if (auth.status === 401 || auth.status === 403) return NextResponse.json({ ok: false, error: "AUTH_REQUIRED" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "AUTH_UNAVAILABLE" }, { status: 503 });
+    }
+    const user = await auth.json();
+    if (!user?.id) return NextResponse.json({ ok: false, error: "AUTH_REQUIRED" }, { status: 401 });
+  } catch {
+    return NextResponse.json({ ok: false, error: "AUTH_UNAVAILABLE" }, { status: 503 });
+  }
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
@@ -147,11 +169,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "BAD_ACTION" }, { status: 400 });
   }
 
-  const { system, user } = promptsFor(body);
-
   try {
+    const { system, user } = promptsFor(body);
     const wantJson = body.action === "analyze" || body.action === "finalize";
-    const raw = await callGemini(key, model, system, user, wantJson, body.action);
+    const raw = await generateWithFallback(key, model, system, user, wantJson, body.action);
     if (body.action === "analyze") {
       const parsed = parseJson(raw);
       if (!parsed) throw new Error("unparseable analysis");
@@ -171,7 +192,7 @@ export async function POST(req: NextRequest) {
     console.error("[doremon] gemini failure:", msg);
     if (error instanceof GeminiQuotaError) {
       const headers = error.retryAfterSeconds ? { "Retry-After": String(error.retryAfterSeconds) } : undefined;
-      return NextResponse.json({ ok: false, error: "QUOTA", retryAfterSeconds: error.retryAfterSeconds }, { status: 429, headers });
+      return NextResponse.json({ ok: false, error: error.noModelQuota ? "MODEL_QUOTA" : "QUOTA", retryAfterSeconds: error.retryAfterSeconds }, { status: 429, headers });
     }
     if (error instanceof GeminiKeyError) {
       // The key was read but Google refused it — tell the client exactly that.
@@ -258,7 +279,7 @@ const OUTPUT_CAPS: Record<string, number> = {
 /* not a guarantee that this project has free generation quota for it. */
 /* ------------------------------------------------------------------ */
 
-let modelListCache: { at: number; usable: string[]; total: number } | null = null;
+let modelListCache: { key: string; at: number; usable: string[]; total: number } | null = null;
 
 function modelVersion(id: string): number {
   const m = id.match(/gemini-([\d.]+)/);
@@ -267,11 +288,11 @@ function modelVersion(id: string): number {
 
 async function discoverModels(key: string): Promise<{ usable: string[]; total: number }> {
   const now = Date.now();
-  if (modelListCache && now - modelListCache.at < 10 * 60_000) return modelListCache;
+  if (modelListCache && modelListCache.key === key && now - modelListCache.at < 10 * 60_000) return modelListCache;
   const url = new URL("https://generativelanguage.googleapis.com/v1beta/models");
   url.searchParams.set("key", key);
   url.searchParams.set("pageSize", "100");
-  const res = await fetch(url, { method: "GET", cache: "no-store" });
+  const res = await fetch(url, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(2000) });
   if (!res.ok) {
     const text = (await res.text().catch(() => "")).slice(0, 200);
     const msg = `gemini ${res.status} (model list): ${text}`;
@@ -302,8 +323,39 @@ async function discoverModels(key: string): Promise<{ usable: string[]; total: n
   exact.sort(byNewest);
   flashVariants.sort(byNewest);
   anyText.sort(byNewest);
-  modelListCache = { at: now, usable: [...exact, ...flashVariants, ...anyText].slice(0, 6), total: all.length };
+  modelListCache = { key, at: now, usable: [...exact, ...flashVariants, ...anyText], total: all.length };
   return modelListCache;
+}
+
+// Keep one proven fallback in a warm instance; never retry ordinary quota,
+// timeout, or transient failures, which could waste the user's free requests.
+let fallbackCache: { key: string; configured: string; model: string; until: number } | null = null;
+async function generateWithFallback(
+  key: string, configured: string, system: string, user: string, wantJson: boolean, action: string
+): Promise<string> {
+  const selected = fallbackCache && fallbackCache.key === key && fallbackCache.configured === configured && fallbackCache.until > Date.now()
+    ? fallbackCache.model : configured;
+  try {
+    return await callGemini(key, selected, system, user, wantJson, action);
+  } catch (error) {
+    // Automatic recovery is limited to the default lightweight model, and
+    // only for a missing model or Google's explicit zero model quota.
+    if (selected !== configured || configured !== "gemini-2.5-flash-lite" ||
+        !(error instanceof GeminiModelError || (error instanceof GeminiQuotaError && error.noModelQuota))) throw error;
+    let models: string[];
+    try { models = (await discoverModels(key)).usable; } catch { throw error; }
+    const alternate = ["gemini-2.5-flash"].find((m) => m !== configured && models.includes(m));
+    if (!alternate) throw error;
+    try {
+      const answer = await callGemini(key, alternate, system, user, wantJson, action);
+      fallbackCache = { key, configured, model: alternate, until: Date.now() + 10 * 60_000 };
+      return answer;
+    } catch (fallbackError) {
+      // If the alternative is also unavailable, retain the original reason.
+      if (fallbackError instanceof GeminiModelError) throw error;
+      throw fallbackError;
+    }
+  }
 }
 
 /** One attempt against one model — classifies Google's failure precisely. */
@@ -339,7 +391,7 @@ async function callGemini(
   // Do not abandon a slow but valid generation and start another one:
   // even an aborted request can consume a free-tier request.
   const controller = new AbortController();
-  const hangTimer = setTimeout(() => controller.abort(), 25_000);
+  const hangTimer = setTimeout(() => controller.abort(), 20_000);
   let res: Response;
   try {
     res = await fetch(url, {
@@ -356,9 +408,10 @@ async function callGemini(
   clearTimeout(hangTimer);
 
   if (!res.ok) {
-    const text = (await res.text().catch(() => "")).slice(0, 4000);
+    const text = (await res.text().catch(() => "")).slice(0, 20000);
     const msg = `gemini ${res.status} (${model}): ${text.slice(0, 200)}`;
     if (res.status === 429) {
+      let noModelQuota = false;
       // Retry-After may be seconds or an HTTP date; Google may also return
       // google.rpc.RetryInfo in the JSON response body.
       const header = res.headers.get("retry-after");
@@ -367,11 +420,18 @@ async function callGemini(
       let retryAfter = seconds ?? (Number.isFinite(date) ? Math.max(1, Math.ceil((date - Date.now()) / 1000)) : null);
       try {
         const details = JSON.parse(text)?.error?.details;
+        // A zero model-specific allowance is not a temporary rate limit. Only
+        // then is it useful to try another model; ordinary 429s are not retried.
+        noModelQuota = Array.isArray(details) && details.some((d: { violations?: { quotaValue?: string | number; quotaDimensions?: { model?: string } }[] }) =>
+          Array.isArray(d.violations) && d.violations.some((v) =>
+            v.quotaDimensions?.model === model && String(v.quotaValue) === "0"
+          )
+        );
         const retry = Array.isArray(details) ? details.find((d: { retryDelay?: unknown }) => typeof d.retryDelay === "string")?.retryDelay : null;
         const parsed = typeof retry === "string" ? Number.parseFloat(retry) : NaN;
         if (!retryAfter && Number.isFinite(parsed) && parsed > 0) retryAfter = Math.ceil(parsed);
       } catch { /* Retry hint is optional. */ }
-      throw new GeminiQuotaError(retryAfter && retryAfter > 0 ? retryAfter : null);
+      throw new GeminiQuotaError(retryAfter && retryAfter > 0 ? retryAfter : null, noModelQuota);
     }
     // "models/X is not found for API key (id: …)" — the KEY is fine, the
     // MODEL isn't allowed to it. Checked BEFORE the key patterns, because

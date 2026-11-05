@@ -13,6 +13,7 @@ import {
 } from "./memory";
 import { localFinalize, viewStats } from "./insights";
 import { OFFLINE_NOTICE, offlineReason } from "./offline";
+import { doremonFetch } from "./api";
 import type { DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
 
@@ -184,18 +185,13 @@ export function useDoremon(
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30_000);
         try {
-          const res = await fetch("/api/doremon", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "ask", me, partner, recent, memory: memoryRef.current, question }),
-            signal: controller.signal,
-          });
+          const res = await doremonFetch({ action: "ask", me, partner, recent, memory: memoryRef.current, question }, controller.signal);
           const data = (await res.json()) as { ok?: boolean; answer?: string; detail?: string; error?: string; retryAfterSeconds?: number | null };
-          lastDetail = data.error === "QUOTA" ? "quota" : data.detail ?? data.error ?? null;
+          lastDetail = (data.error === "QUOTA" || data.error === "MODEL_QUOTA") ? data.error : data.detail ?? data.error ?? null;
           retryAfter = data.retryAfterSeconds ?? null;
           if (res.ok && data.ok && data.answer) answer = data.answer;
-        } catch {
-          lastDetail = "timeout or network error";
+        } catch (err) {
+          lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : "timeout or network error";
         } finally {
           clearTimeout(timeout);
         }

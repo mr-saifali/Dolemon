@@ -1,5 +1,6 @@
 "use client";
 
+import { doremonFetch } from "@/lib/doremon/api";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { motion } from "framer-motion";
@@ -411,23 +412,18 @@ function Room({ conversationId }: { conversationId: string }) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30_000);
       try {
-        const res = await fetch("/api/doremon", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "daily",
-            me: myHandle,
-            partner: data.partnerName,
-            meId: data.meId,
-            partnerId: data.partnerId,
-            recent: [],
-            yesterday,
-            day: today,
-            memory: data.memory,
-            stats: data.stats,
-          }),
-          signal: controller.signal,
-        });
+        const res = await doremonFetch({
+          action: "daily",
+          me: myHandle,
+          partner: data.partnerName,
+          meId: data.meId,
+          partnerId: data.partnerId,
+          recent: [],
+          yesterday,
+          day: today,
+          memory: data.memory,
+          stats: data.stats,
+        }, controller.signal);
         const out = (await res.json()) as { ok?: boolean; answer?: string };
         if (res.ok && out.ok && out.answer) text = out.answer;
       } catch {
@@ -496,29 +492,24 @@ function Room({ conversationId }: { conversationId: string }) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30_000);
         try {
-          const res = await fetch("/api/doremon", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "roomAsk", me: myHandle, partner, meId: data.meId,
-              partnerId: data.partnerId, recent, memory: data.memory,
-              stats: data.stats, question: q,
-            }),
-            signal: controller.signal,
-          });
+          const res = await doremonFetch({
+            action: "roomAsk", me: myHandle, partner, meId: data.meId,
+            partnerId: data.partnerId, recent, memory: data.memory,
+            stats: data.stats, question: q,
+          }, controller.signal);
           const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string; retryAfterSeconds?: number | null };
-          lastDetail = out.error === "QUOTA" ? "quota" : out.detail ?? out.error ?? null;
+          lastDetail = (out.error === "QUOTA" || out.error === "MODEL_QUOTA") ? out.error : out.detail ?? out.error ?? null;
           retryAfter = out.retryAfterSeconds ?? null;
           if (res.ok && out.ok && out.answer) {
             answer = out.answer;
             setBrainState("online");
             setBrainDetail("");
           } else {
-            setBrainDetail(out.error === "QUOTA" ? offlineReason("quota", retryAfter) : out.detail ?? "");
+            setBrainDetail((out.error === "QUOTA" || out.error === "MODEL_QUOTA") ? offlineReason(out.error, retryAfter) : out.detail ?? "");
             setBrainState(out.error === "NO_KEY" ? "no-key" : out.error === "BAD_KEY" ? "bad-key" : "offline");
           }
-        } catch {
-          lastDetail = "timeout or network error";
+        } catch (err) {
+          lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : "timeout or network error";
           setBrainState("offline");
         } finally {
           clearTimeout(timeout);

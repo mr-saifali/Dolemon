@@ -1,6 +1,6 @@
 /* Dolemon service worker — app shell cache so the app opens instantly and survives a dead network. */
 
-const VERSION = "dolemon-v0.2.0";
+const VERSION = "dolemon-v0.3.0";
 const SHELL = ["/", "/app", "/signin", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -36,9 +36,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
 
-  // pages: STALE-WHILE-REVALIDATE — a cached shell opens instantly, the
-  // fresh copy lands in the background. The app is client-driven, so the
-  // cached HTML is safe and the real data always comes live over the network.
+  // Pages: network first, so deployed security and UI changes reach users.
+  // Use the cached shell only if the network is unavailable.
   if (request.mode === "navigate") {
     event.respondWith(
       caches.open(VERSION).then(async (cache) => {
@@ -51,7 +50,8 @@ self.addEventListener("fetch", (event) => {
             return response;
           })
           .catch(() => cached || (await cache.match("/")) || Response.error());
-        return cached || network;
+        // Prefer the latest app shell after deployment; fall back when offline.
+        return network;
       })
     );
     return;

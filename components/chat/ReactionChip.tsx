@@ -4,7 +4,6 @@ import { useRef } from "react";
 import { motion } from "framer-motion";
 import { ReactionIcon } from "@/components/reactions";
 import type { ReactionType } from "@/lib/reactions";
-import { cn } from "@/lib/utils";
 
 const SPRING = { type: "spring", stiffness: 420, damping: 30 } as const;
 
@@ -64,10 +63,7 @@ export function ReactionChip({
       }}
       aria-label={`${label}${count > 1 ? `, ${count}` : ""}${mine ? ", your reaction" : ""}`}
       aria-pressed={mine}
-      className={cn(
-        "flex items-center gap-1 rounded-full border bg-[#1C1C1E] px-1.5 py-0.5 text-[12px] shadow-sm",
-        mine ? "border-[#FF5C7A]/40" : "border-white/10"
-      )}
+      className="flex items-center gap-1 rounded-full border border-white/10 bg-[#1C1C1E] px-1.5 py-0.5 text-xs shadow-sm"
     >
       <ReactionIcon type={type} size={15} />
       {count > 1 && <span className="text-[11px] leading-none tabular-nums text-zinc-400">{count}</span>}

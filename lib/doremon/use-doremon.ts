@@ -12,7 +12,7 @@ import {
   saveDoremonMessages,
 } from "./memory";
 import { localFinalize, viewStats } from "./insights";
-import { OFFLINE_NOTICE } from "./offline";
+import { OFFLINE_NOTICE, offlineReason } from "./offline";
 import type { DoremonMemory, DoremonMessage } from "./types";
 import { emptyMemory } from "./types";
 
@@ -183,41 +183,56 @@ export function useDoremon(
       const recent = brainMessages();
 
       let answer: string | null = null;
+      let lastDetail: string | null = null;
+      let keyDown = false;
       if (remote && (!geminiState.down || Date.now() - geminiState.since > RETRY_AFTER_MS)) {
-        try {
-          // 25s hang-guard: covers the server-side fallback chain (8s
-          // per-model hang timeout + the next model's answer) before
-          // falling back — without disabling Gemini for 10 minutes.
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 25_000);
-          const res = await fetch("/api/doremon", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "ask",
-              me,
-              partner,
-              recent,
-              memory: memoryRef.current,
-              question,
-            }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          const data = (await res.json()) as { ok?: boolean; answer?: string };
-          if (res.ok && data.ok && data.answer) answer = data.answer;
-          else if (res.status === 503) geminiState = { down: true, since: Date.now() };
-        } catch (err) {
-          if (!(err instanceof DOMException && err.name === "AbortError")) {
-            geminiState = { down: true, since: Date.now() };
+        // Copilot-style: one SILENT retry, 6s later, when the first attempt
+        // fails — the server's dead-model skip list usually makes the
+        // second attempt much faster. A dead/missing key is not retried.
+        for (let attempt = 0; attempt < 2 && !answer && !keyDown; attempt++) {
+          if (attempt === 1) await new Promise((r) => setTimeout(r, 6_000));
+          try {
+            // 22s hang-guard: covers the server-side fallback chain (up to
+            // 3 models x 5s hang-timeout + the live model's answer) without
+            // disabling Gemini for 10 minutes.
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 22_000);
+            const res = await fetch("/api/doremon", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "ask",
+                me,
+                partner,
+                recent,
+                memory: memoryRef.current,
+                question,
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const data = (await res.json()) as { ok?: boolean; answer?: string; detail?: string };
+            if (data.detail) lastDetail = data.detail;
+            if (res.ok && data.ok && data.answer) answer = data.answer;
+            else if (res.status === 503 || res.status === 401) {
+              // no key (503) or rejected key (401) — retrying won't fix it
+              keyDown = true;
+              geminiState = { down: true, since: Date.now() };
+            }
+          } catch (err) {
+            if (!(err instanceof DOMException && err.name === "AbortError")) {
+              geminiState = { down: true, since: Date.now() };
+            }
           }
         }
       }
       if (!answer) {
         if (remote) {
-          // No canned demo answers in remote mode — an honest status instead,
-          // so Doremon never parrots a scripted line while his brain is down.
-          answer = OFFLINE_NOTICE;
+          // No canned demo answers in remote mode — an honest status WITH
+          // THE REASON, so Doremon never parrots a scripted line while his
+          // brain is down.
+          const reason = offlineReason(lastDetail);
+          answer = OFFLINE_NOTICE + (reason ? ` (${reason})` : "");
         } else {
           // Pure demo mode (no backend at all): the pocket brain IS the brain.
           answer = localAsk(question, memoryRef.current, recent);

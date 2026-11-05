@@ -91,14 +91,21 @@ export async function GET(req: NextRequest) {
   // Diagnostic: ?probe=1 fires a tiny generateContent at the top usable
   // models and returns the RAW response, so we can see the exact shape
   // (parts, finishReason, block reasons) without guessing.
-  if (new URL(req.url).searchParams.get("probe") === "1") {
+  // ?probe=N fires one real generation at the Nth usable model (1-based)
+  // so each model in the fleet can be checked individually.
+  const probeParam = new URL(req.url).searchParams.get("probe");
+  if (probeParam && /^\d+$/.test(probeParam)) {
+    const idx = Math.max(1, Number(probeParam)) - 1;
     const key = process.env.GEMINI_API_KEY;
     if (!key) return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
     try {
       const listing = await discoverModels(key);
-      const model = listing.usable[0];
+      const model = listing.usable[idx];
       if (!model) {
-        return NextResponse.json({ ok: false, error: "MODEL", detail: "0 usable models for this key" }, { status: 502 });
+        return NextResponse.json(
+          { ok: false, error: "MODEL", detail: `no model at position ${probeParam} (have ${listing.usable.length}: ${listing.usable.join(", ")})` },
+          { status: 502 }
+        );
       }
       const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
       url.searchParams.set("key", key);
@@ -418,9 +425,12 @@ async function callGemini(
   url.searchParams.set("key", key);
 
   // Per-model hang guard: a stuck model must not stall the whole chain.
-  // 8s is plenty for a flash model; a hang means "try the next model".
+  // 5s is plenty for a healthy flash model (answers land in 1-4s); a hang
+  // means "mark it dead and try the next model". Worst case with 3 dead
+  // models is 15s, leaving room for a live model's answer inside the
+  // client's wait.
   const controller = new AbortController();
-  const hangTimer = setTimeout(() => controller.abort(), 8000);
+  const hangTimer = setTimeout(() => controller.abort(), 5000);
   let res: Response;
   try {
     res = await fetch(url, {
@@ -433,7 +443,7 @@ async function callGemini(
   } catch {
     clearTimeout(hangTimer);
     markDeadModel(model);
-    throw new GeminiModelError(`gemini timeout (${model}): no response in 8s`);
+    throw new GeminiModelError(`gemini timeout (${model}): no response in 5s`);
   }
   clearTimeout(hangTimer);
 

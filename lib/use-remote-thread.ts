@@ -9,6 +9,7 @@ import {
   fetchMessageQuote,
   loadReactions,
   loadThread,
+  latestMessageId,
   loadOlderMessages,
   listConversations,
   markThreadRead,
@@ -106,12 +107,15 @@ function toChatMessage(row: DbMessage, me: string | null, pending = false): Chat
  * cursor are read — and the exact moment they opened it is the read time.
  */
 function applyReadCursor(messages: ChatMessage[], readAt: number | null): ChatMessage[] {
-  if (readAt == null) return messages;
-  return messages.map((m) => {
+  if (readAt == null || !Number.isFinite(readAt)) return messages;
+  let changed = false;
+  const updated = messages.map((m) => {
     if (m.author !== "me" || m.at > readAt || m.status === "sending" || m.status === "failed") return m;
     if (m.status === "read" && m.seenAt) return m;
-    return { ...m, status: "read", seenAt: readAt };
+    changed = true;
+    return { ...m, status: "read" as const, seenAt: readAt };
   });
+  return changed ? updated : messages;
 }
 
 /** Media attached to a send. `dataUrl` renders instantly and is uploaded before insert. */
@@ -246,51 +250,22 @@ export function useRemoteThread(
 
   useEffect(() => {
     if (partnerReadAt != null) setMessages((prev) => applyReadCursor(prev, partnerReadAt));
-  }, [partnerReadAt, messages.length]);
+  }, [partnerReadAt, messages]);
 
   // realtime: new messages
   useEffect(() => {
     if (!enabled || !me) return;
     let active = true;
     let generation = 0;
+    let reconciling = false;
+    let reconcileAgain = false;
     let changed = new Set<string>();
-    const stop = watchMessages(conversationId, {
-      onInsert: (row) => {
-        changed.add(row.id);
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === row.id)) return prev;
-          // A realtime echo can arrive before its POST response. Do not guess
-          // which optimistic message it belongs to: identical simultaneous sends
-          // may have different quotes. Reconcile by server ID on POST success.
-          return [...prev, toChatMessage(row, me)];
-        });
-        // a reply just arrived (mine or theirs) — fetch the quoted message so the link renders
-        if (row.replyToId) {
-          const original = messagesRef.current.find((message) => message.id === row.replyToId);
-          const quote = original ? Promise.resolve(quoteFor(original)) : fetchMessageQuote(row.replyToId, me);
-          void quote.then((qt) => {
-            if (!qt || !active) return;
-            setMessages((prev) => prev.map((m) => (m.id === row.id && !m.replyTo ? { ...m, replyTo: qt } : m)));
-          }).catch(() => undefined);
-        }
-      },
-      onUpdate: (row) => {
-        changed.add(row.id);
-        setMessages((prev) => {
-          if (!prev.some((m) => m.id === row.id)) {
-            return [...prev, toChatMessage(row, me)].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
-          }
-          return prev.map((m) => (m.id === row.id ? { ...m, text: row.body, editedAt: row.editedAt ?? null } : m));
-        });
-      },
-      onDelete: (id) => {
-        changed.add(id);
-        setMessages((prev) => prev.filter((m) => m.id !== id));
-      },
-      onSubscribed: () => {
-        // Close the snapshot/subscription gap and catch up after reconnect.
-        // Keep changes observed while the snapshot was in flight, including
-        // deletions, rather than overwriting them with stale rows.
+    // Reconcile after joining/rejoining and periodically while visible, so a
+    // missing publication or dropped websocket event cannot strand the view.
+    const reconcile = () => {
+        if (!active) return;
+        if (reconciling) { reconcileAgain = true; return; }
+        reconciling = true;
         const currentGeneration = ++generation;
         changed = new Set();
         void loadThread(conversationId).then((result) => {
@@ -314,15 +289,78 @@ export function useRemoteThread(
               (!hasGap && first && !snapshotIds.has(m.id) && m.at < first.at));
             return [...stable, ...recentChanges].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
           });
-        }).catch(() => undefined);
+        }).catch(() => undefined).finally(() => {
+          reconciling = false;
+          if (active && reconcileAgain) { reconcileAgain = false; reconcile(); }
+        });
+    };
+    const stop = watchMessages(conversationId, {
+      onInsert: (row) => {
+        if (!active) return;
+        changed.add(row.id);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === row.id)) return prev;
+          // A realtime echo can arrive before its POST response. Do not guess
+          // which optimistic message it belongs to: identical simultaneous sends
+          // may have different quotes. Reconcile by server ID on POST success.
+          return [...prev, toChatMessage(row, me)];
+        });
+        // a reply just arrived (mine or theirs) — fetch the quoted message so the link renders
+        if (row.replyToId) {
+          const original = messagesRef.current.find((message) => message.id === row.replyToId);
+          const quote = original ? Promise.resolve(quoteFor(original)) : fetchMessageQuote(row.replyToId, me);
+          void quote.then((qt) => {
+            if (!qt || !active) return;
+            setMessages((prev) => prev.map((m) => (m.id === row.id && !m.replyTo ? { ...m, replyTo: qt } : m)));
+          }).catch(() => undefined);
+        }
       },
+      onUpdate: (row) => {
+        if (!active) return;
+        changed.add(row.id);
+        setMessages((prev) => {
+          if (!prev.some((m) => m.id === row.id)) {
+            return [...prev, toChatMessage(row, me)].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+          }
+          return prev.map((m) => (m.id === row.id ? { ...m, text: row.body, editedAt: row.editedAt ?? null } : m));
+        });
+      },
+      onDelete: (id) => {
+        if (!active) return;
+        changed.add(id);
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      },
+      onSubscribed: reconcile,
       onRead: (at) => {
+        if (!active || !shareReads) return;
         setPartnerReadAt((prev) => (prev == null || at > prev ? at : prev));
         setMessages((prev) => applyReadCursor(prev, at));
       },
     }, me);
-    return () => { active = false; stop(); };
-  }, [conversationId, me, enabled, quoteFor]);
+    const isVisible = () => typeof document === "undefined" || document.visibilityState === "visible";
+    let checking = false;
+    const poll = () => {
+      if (!isVisible() || checking) return;
+      checking = true;
+      void latestMessageId(conversationId).then((latest) => {
+        if (!active) return;
+        const persisted = messagesRef.current.filter((m) => !m.id.startsWith("tmp_"));
+        if (latest !== (persisted[persisted.length - 1]?.id ?? null)) reconcile();
+      }).catch(() => undefined).finally(() => { checking = false; });
+      if (shareReads) void conversationReadState(conversationId).then((at) => {
+        if (active && at != null) setPartnerReadAt((prev) => prev == null || at > prev ? at : prev);
+      }).catch(() => undefined);
+    };
+    const resume = () => { if (isVisible()) { reconcile(); poll(); } };
+    const timer = setInterval(poll, 5000);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", resume);
+    if (typeof window !== "undefined") window.addEventListener("online", resume);
+    return () => {
+      active = false; clearInterval(timer); stop();
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", resume);
+      if (typeof window !== "undefined") window.removeEventListener("online", resume);
+    };
+  }, [conversationId, me, enabled, quoteFor, shareReads]);
 
   // realtime: reactions
   useEffect(() => {
@@ -346,7 +384,7 @@ export function useRemoteThread(
   }, [conversationId, me, enabled, sharePresence, shareTyping]);
 
   const markRead = useCallback(() => {
-    if (ready && enabled) void markThreadRead(conversationId, shareReads);
+    if (ready && enabled) void markThreadRead(conversationId, shareReads).catch(() => undefined);
   }, [ready, enabled, conversationId, shareReads]);
 
   const loadOlder = useCallback(async () => {

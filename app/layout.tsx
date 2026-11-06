@@ -5,6 +5,7 @@ import { ThemePrefs } from "@/components/theme-prefs";
 import { LiveCallProvider } from "@/lib/live-call";
 import { LiveCallOverlay } from "@/components/call/live-call-overlay";
 import { SessionProvider } from "@/lib/session";
+import { AppPresenceProvider } from "@/lib/app-presence";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { NetworkStatus } from "@/components/pwa/network-status";
 import "./globals.css";
@@ -47,11 +48,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MotionPrefs>
         <PwaProvider>
           <SessionProvider>
+            <AppPresenceProvider>
             <LiveCallProvider>
               {children}
               <LiveCallOverlay />
               <NetworkStatus />
             </LiveCallProvider>
+            </AppPresenceProvider>
           </SessionProvider>
         </PwaProvider>
         </MotionPrefs>

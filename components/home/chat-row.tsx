@@ -16,6 +16,7 @@ export type ChatRowData = {
   at: number | null;
   unread: number;
   typing?: boolean;
+  online?: boolean;
 };
 
 /** A flat, circular avatar; uploaded photos, preset emoji and initials all share the same shape. */
@@ -44,7 +45,7 @@ export function ChatRow({ chat }: { chat: ChatRowData; index?: number }) {
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }}>
       <Link href={`/app/chat/${chat.id}`} className="press flex items-center gap-3.5 rounded-2xl px-1 py-3 transition-colors hover:bg-white/[0.03] active:bg-white/[0.05]">
-        <ChatAvatar avatarId={chat.avatarId} avatarUrl={chat.avatarUrl} name={chat.name} online={Boolean(chat.typing)} />
+        <ChatAvatar avatarId={chat.avatarId} avatarUrl={chat.avatarUrl} name={chat.name} online={chat.online} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
             <p className={`min-w-0 truncate text-[15px] text-zinc-100 ${chat.unread > 0 ? "font-bold" : "font-medium"}`}>

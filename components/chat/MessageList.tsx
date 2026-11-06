@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 export function MessageList({
   messages,
+  conversationId,
   partnerName,
   typing,
   showReceipts,
@@ -33,6 +34,7 @@ export function MessageList({
   onBottomChange,
 }: {
   messages: ChatMessage[];
+  conversationId?: string;
   partnerName: string;
   typing: boolean;
   showReceipts: boolean;
@@ -169,6 +171,7 @@ export function MessageList({
                     {showDivider && <UnreadDivider />}
                     <MessageBubble
                       message={message}
+                      conversationId={conversationId}
                       grouped={Boolean(prev && prev.kind !== "presence" && prev.kind !== "call" && isGrouped(prev, message))}
                       tail={!next || !isGrouped(message, next)}
                       showReceipts={showReceipts}

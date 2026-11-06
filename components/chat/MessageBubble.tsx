@@ -5,6 +5,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Check, CheckCheck, Clock, CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { ReactionChip } from "./ReactionChip";
+import { VideoMessage } from "./VideoMessage";
+import { parseVideoReference } from "@/lib/video-reference";
+import { LinkContent } from "./link-content";
 import type { BubbleAnchor } from "./ReactionPicker";
 import { buzz } from "@/lib/prefs";
 import { reactionChips, reactionLabel, reactionSentence } from "@/lib/reactions";
@@ -14,6 +17,7 @@ import { isEmojiOnly } from "@/lib/emoji";
 
 export const MessageBubble = memo(function MessageBubble({
   message,
+  conversationId,
   grouped,
   showReceipts = true,
   partnerName,
@@ -27,6 +31,7 @@ export const MessageBubble = memo(function MessageBubble({
   compact = false,
 }: {
   message: ChatMessage;
+  conversationId?: string;
   /** same sender, inside the burst window → tighter gap */
   grouped: boolean;
   /** Kept for grouping compatibility with the message list. */
@@ -236,6 +241,8 @@ export const MessageBubble = memo(function MessageBubble({
                 </button>
                 <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </div>
+            ) : message.kind === "file" && message.media && parseVideoReference(message.media.url) ? (
+              <div><VideoMessage reference={message.media.url} conversationId={conversationId} name={message.media.name} size={message.media.sizeBytes} mine={mine} /><BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} /></div>
             ) : message.kind === "file" && message.media ? (
               <div>
                 <a
@@ -274,9 +281,7 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             ) : (
               <div className="flex flex-wrap items-end gap-x-3 gap-y-0.5">
-                <span className="min-w-0 whitespace-pre-wrap break-words text-[13.5px] leading-[1.4] [overflow-wrap:anywhere]">
-                  {message.text}
-                </span>
+                <LinkContent text={message.text} />
                 <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} inline />
               </div>
             )}

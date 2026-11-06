@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BellOff,
+  Scale,
   Phone,
   PhoneIncoming,
   Palette,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
+import { ConsistencySheet } from "@/components/chat/consistency-sheet";
 import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageSearchSheet } from "@/components/chat/MessageSearchSheet";
@@ -44,6 +46,8 @@ import { deleteConversation } from "@/lib/db";
 import { useRemoteThread } from "@/lib/use-remote-thread";
 import { useSession } from "@/lib/session";
 import { useDoremon } from "@/lib/doremon/use-doremon";
+import { clearConversationVideos, prepareVideo, removeVideoFromDevice } from "@/lib/video-storage";
+import { parseVideoReference } from "@/lib/video-reference";
 import { useViewportHeight } from "@/lib/use-viewport-height";
 
 const REMOTE = authMode === "supabase";
@@ -95,6 +99,8 @@ function ThreadScreen() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const closeCompare = useCallback(() => setCompareOpen(false), []);
   const [themeOpen, setThemeOpen] = useState(false);
   const closeTheme = useCallback(() => setThemeOpen(false), []);
   const [picker, setPicker] = useState<{ message: ChatMessage; anchor: BubbleAnchor } | null>(null);
@@ -331,7 +337,13 @@ function ThreadScreen() {
         }
         break;
       case "delete":
-        void Promise.resolve(removeNow(message.id)).then(() => toast.success("Message deleted"))
+        void Promise.resolve(removeNow(message.id)).then(async () => {
+          if (account?.id && parseVideoReference(message.media?.url)) {
+            try { await removeVideoFromDevice(account.id, message.media!.url); }
+            catch { toast.error("Message deleted, but its device copy couldn’t be removed."); return; }
+          }
+          toast.success("Message deleted");
+        })
           .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't delete that message"));
         break;
     }
@@ -347,6 +359,10 @@ function ThreadScreen() {
         local.clear();
         patchMeta(conversationId, { deleted: true });
       }
+      if (account?.id) {
+        try { await clearConversationVideos(account.id, conversationId); }
+        catch { toast.error("Chat deleted, but some device videos may remain."); }
+      }
       toast.success("Chat deleted");
       setDeleteOpen(false);
       router.replace("/app");
@@ -358,6 +374,7 @@ function ThreadScreen() {
 
   const menuActions: ChatMenuAction[] = [
     { key: "search", label: "Search messages", icon: <Search className="h-[18px] w-[18px]" />, onSelect: () => setSearchOpen(true) },
+    { key: "compare", label: "Compare statements", hint: "not a lie detector", icon: <Scale className="h-[18px] w-[18px]" />, onSelect: () => setCompareOpen(true) },
     {
       key: "voice",
       label: "Voice call",
@@ -493,6 +510,7 @@ function ThreadScreen() {
         </div>
       )}
       <MessageList
+        conversationId={conversationId}
         hasOlder={REMOTE && remote.hasOlder}
         loadingOlder={remote.loadingOlder}
         onLoadOlder={remote.loadOlder}
@@ -588,6 +606,8 @@ function ThreadScreen() {
         )}
       </AnimatePresence>
 
+      {compareOpen && <ConsistencySheet messages={messages} onClose={closeCompare} hasOlder={REMOTE && remote.hasOlder} loadingOlder={remote.loadingOlder} onLoadOlder={REMOTE ? remote.loadOlder : undefined} />}
+
       <AttachmentSheet
         publicMedia={REMOTE}
         open={attachOpen}
@@ -606,6 +626,12 @@ function ThreadScreen() {
             kind: "audio",
             media: { url: audio.dataUrl, durationMs: audio.durationMs, ext: audio.ext },
           });
+          setReplyTo(null);
+        }}
+        onVideo={async (file) => {
+          if (!account?.id) throw new Error("Sign in before sending a video.");
+          const reference = await prepareVideo(account.id, conversationId, file, REMOTE);
+          sendNow(file.name.slice(0, 180) || "Video", { replyTo: replyTo ?? undefined, kind: "file", media: { url: reference, name: file.name.slice(0, 180) || "Video", sizeBytes: file.size } });
           setReplyTo(null);
         }}
         onFile={(file) => {

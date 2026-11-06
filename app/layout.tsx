@@ -6,6 +6,7 @@ import { LiveCallProvider } from "@/lib/live-call";
 import { LiveCallOverlay } from "@/components/call/live-call-overlay";
 import { SessionProvider } from "@/lib/session";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
+import { NetworkStatus } from "@/components/pwa/network-status";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <LiveCallProvider>
               {children}
               <LiveCallOverlay />
+              <NetworkStatus />
             </LiveCallProvider>
           </SessionProvider>
         </PwaProvider>

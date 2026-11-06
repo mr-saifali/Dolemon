@@ -169,7 +169,7 @@ export function MessageList({
                     {showDivider && <UnreadDivider />}
                     <MessageBubble
                       message={message}
-                      grouped={Boolean(prev && prev.author === message.author && prev.kind !== "presence" && prev.kind !== "call")}
+                      grouped={Boolean(prev && prev.kind !== "presence" && prev.kind !== "call" && isGrouped(prev, message))}
                       tail={!next || !isGrouped(message, next)}
                       showReceipts={showReceipts}
                       partnerName={partnerName}

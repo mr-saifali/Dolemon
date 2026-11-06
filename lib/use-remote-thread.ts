@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   conversationReadState,
+  INITIAL_THREAD_PAGE_SIZE,
   deleteMessage,
   editMessage,
   fetchMessageQuote,
@@ -222,7 +223,7 @@ export function useRemoteThread(
     void loadThread(conversationId).then((result) => {
       if (cancelled) return;
       setMe(result.me);
-      setHasOlder(result.messages.length >= 400);
+      setHasOlder(result.messages.length >= INITIAL_THREAD_PAGE_SIZE);
       setMessages(result.messages.map((row) => toChatMessage(row, result.me)));
     }).catch(() => {
       if (!cancelled) setLoadError(true);
@@ -233,6 +234,15 @@ export function useRemoteThread(
       cancelled = true;
     };
   }, [conversationId, enabled, loadAttempt]);
+
+  // The first request can fail before a Realtime channel is established.
+  // Retry automatically when the device reconnects; don't clear a loaded thread.
+  useEffect(() => {
+    if (!enabled || !loadError) return;
+    const reconnect = () => setLoadAttempt((n) => n + 1);
+    window.addEventListener("online", reconnect);
+    return () => window.removeEventListener("online", reconnect);
+  }, [enabled, loadError]);
 
   useEffect(() => {
     if (partnerReadAt != null) setMessages((prev) => applyReadCursor(prev, partnerReadAt));
@@ -286,11 +296,22 @@ export function useRemoteThread(
         void loadThread(conversationId).then((result) => {
           if (!active || generation !== currentGeneration) return;
           const events = changed;
+          if (result.messages.length >= INITIAL_THREAD_PAGE_SIZE) setHasOlder(true);
           setMessages((prev) => {
             const stable = result.messages.filter((row) => !events.has(row.id)).map((row) => toChatMessage(row, result.me));
             const first = stable[0];
             const snapshotIds = new Set(result.messages.map((row) => row.id));
-            const recentChanges = prev.filter((m) => events.has(m.id) || m.id.startsWith("tmp_") || (first && !snapshotIds.has(m.id) && m.at < first.at));
+            const persisted = prev.filter((m) => !m.id.startsWith("tmp_") && !events.has(m.id));
+            const newestPrevious = persisted[persisted.length - 1];
+            const oldestSnapshot = result.messages[0];
+            // If more than a whole window arrived while disconnected, joining
+            // disjoint windows hides the intervening messages from pagination.
+            // Drop the stale window instead; Load older can then traverse the gap.
+            const hasGap = result.messages.length >= INITIAL_THREAD_PAGE_SIZE && oldestSnapshot && newestPrevious &&
+              newestPrevious.at < oldestSnapshot.at && !persisted.some((m) => snapshotIds.has(m.id));
+            const recentChanges = prev.filter((m) => m.id.startsWith("tmp_") ||
+              (events.has(m.id) && (!hasGap || m.at >= oldestSnapshot.at)) ||
+              (!hasGap && first && !snapshotIds.has(m.id) && m.at < first.at));
             return [...stable, ...recentChanges].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
           });
         }).catch(() => undefined);

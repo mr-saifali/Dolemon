@@ -52,3 +52,21 @@ test('reload resolves quoted authors relative to each participant and labels sti
   thread = await loadThread('c');
   assert.deepEqual(thread.messages[1].replyTo, { id: 'one', author: 'me', text: 'Reaction' });
 });
+
+test('initial thread load requests the latest bounded page', async () => {
+  const { INITIAL_THREAD_PAGE_SIZE } = require('../lib/db.ts');
+  assert.equal(INITIAL_THREAD_PAGE_SIZE, 80);
+  // Capture the limit supplied to the actual query without affecting the other tests.
+  const originalFrom = sb.from;
+  let limit;
+  sb.from = (...args) => {
+    const chain = originalFrom(...args);
+    const originalLimit = chain.limit;
+    chain.limit = (value) => { limit = value; return originalLimit.call(chain, value); };
+    return chain;
+  };
+  try {
+    await loadThread('c');
+    assert.equal(limit, INITIAL_THREAD_PAGE_SIZE);
+  } finally { sb.from = originalFrom; }
+});

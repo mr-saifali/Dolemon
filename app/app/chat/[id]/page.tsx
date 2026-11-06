@@ -261,6 +261,20 @@ function ThreadScreen() {
   const clearReactionNow = REMOTE ? remote.clearMyReaction : local.clearMyReaction;
   const retryNow = REMOTE ? remote.retry : local.retry;
   const removeNow = REMOTE ? remote.remove : local.remove;
+  // Stable handlers let unchanged message bubbles skip work while typing,
+  // receiving a new message, or updating one reaction.
+  const openMessageMenu = useCallback((message: ChatMessage, anchor: BubbleAnchor) => setPicker({ message, anchor }), []);
+  const quickReact = useCallback((message: ChatMessage) => reactNow(message.id, QUICK_REACTION), [reactNow]);
+  const clearReaction = useCallback((message: ChatMessage) => clearReactionNow(message.id), [clearReactionNow]);
+  const retryMessage = useCallback((message: ChatMessage) => retryNow(message.id), [retryNow]);
+  const swipeReply = useCallback((message: ChatMessage) => {
+    if (message.id.startsWith("tmp_") || message.status === "failed") {
+      toast.error("Wait until this message is sent before replying.");
+      return;
+    }
+    setReplyTo({ id: message.id, author: message.author, text: previewFor(message) });
+  }, []);
+
 
   const saveEdit = async (id: string, text: string) => {
     try {
@@ -302,15 +316,13 @@ function ThreadScreen() {
         break;
       case "copy": {
         const text = previewFor(message);
-        navigator.clipboard?.writeText(text).then(
+        if (!navigator.clipboard) { toast.error("Copy isn't available on this device."); break; }
+        void navigator.clipboard.writeText(text).then(
           () => toast.success("Copied"),
           () => toast.error("Couldn't copy")
         );
         break;
       }
-      case "forward":
-        toast("Forward", { description: "Forwarding arrives with multi-room threads." });
-        break;
       case "edit":
         if (message.kind === "text" && message.author === "me") {
           setEditing({ id: message.id, text: message.text });
@@ -431,7 +443,7 @@ function ThreadScreen() {
   return (
     <main
       className="relative isolate flex flex-col overflow-hidden bg-[#09090B]"
-      style={{ height: "var(--app-vh, 100dvh)" }}
+      style={{ height: "var(--app-vh, 100dvh)", "--message-outgoing": theme.bubble, "--message-outline": theme.outline } as React.CSSProperties}
     >
       <div
         aria-hidden
@@ -493,18 +505,12 @@ function ThreadScreen() {
         dividerId={dividerId}
         doremon={doremon.doremonMessages}
         doremonThinking={doremon.thinking}
-        onLongPress={(message, anchor) => setPicker({ message, anchor })}
-        onDoubleTap={(message) => reactNow(message.id, QUICK_REACTION)}
-        onRemoveMyReaction={(message) => clearReactionNow(message.id)}
-        onRetry={(message) => retryNow(message.id)}
+        onLongPress={openMessageMenu}
+        onDoubleTap={quickReact}
+        onRemoveMyReaction={clearReaction}
+        onRetry={retryMessage}
         onOpenImage={setViewerUrl}
-        onSwipeReply={(message) => {
-          if (message.id.startsWith("tmp_") || message.status === "failed") {
-            toast.error("Wait until this message is sent before replying.");
-            return;
-          }
-          setReplyTo({ id: message.id, author: message.author, text: previewFor(message) });
-        }}
+        onSwipeReply={swipeReply}
       />
 
       <AnimatePresence>

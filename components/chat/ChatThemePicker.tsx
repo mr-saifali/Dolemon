@@ -34,6 +34,10 @@ export function ChatThemePicker({ value, onChange }: { value: ChatThemeId; onCha
                 style={{ backgroundImage: theme.image ? `url(${theme.image})` : "radial-gradient(ellipse at 25% 20%, rgba(124,58,237,.3), transparent 55%), radial-gradient(ellipse at 85% 85%, rgba(255,92,122,.18), transparent 55%)" }}
               >
                 <span className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                <span className="absolute inset-x-2 bottom-2 flex flex-col gap-1" aria-hidden="true">
+                  <span className="h-2.5 w-3/5 rounded-md border border-white/40 bg-black/20" />
+                  <span className="h-2.5 w-3/5 self-end rounded-md" style={{ backgroundColor: theme.bubble }} />
+                </span>
                 {selected && (
                   <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF5C7A] text-white shadow-lg">
                     <Check className="h-3 w-3" strokeWidth={3} />

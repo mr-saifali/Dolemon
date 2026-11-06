@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
  * The first thing a new person sees. Warm, quiet, and honest about what
  * Dolemon is: one room, one person, nothing else.
  */
-export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
+export function HomeEmptyState() {
   const [howOpen, setHowOpen] = useState(false);
 
   return (
@@ -79,23 +79,7 @@ export function HomeEmptyState({ onInvite }: { onInvite: () => void }) {
         want to talk to.
       </p>
 
-      <div className="relative mt-7">
-        <motion.span
-          aria-hidden
-          className="pointer-events-none absolute -inset-1 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.45),rgba(255,160,122,0.18)_55%,transparent_72%)]"
-          animate={{ opacity: [0.55, 0.95, 0.55] }}
-          transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.button
-          type="button"
-          onClick={onInvite}
-          whileTap={{ scale: 0.97 }}
-          className="relative rounded-full px-6 py-3 text-[14px] font-medium text-white shadow-[0_10px_30px_-8px_var(--glow-send)] transition-transform duration-200 hover:scale-105 active:scale-100"
-          style={{ background: "var(--brand-grad)" }}
-        >
-          Invite your person
-        </motion.button>
-      </div>
+      <p className="mt-6 text-xs text-zinc-500">Tap + to start a conversation.</p>
 
       <button
         type="button"

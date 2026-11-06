@@ -48,7 +48,9 @@ test('text and stickers both expose message options and incoming bubbles use the
   const props = { grouped: false, tail: true, partnerName: 'Sam', onLongPress() {}, onDoubleTap() {}, onRemoveMyReaction() {}, onRetry() {}, animateIn: false };
   for (const message of [{id:'1', author:'them', kind:'text', text:'A message', at:0}, {id:'2', author:'them', kind:'sticker', text:'', sticker:'dil', at:0}]) {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, { ...props, message }));
-    assert.match(html, /Open message options/); assert.match(html, /bg-black\/20/); assert.match(html, /--message-outline/);
+    assert.match(html, /Open message options/);
+    if (message.kind === 'text') { assert.match(html, /bg-black\/20/); assert.match(html, /--message-outline/); }
+    else { assert.doesNotMatch(html, /bg-black\/20/); assert.match(html, /❤️/); }
   }
 });
 

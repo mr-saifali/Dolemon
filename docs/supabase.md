@@ -366,7 +366,7 @@ appear under "Doremon's memory" with a `deleted` badge.
 
 1. Env (Vercel → project → Environment Variables, or `.env.local` locally):
    - `GEMINI_API_KEY` — from https://aistudio.google.com/apikey (server-side only)
-   - `GEMINI_MODEL` — optional, default `gemini-2.5-flash` (bump to the newest flash)
+   - Doremon uses the hardcoded `gemini-3.1-flash-lite` model; generation access and quota depend on the Google project
 2. Run `docs/migrations/008_doremon_memory.sql` then
    `docs/migrations/010_doremon_room.sql` in the SQL editor. 008 creates the
    `doremon_memory` table; 010 makes it **per-user + private** (each member's

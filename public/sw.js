@@ -1,7 +1,7 @@
 /* Dolemon service worker — app shell cache so the app opens instantly and survives a dead network. */
 
-const VERSION = "dolemon-v0.3.0";
-const SHELL = ["/", "/app", "/signin", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+const VERSION = "dolemon-v0.4.0";
+const SHELL = ["/app", "/signin", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -49,7 +49,10 @@ self.addEventListener("fetch", (event) => {
             }
             return response;
           })
-          .catch(() => cached || (await cache.match("/")) || Response.error());
+          .catch(async () => {
+            if (url.pathname === "/" && await cache.match("/app")) return Response.redirect(new URL("/app", self.location.origin));
+            return cached || (await cache.match("/app")) || Response.error();
+          });
         // Prefer the latest app shell after deployment; fall back when offline.
         return network;
       })

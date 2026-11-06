@@ -47,26 +47,20 @@ self-contained local provider, and the emailed code is shown on the verify scree
 ## Doremon and Gemini free tier
 
 For AI replies in live (Supabase) mode, set the server-only `GEMINI_API_KEY` in
-`.env.local` or your deployment environment. The default model is
-`gemini-2.5-flash-lite`; an existing `GEMINI_MODEL` environment variable
-**overrides** that default. To use the lighter model on an existing deployment,
-set `GEMINI_MODEL=gemini-2.5-flash-lite` there and redeploy. Never use a
+`.env.local` or your deployment environment. The model is hardcoded to
+`gemini-3.1-flash-lite`, which returned a real test reply with this project's
+preview key on 2026-11-06. `GEMINI_MODEL` is intentionally ignored. Never use a
 `NEXT_PUBLIC_` prefix for the key. Demo mode uses the local heuristic brain.
 
-Each question normally makes one generation request; Sunrise is a separate,
-optional request. If the default model is missing or Google explicitly reports
-zero free quota for it, Doremon checks the model catalog and can try one known
-alternative. Ordinary rate limits, timeouts and other errors are not retried. A timeout can still consume
-quota even if no reply arrives. Google enforces per-project/model rate, token,
-and daily limits, and availability can differ by account and change over time.
-If you see a quota message, wait for the indicated retry time, or check your
-project's quota and reset time in Google AI Studio. A daily limit or a model
-with no free quota cannot be fixed by retries. If the model is unavailable,
-choose a model with free-tier generation access and set `GEMINI_MODEL` to its
-exact ID. `/api/doremon?models=1` lists models visible to the key, but the list
-and room status check do not guarantee free quota. No generation is spent on
-that check. AI generation requires a valid Supabase login, protecting the shared
-Gemini quota from anonymous callers. Conversation data sent to Gemini includes the recent chat, a
+Each question uses one generation request; Sunrise is a separate optional
+request. Google enforces rate, token and daily limits, which can differ by
+project and change over time; a successful test is not a guarantee of future
+availability or free quota. A temporary HTTP 503 gets one retry of the same
+model; other failures are not retried and no model fallback is used. If a quota
+error occurs, check the project's quota and billing in Google AI Studio.
+`/api/doremon?models=1` lists models visible to the key, but the list and room
+status check do not guarantee generation access. AI generation requires a valid
+Supabase login. Conversation data sent to Gemini includes recent chat, a
 compressed memory, and up to four recent private room exchanges.
 
 Run the mocked API and theme tests with `node --test tests/*.test.cjs`.

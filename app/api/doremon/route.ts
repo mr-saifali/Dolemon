@@ -355,17 +355,10 @@ async function callGemini(
 ): Promise<string> {
   const generationConfig: Record<string, unknown> = {
     temperature: wantJson ? 0.3 : 0.9,
-    maxOutputTokens: OUTPUT_CAPS[action] ?? 320,
+    maxOutputTokens: Math.max(1024, OUTPUT_CAPS[action] ?? 320),
+    thinkingConfig: { thinkingLevel: "low" },
   };
   if (wantJson) generationConfig.responseMimeType = "application/json";
-  // 2.5 Flash supports disabling optional thinking; save tokens and latency.
-  if (/^gemini-2\.5-flash(?:-lite)?$/.test(model)) {
-    generationConfig.thinkingConfig = { thinkingBudget: 0 };
-  } else if (/^gemini-3\.(?:1|5)-flash-lite$/.test(model)) {
-    // Gemini 3 uses thinking levels rather than the 2.5 thinking budget.
-    generationConfig.thinkingConfig = { thinkingLevel: "low" };
-    generationConfig.maxOutputTokens = Math.max(1024, OUTPUT_CAPS[action] ?? 320);
-  }
 
   const payload = {
     systemInstruction: { parts: [{ text: system }] },
@@ -415,8 +408,7 @@ async function callGemini(
       try {
         const parsedError = JSON.parse(text)?.error;
         const details = parsedError?.details;
-        // A zero model-specific allowance is not a temporary rate limit. Only
-        // then is it useful to try another model; ordinary 429s are not retried.
+        // Distinguish a zero model allowance from a temporary rate limit.
         noModelQuota = Array.isArray(details) && details.some((d: { violations?: { quotaValue?: string | number; quotaDimensions?: { model?: string } }[] }) =>
           Array.isArray(d.violations) && d.violations.some((v) =>
             v.quotaDimensions?.model === model && String(v.quotaValue) === "0"
@@ -428,13 +420,13 @@ async function callGemini(
         else if (/perminute|per_minute/i.test(quotaNames)) quotaScope = "minute";
         // Some Google responses omit the numeric quotaValue and only state
         // "limit: 0" in the error message. Only trust that when the structured
-        // violation names this model; unrelated zero limits do not trigger a retry.
+        // violation names this model; unrelated zero limits are not model quota.
         if (!noModelQuota && typeof parsedError?.message === "string") {
           noModelQuota = parsedError.message.split("\n").some((line: string) =>
             /limit:\s*0(?:[\s,]|$)/i.test(line) && line.split(/model:\s*/i).slice(1).some((part: string) => part.trim().split(/[\s,]+/)[0] === model)
           ) && violations.some((v: { quotaDimensions?: { model?: string } }) => v.quotaDimensions?.model === model);
         }
-        // Don't switch models if Google also reports a project-wide violation.
+        // Report a model-specific allowance only when all violations name the model.
         noModelQuota = noModelQuota && violations.every((v: { quotaDimensions?: { model?: string } }) => v.quotaDimensions?.model === model);
         const retry = Array.isArray(details) ? details.find((d: { retryDelay?: unknown }) => typeof d.retryDelay === "string")?.retryDelay : null;
         const parsed = typeof retry === "string" ? Number.parseFloat(retry) : NaN;

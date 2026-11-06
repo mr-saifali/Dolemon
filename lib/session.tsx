@@ -97,6 +97,6 @@ export function useSession() {
 
 /** Where the signed-in user should land right now. */
 export function landingFor(account: Account | null): string {
-  if (!account) return "/";
+  if (!account) return "/signin";
   return account.profileComplete ? "/app" : "/signup/username";
 }

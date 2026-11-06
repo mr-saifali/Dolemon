@@ -67,7 +67,7 @@ export default function SignInPage() {
   };
 
   return (
-    <ScreenShell backHref="/">
+    <ScreenShell>
       <form onSubmit={form.handleSubmit(submit)} className="flex flex-1 flex-col justify-center" noValidate>
         <Motif icon={<LogIn className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>Welcome back.</ScreenTitle>

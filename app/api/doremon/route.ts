@@ -22,13 +22,12 @@ import type { DoremonMemory, DoremonStats } from "@/lib/doremon/types";
  *   roomAsk   → his private-room answer: memories, census, prediction (text out)
  *   finalize  → the closing record when a conversation pauses (JSON out)
  *
- * Model: GEMINI_MODEL (default gemini-2.5-flash-lite).
+ * Model: gemini-3.1-flash-lite (verified against generateContent).
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Two bounded 20s model attempts + auth/catalog can exceed 30s.
-// The browser has a 50s deadline; allow the server to return a real error.
+// Allow time for authentication and a bounded generation request.
 export const maxDuration = 60;
 
 type RequestBody = {
@@ -50,6 +49,9 @@ type RequestBody = {
 };
 
 const ok = (payload: unknown) => NextResponse.json(payload);
+// Fixed deliberately: a catalog entry or environment override does not prove
+// generation works. Change only after testing the new model against this key.
+const DOREMON_MODEL = "gemini-3.1-flash-lite";
 
 /** Google rejected the API key itself (400/401/403) — a different, diagnosable
  *  failure from "unreachable". The client can then say *why* the brain is down. */
@@ -117,7 +119,7 @@ export async function GET(req: NextRequest) {
         status: 502,
       };
     } else {
-      pingCache = { at: now, body: { ok: true, model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" }, status: 200 };
+      pingCache = { at: now, body: { ok: true, model: DOREMON_MODEL }, status: 200 };
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -157,7 +159,7 @@ export async function POST(req: NextRequest) {
   if (!key) {
     return NextResponse.json({ ok: false, error: "NO_KEY" }, { status: 503 });
   }
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  const model = DOREMON_MODEL;
 
   let body: RequestBody;
   try {
@@ -174,7 +176,7 @@ export async function POST(req: NextRequest) {
   try {
     const { system, user } = promptsFor(body);
     const wantJson = body.action === "analyze" || body.action === "finalize";
-    const raw = await generateWithFallback(key, model, system, user, wantJson, body.action);
+    const raw = await callGemini(key, model, system, user, wantJson, body.action);
     if (body.action === "analyze") {
       const parsed = parseJson(raw);
       if (!parsed) throw new Error("unparseable analysis");
@@ -201,7 +203,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "BAD_KEY", detail: msg.slice(0, 200) }, { status: 401 });
     }
     if (error instanceof GeminiModelError) {
-      // The configured model is unavailable; do not spend more calls guessing.
+      // A listed model can still be unavailable for generation.
       return NextResponse.json({ ok: false, error: "MODEL", detail: msg.slice(0, 200) }, { status: 502 });
     }
     return NextResponse.json({ ok: false, error: "GEMINI", detail: msg.slice(0, 200) }, { status: 502 });
@@ -329,37 +331,6 @@ async function discoverModels(key: string): Promise<{ usable: string[]; total: n
   return modelListCache;
 }
 
-// Keep one proven fallback in a warm instance; never retry ordinary quota,
-// timeout, or transient failures, which could waste the user's free requests.
-let fallbackCache: { key: string; configured: string; model: string; until: number } | null = null;
-async function generateWithFallback(
-  key: string, configured: string, system: string, user: string, wantJson: boolean, action: string
-): Promise<string> {
-  const selected = fallbackCache && fallbackCache.key === key && fallbackCache.configured === configured && fallbackCache.until > Date.now()
-    ? fallbackCache.model : configured;
-  try {
-    return await callGemini(key, selected, system, user, wantJson, action);
-  } catch (error) {
-    // Automatic recovery is limited to the default lightweight model, and
-    // only for a missing model or Google's explicit zero model quota.
-    if (selected !== configured || configured !== "gemini-2.5-flash-lite" ||
-        !(error instanceof GeminiModelError || (error instanceof GeminiQuotaError && error.noModelQuota))) throw error;
-    let models: string[];
-    try { models = (await discoverModels(key)).usable; } catch { throw error; }
-    const alternate = ["gemini-2.5-flash"].find((m) => m !== configured && models.includes(m));
-    if (!alternate) throw error;
-    try {
-      const answer = await callGemini(key, alternate, system, user, wantJson, action);
-      fallbackCache = { key, configured, model: alternate, until: Date.now() + 10 * 60_000 };
-      return answer;
-    } catch (fallbackError) {
-      // If the alternative is also unavailable, retain the original reason.
-      if (fallbackError instanceof GeminiModelError) throw error;
-      throw fallbackError;
-    }
-  }
-}
-
 /** One attempt against one model — classifies Google's failure precisely. */
 async function callGemini(
   key: string,
@@ -377,6 +348,10 @@ async function callGemini(
   // 2.5 Flash supports disabling optional thinking; save tokens and latency.
   if (/^gemini-2\.5-flash(?:-lite)?$/.test(model)) {
     generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  } else if (/^gemini-3\.(?:1|5)-flash-lite$/.test(model)) {
+    // Gemini 3 uses thinking levels rather than the 2.5 thinking budget.
+    generationConfig.thinkingConfig = { thinkingLevel: "low" };
+    generationConfig.maxOutputTokens = Math.max(1024, OUTPUT_CAPS[action] ?? 320);
   }
 
   const payload = {
@@ -445,6 +420,8 @@ async function callGemini(
             /limit:\s*0(?:[\s,]|$)/i.test(line) && line.split(/model:\s*/i).slice(1).some((part: string) => part.trim().split(/[\s,]+/)[0] === model)
           ) && violations.some((v: { quotaDimensions?: { model?: string } }) => v.quotaDimensions?.model === model);
         }
+        // Don't switch models if Google also reports a project-wide violation.
+        noModelQuota = noModelQuota && violations.every((v: { quotaDimensions?: { model?: string } }) => v.quotaDimensions?.model === model);
         const retry = Array.isArray(details) ? details.find((d: { retryDelay?: unknown }) => typeof d.retryDelay === "string")?.retryDelay : null;
         const parsed = typeof retry === "string" ? Number.parseFloat(retry) : NaN;
         if (!retryAfter && Number.isFinite(parsed) && parsed > 0) retryAfter = Math.ceil(parsed);

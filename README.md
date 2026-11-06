@@ -212,3 +212,9 @@ docs/supabase.md     schema, RLS and RPCs to switch on real auth
 `#0E0E11` background · `#1A1A1F` surface · `#FF5C7A` rose primary · `#F5F5F7` text ·
 `#8E8E93` secondary · `#4ADE80` success · `#FF6B6B` error · 16px cards, 12px inputs,
 full-rounded buttons · 24px mobile gutters · 200–250ms fade + 12px rise on entry.
+
+### Connection and loading behavior
+
+Live chats initially load the newest 80 messages; scrolling back loads older pages of 100. The inbox and a failed initial chat load refresh when the browser reports connectivity has returned. The browser's online indicator is only a hint, not proof that the server is reachable.
+
+In production the service worker caches a standalone offline page and a bounded set of Next.js static build assets. Navigations are network-first with a five-second timeout; if the network fails, the offline page explains how to retry. The worker does not cache private pages, API/RSC responses, messages, or uploaded media. The offline page is available only after a successful worker installation. Remote chats, calls, and delivery still require a connection: there is no persistent offline message queue or automatic resend, and a refresh can lose unsent messages. Local demo data follows its existing device-local storage behavior.

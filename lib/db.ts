@@ -216,6 +216,9 @@ export async function uploadAvatarImage(dataUrl: string): Promise<string> {
   return `${data.publicUrl}?v=${Date.now()}`;
 }
 
+/** Latest messages rendered on first open; older messages are loaded on demand. */
+export const INITIAL_THREAD_PAGE_SIZE = 80;
+
 export async function loadThread(
   conversationId: string
 ): Promise<{ messages: DbMessage[]; me: string | null }> {
@@ -226,7 +229,7 @@ export async function loadThread(
   const [session, result] = await Promise.all([
     sb.auth.getSession(),
     sb.from("messages").select("*").eq("conversation_id", conversationId)
-      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(400),
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(INITIAL_THREAD_PAGE_SIZE),
   ]);
   const me = session.data.session?.user.id ?? null;
   if (result.error) throw new Error(result.error.message);
@@ -271,7 +274,7 @@ export async function loadOlderMessages(conversationId: string, cursor: { create
 
 /**
  * Fills in each message's `replyTo`. Quotes to messages already in the window
- * are free; anything older (beyond the 400-row window) is fetched in one batch.
+ * are free; anything older (outside the current page) is fetched in one batch.
  */
 type QuoteRef = { id: string; senderId: string; kind: string; body: string; name?: string | null };
 

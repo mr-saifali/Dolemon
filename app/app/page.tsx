@@ -70,7 +70,8 @@ function HomeScreen() {
     const stop = watchInbox(refresh);
     const resume = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", resume);
-    return () => { alive = false; if (timer) clearTimeout(timer); stop(); document.removeEventListener("visibilitychange", resume); };
+    window.addEventListener("online", refresh);
+    return () => { alive = false; if (timer) clearTimeout(timer); stop(); document.removeEventListener("visibilitychange", resume); window.removeEventListener("online", refresh); };
   }, []);
 
   // The little opening jingle — once per app session, not per visit.

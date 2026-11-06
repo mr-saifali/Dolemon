@@ -27,15 +27,15 @@ export function TypingIndicator({ active }: { active: boolean }) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 4, scale: 0.96 }}
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          className="flex justify-start px-4 pt-1"
+          className="flex justify-start pt-1"
           aria-live="polite"
           aria-label="Typing"
         >
-          <div className="flex h-[34px] items-center gap-[3px] rounded-[20px] rounded-bl-[6px] bg-[#1E1E24] px-[14px]">
+          <div className="flex h-[34px] items-center gap-[3px] rounded-[16px] rounded-bl-[5px] border border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-black/20 px-3 backdrop-blur-md">
             {[0, 150, 300].map((delay) => (
               <motion.span
                 key={delay}
-                className="h-[5px] w-[5px] rounded-full bg-[#8E8E93]"
+                className="h-[5px] w-[5px] rounded-full bg-white/70"
                 animate={{ y: [0, -4, 0], opacity: [0.45, 1, 0.45] }}
                 transition={{
                   duration: 0.9,

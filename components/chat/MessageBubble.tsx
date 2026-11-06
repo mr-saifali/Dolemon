@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Check, CheckCheck, Clock, CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
@@ -11,9 +11,7 @@ import { reactionChips, reactionLabel, reactionSentence } from "@/lib/reactions"
 import { clockTime, formatBytes, formatCallDuration, type ChatMessage } from "@/lib/thread";
 import { cn } from "@/lib/utils";
 
-const SPRING = { type: "spring", stiffness: 400, damping: 30 } as const;
-
-export function MessageBubble({
+export const MessageBubble = memo(function MessageBubble({
   message,
   grouped,
   showReceipts = true,
@@ -51,6 +49,7 @@ export function MessageBubble({
   const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longFired = useRef(false);
   const lastTap = useRef(0);
+  useEffect(() => () => { if (longTimer.current) clearTimeout(longTimer.current); }, []);
 
   const [burst, setBurst] = useState(0);
   const [swipe, setSwipe] = useState(0);
@@ -103,52 +102,7 @@ export function MessageBubble({
     lastTap.current = now;
   };
 
-  // A sticker is a message with no words at all — the time sits beside the face, never under it.
-  if (message.kind === "sticker" && message.sticker) {
-    const enter = animateIn === false ? false : { opacity: 0, y: 10, x: mine ? 10 : -10, scale: 0.9 };
-
-    return (
-      <motion.div
-        initial={enter}
-        animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
-        transition={SPRING}
-        className={cn(
-          "flex w-full",
-          mine ? "justify-end" : "justify-start",
-          grouped ? (compact ? "mt-[2px]" : "mt-1") : compact ? "mt-2" : "mt-4"
-        )}
-      >
-        <div className={cn("flex items-end gap-1.5", mine ? "flex-row-reverse" : "flex-row")}>
-          <span className="flex items-center gap-1 pb-0.5 text-[10px] leading-none tabular-nums text-zinc-600">
-            {clockTime(message.at)}
-            {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
-          </span>
-          <motion.div
-            drag={onSwipeReply ? "x" : false}
-            dragDirectionLock
-            dragConstraints={{ left: 0, right: 92 }}
-            dragElastic={0.14}
-            dragSnapToOrigin
-            onDragEnd={(_, info) => {
-              if (info.offset.x > 54) { buzz(12); onSwipeReply?.(message); }
-            }}
-            style={{ touchAction: "pan-y" }}
-            className="flex max-w-[220px] flex-col gap-1"
-          >
-            {message.replyTo && (
-              <div className="rounded-xl bg-white/[0.08] px-2 py-1.5 text-[11.5px] text-zinc-300">
-                <span className="font-medium">{message.replyTo.author === "me" ? "You" : partnerName}:</span>{" "}
-                <span className="line-clamp-2">{message.replyTo.text || "attachment"}</span>
-              </div>
-            )}
-            <ReactionIcon type={message.sticker} size={44} />
-          </motion.div>
-        </div>
-      </motion.div>
-    );
-  }
-
-  const metaColor = mine ? "text-white/60" : "text-zinc-400";
+  const metaColor = mine ? "text-white/75" : "text-white/70";
 
   return (
     <motion.div
@@ -158,11 +112,11 @@ export function MessageBubble({
       className={cn(
         "flex w-full select-none",
         mine ? "justify-end" : "justify-start",
-        grouped ? (compact ? "mt-[2px]" : "mt-1") : compact ? "mt-2" : "mt-4"
+        grouped ? "mt-0.5" : compact ? "mt-1.5" : "mt-2.5"
       )}
     >
       <div
-        className={cn("relative flex max-w-[80%] flex-col", mine ? "items-end" : "items-start")}
+        className={cn("relative flex max-w-[85%] flex-col sm:max-w-[72%]", mine ? "items-end" : "items-start")}
         style={{ marginBottom: chips.length > 0 ? 10 : 0 }}
       >
         {onSwipeReply && (
@@ -201,13 +155,17 @@ export function MessageBubble({
           <div
             role="button"
             tabIndex={0}
-            aria-label={`${mine ? "You" : partnerName}: ${message.text || "attachment"}. Long press for reactions.`}
+            aria-label={`${mine ? "You" : partnerName}: ${message.text || "attachment"}. Open message options.`}
             onPointerDown={onPointerDown}
             onPointerUp={onPointerUp}
             onPointerLeave={clearTimer}
             onPointerCancel={clearTimer}
+            onClickCapture={(e) => {
+              if (longFired.current) { e.preventDefault(); e.stopPropagation(); longFired.current = false; }
+            }}
             onClick={onClick}
             onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 openPicker();
@@ -216,17 +174,17 @@ export function MessageBubble({
             onContextMenu={(e) => {
               e.preventDefault();
               clearTimer();
-              openPicker();
+              if (!longFired.current) openPicker();
             }}
             className={cn(
               "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-violet/50",
               message.kind === "image" || message.kind === "audio"
-                ? "p-1.5"
+                ? "p-1"
                 : message.kind === "file"
-                  ? "px-4 py-3"
-                  : "px-4 py-2.5",
-              "rounded-[22px]",
-              mine ? "bg-[#FF5C7A] text-white" : "bg-[#262628] text-zinc-100"
+                  ? "px-2.5 py-2"
+                  : "px-3 py-1.5",
+              "border text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
+              mine ? "rounded-[16px] rounded-br-[5px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[16px] rounded-bl-[5px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-black/20 backdrop-blur-md"
             )}
           >
             {message.replyTo && (
@@ -246,7 +204,12 @@ export function MessageBubble({
               </div>
             )}
 
-            {message.kind === "image" && message.media ? (
+            {message.kind === "sticker" && message.sticker ? (
+              <div className="min-w-[64px]">
+                <ReactionIcon type={message.sticker} size={44} />
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+              </div>
+            ) : message.kind === "image" && message.media ? (
               <div>
                 <button
                   type="button"
@@ -280,10 +243,10 @@ export function MessageBubble({
                   <span
                     className={cn(
                       "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                      mine ? "bg-black/15" : "bg-rose/15"
+                      mine ? "bg-black/15" : "bg-white/10"
                     )}
                   >
-                    <FileText className={cn("h-[18px] w-[18px]", mine ? "text-white" : "text-rose")} />
+                    <FileText className={cn("h-[18px] w-[18px]", mine ? "text-white" : "text-white/85")} />
                   </span>
                   <span className="min-w-0 flex-1 text-left">
                     <span className="block truncate text-[14px]">{message.media.name || "File"}</span>
@@ -303,12 +266,12 @@ export function MessageBubble({
                 <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </div>
             ) : (
-              <>
-                <span className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-0.5">
+                <span className="min-w-0 whitespace-pre-wrap break-words text-[13.5px] leading-[1.4] [overflow-wrap:anywhere]">
                   {message.text}
                 </span>
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
-              </>
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} inline />
+              </div>
             )}
 
             <AnimatePresence>
@@ -393,7 +356,7 @@ export function MessageBubble({
       </div>
     </motion.div>
   );
-}
+});
 
 /** The quiet time + ticks line for photos / voice notes, kept inside the bubble. */
 function BubbleMeta({
@@ -401,14 +364,16 @@ function BubbleMeta({
   mine,
   showReceipts,
   metaColor,
+  inline = false,
 }: {
   message: ChatMessage;
   mine: boolean;
   showReceipts: boolean;
   metaColor: string;
+  inline?: boolean;
 }) {
   return (
-    <span className={cn("mt-1.5 flex items-center justify-end gap-1 text-[10px] leading-none", metaColor)}>
+    <span className={cn("flex shrink-0 items-center justify-end gap-1 text-[10px] leading-none", inline ? "ml-auto pb-0.5" : "mt-1 pr-1 pb-0.5", metaColor)}>
       <span className="tabular-nums">{clockTime(message.at)}</span>
       {message.editedAt ? <span className="italic">edited</span> : null}
       {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
@@ -465,11 +430,11 @@ function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: numbe
       />
       <button
         type="button"
-        onClick={toggle}
+        onClick={(event) => { event.stopPropagation(); toggle(); }}
         aria-label={playing ? "Pause voice note" : "Play voice note"}
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          mine ? "bg-black/15 text-white" : "bg-rose/15 text-rose"
+          mine ? "bg-black/15 text-white" : "bg-white/10 text-white/85"
         )}
       >
         {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
@@ -480,8 +445,8 @@ function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: numbe
             key={i}
             className={cn(
               "w-[2px] rounded-full",
-              mine ? "bg-white/40" : "bg-rose/40",
-              i / bars.length < progress && (mine ? "bg-white" : "bg-rose")
+              mine ? "bg-white/40" : "bg-white/40",
+              i / bars.length < progress && (mine ? "bg-white" : "bg-white/90")
             )}
             style={{ height: 6 + ((i * 7) % 13) }}
           />

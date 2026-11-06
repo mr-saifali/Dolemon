@@ -100,14 +100,14 @@ function hexA(hex: string, alpha: number) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-export function ChatRow({ chat, index }: { chat: ChatRowData; index: number }) {
+export function ChatRow({ chat }: { chat: ChatRowData; index: number }) {
   const unreadLabel = chat.unread > 9 ? "9+" : String(chat.unread);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.04 * Math.min(index, 8) }}
+      transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
     >
       <Link
         href={`/app/chat/${chat.id}`}

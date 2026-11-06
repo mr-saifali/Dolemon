@@ -568,7 +568,7 @@ function SettingsContent() {
             <Switch
               icon={<Tile tone="mint"><Radio className="h-[15px] w-[15px]" /></Tile>}
               label="Share presence"
-              description="Stops future presence and last-seen updates from this device; earlier timestamps may remain."
+              description="Shares your online status while this app is visible. Turning it off stops future updates from this device; earlier timestamps may remain."
               checked={prefs.showPresence}
               onChange={(v) => setPref("showPresence", v)}
             />

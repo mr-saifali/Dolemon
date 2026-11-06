@@ -45,6 +45,7 @@ import { previewFor, useThread, type ChatMessage, type QuotedMessage } from "@/l
 import { deleteConversation } from "@/lib/db";
 import { useRemoteThread } from "@/lib/use-remote-thread";
 import { useSession } from "@/lib/session";
+import { useAppPresence } from "@/lib/app-presence";
 import { useDoremon } from "@/lib/doremon/use-doremon";
 import { clearConversationVideos, prepareVideo, removeVideoFromDevice } from "@/lib/video-storage";
 import { parseVideoReference } from "@/lib/video-reference";
@@ -71,6 +72,7 @@ function ThreadScreen() {
   const ready = REMOTE ? remote.ready : local.ready;
 
   const { account } = useSession();
+  const appPresence = useAppPresence();
   const myHandle = account?.username ?? "you";
 
   const partnerName = REMOTE
@@ -236,15 +238,14 @@ function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, conversationId]);
 
-  const online = REMOTE ? remote.online : together;
+  const online = REMOTE ? appPresence[conversationId] === "online" : together;
   const status = useMemo(() => {
     if (online) return "online";
     if (REMOTE) {
-      const seen = remote.partnerLastSeenAt;
-      return seen ? `last seen ${formatAgo(seen)}` : "presence unavailable";
+      return appPresence[conversationId] === "not-visible" ? "offline or not sharing" : "presence unavailable";
     }
     return lastSeenAt ? `last seen ${formatAgo(lastSeenAt)}` : "last seen recently";
-  }, [online, remote.partnerLastSeenAt, lastSeenAt]);
+  }, [online, appPresence, conversationId, lastSeenAt]);
 
   const handlePulse = useCallback(() => {
     const result = pulses.send();
@@ -494,8 +495,8 @@ function ThreadScreen() {
         avatarUrl={REMOTE ? remote.partnerAvatarUrl : null}
         online={online}
         status={status}
-        typing={status === "online" && (REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
-        hidden={!prefs.showPresence}
+        typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
+        hidden={!REMOTE && !prefs.showPresence}
         onMenu={() => setMenuOpen(true)}
         onCall={REMOTE ? (type) => void live.start(conversationId, type) : undefined}
         doremonStatus={doremon.status}

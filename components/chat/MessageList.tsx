@@ -11,6 +11,7 @@ import { DoremonBubble, DoremonThinking, type DoremonMessageView } from "./dorem
 import type { BubbleAnchor } from "./ReactionPicker";
 import { groupByDay, isGrouped, clockTime, type ChatMessage } from "@/lib/thread";
 import { cn } from "@/lib/utils";
+import { messageStatusLabel } from "@/lib/message-status";
 
 export function MessageList({
   messages,
@@ -64,6 +65,14 @@ export function MessageList({
   if (prepending.current) messages.forEach((message) => initialIds.current?.add(message.id));
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
+  const latestOwnId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].author === "me" && messages[i].kind !== "call" && messages[i].kind !== "presence") return messages[i].id;
+    }
+    return null;
+  }, [messages]);
 
   const groups = useMemo(() => groupByDay(messages), [messages]);
 
@@ -185,6 +194,7 @@ export function MessageList({
                       animateIn={!initialIds.current?.has(message.id)}
                       compact={compact}
                     />
+                    {message.id === latestOwnId && <p aria-live="polite" className="mt-1 px-1 text-right text-[11px] text-zinc-500">{messageStatusLabel(message, showReceipts, now)}</p>}
                   </div>
                 );
               })}

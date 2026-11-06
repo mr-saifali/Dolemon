@@ -23,6 +23,7 @@ import {
 import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
 import { playIntroJingle } from "@/lib/sound";
 import { useSession } from "@/lib/session";
+import { useAppPresence } from "@/lib/app-presence";
 import { usePrefs } from "@/lib/prefs";
 import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
 import type { ChatMessage } from "@/lib/thread";
@@ -32,6 +33,7 @@ const REMOTE = authMode === "supabase";
 function HomeScreen() {
   const router = useRouter();
   const { account } = useSession();
+  const presence = useAppPresence();
   const metaMap = useChatMeta();
   const { introMusic } = usePrefs();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -113,6 +115,7 @@ function HomeScreen() {
           preview: previewOf(c),
           at: c.lastAt,
           unread: c.unread,
+          online: presence[c.id] === "online",
         };
       });
     }
@@ -136,10 +139,11 @@ function HomeScreen() {
           at: last?.at ?? c.lastAt,
           unread,
           typing: meta?.muted ? false : c.typing,
+          online: c.online,
         };
       })
       .sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
-  }, [remoteChats, metaMap]);
+  }, [remoteChats, metaMap, presence]);
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase().replace(/^@/, "");
     return term ? rows.filter((chat) => `${chat.name} ${chat.handle} ${chat.preview}`.toLowerCase().includes(term)) : rows;

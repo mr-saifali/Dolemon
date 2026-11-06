@@ -242,6 +242,16 @@ export async function loadThread(
   return { messages: withReactions, me };
 }
 
+/** A small fallback check when a Realtime INSERT was missed. */
+export async function latestMessageId(conversationId: string): Promise<string | null> {
+  const { data, error } = await client().from("messages").select("id")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false }).order("id", { ascending: false })
+    .limit(1).maybeSingle<{ id: string }>();
+  if (error) throw new Error(error.message);
+  return data?.id ?? null;
+}
+
 /** Search visible text messages in this conversation (RLS still applies). */
 export async function searchThread(conversationId: string, query: string): Promise<DbMessage[]> {
   const term = query.trim().slice(0, 100);
@@ -496,31 +506,20 @@ export async function removeMyReaction(messageId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/**
- * Marks the thread read. With `shareReads` on (the "Read receipts" toggle),
- * the read cursor is also pushed to the partner so their ticks turn — and
- * broadcast on the thread channel so it happens live, not on their next refresh.
- */
+/** Mark locally unread messages and, if enabled, publish a server read cursor.
+ * The thread channel is owned by watchMessages; never remove it here. */
 export async function markThreadRead(conversationId: string, shareReads = true): Promise<void> {
   const sb = client();
   await sb.rpc("mark_conversation_read", { target: conversationId });
   if (!shareReads) return;
+  const result = await sb.rpc("touch_read_cursor", { target: conversationId });
+  if (result.error) return;
 
-  const me = (await sb.auth.getUser()).data.user?.id ?? null;
-  if (!me) return;
-  const at = Date.now();
-
-  // the partner's read cursor — best-effort, never blocks reading
-  await sb.rpc("touch_read_cursor", { target: conversationId }).then(
-    () => undefined,
-    () => undefined
-  );
-
-  const channel = sb.channel(`thread:${conversationId}`);
-  await channel
-    .send({ type: "broadcast", event: "read", payload: { user: me, at } })
-    .catch(() => undefined);
-  await sb.removeChannel(channel);
+  // A broadcast is just a nudge to fetch the authoritative server cursor.
+  // Supabase reuses same-topic channels, so creating and removing one here
+  // would silently tear down the active message subscription.
+  const channel = sb.getChannels().find((item) => item.topic === `realtime:thread:${conversationId}`);
+  if (channel) await channel.send({ type: "broadcast", event: "read", payload: {} }).catch(() => undefined);
 }
 
 /** When the other person last opened this thread (their read cursor), or null. */
@@ -529,7 +528,8 @@ export async function conversationReadState(conversationId: string): Promise<num
   if (error) return null;
   const row = Array.isArray(data) ? data[0] : data;
   const at = (row as { partner_read_at?: string | null } | null)?.partner_read_at;
-  return at ? new Date(at).getTime() : null;
+  const timestamp = at ? new Date(at).getTime() : NaN;
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 /** Refresh the inbox after accessible message changes and after reconnect. */
@@ -554,7 +554,7 @@ export function watchMessages(
     /** Called after subscribing or re-subscribing, so missed events can be reconciled. */
     onSubscribed?: () => void;
   },
-  me?: string | null
+  _me?: string | null
 ) {
   const sb = client();
   const channel = sb
@@ -577,10 +577,10 @@ export function watchMessages(
         if (old?.id) handlers.onDelete?.(old.id);
       }
     )
-    .on("broadcast", { event: "read" }, ({ payload }) => {
-      const p = payload as { user?: string; at?: number } | null;
-      if (!p?.at || p.user === me) return;
-      handlers.onRead?.(p.at);
+    .on("broadcast", { event: "read" }, () => {
+      // The broadcast is an untrusted hint. Fetch the RLS-scoped cursor rather
+      // than trusting a client-supplied timestamp or identity.
+      void conversationReadState(conversationId).then((at) => { if (at != null) handlers.onRead?.(at); }).catch(() => undefined);
     })
     .subscribe((status) => { if (status === "SUBSCRIBED") handlers.onSubscribed?.(); });
 

@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Check, CheckCheck, Clock, CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
+import { AlertCircle, CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { ReactionChip } from "./ReactionChip";
 import { VideoMessage } from "./VideoMessage";
@@ -19,7 +19,6 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   conversationId,
   grouped,
-  showReceipts = true,
   partnerName,
   onLongPress,
   onDoubleTap,
@@ -214,12 +213,12 @@ export const MessageBubble = memo(function MessageBubble({
             {message.kind === "sticker" && message.sticker ? (
               <div>
                 <ReactionIcon type={message.sticker} size={44} />
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+                <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : emojiOnly ? (
               <div>
                 <span className="block whitespace-pre-wrap break-words text-[36px] leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}>{message.text}</span>
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+                <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : message.kind === "image" && message.media ? (
               <div>
@@ -239,10 +238,10 @@ export const MessageBubble = memo(function MessageBubble({
                     className="max-h-[300px] w-full max-w-[248px] object-cover"
                   />
                 </button>
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+                <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : message.kind === "file" && message.media && parseVideoReference(message.media.url) ? (
-              <div><VideoMessage reference={message.media.url} conversationId={conversationId} name={message.media.name} size={message.media.sizeBytes} mine={mine} /><BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} /></div>
+              <div><VideoMessage reference={message.media.url} conversationId={conversationId} name={message.media.name} size={message.media.sizeBytes} mine={mine} /><BubbleMeta message={message} metaColor={metaColor} /></div>
             ) : message.kind === "file" && message.media ? (
               <div>
                 <a
@@ -272,17 +271,17 @@ export const MessageBubble = memo(function MessageBubble({
                   </span>
                   <Download className={cn("h-[18px] w-[18px] shrink-0", mine ? "text-white/70" : "text-zinc-500")} />
                 </a>
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+                <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : message.kind === "audio" && message.media ? (
               <div>
                 <AudioBubble url={message.media.url} durationMs={message.media.durationMs ?? 0} mine={mine} />
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+                <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : (
               <div className="flex flex-wrap items-end gap-x-3 gap-y-0.5">
                 <LinkContent text={message.text} />
-                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} inline />
+                <BubbleMeta message={message} metaColor={metaColor} inline />
               </div>
             )}
 
@@ -370,17 +369,13 @@ export const MessageBubble = memo(function MessageBubble({
   );
 });
 
-/** The quiet time + ticks line for photos / voice notes, kept inside the bubble. */
+/** Quiet time and edit label inside each bubble. */
 function BubbleMeta({
   message,
-  mine,
-  showReceipts,
   metaColor,
   inline = false,
 }: {
   message: ChatMessage;
-  mine: boolean;
-  showReceipts: boolean;
   metaColor: string;
   inline?: boolean;
 }) {
@@ -388,23 +383,8 @@ function BubbleMeta({
     <span className={cn("flex shrink-0 items-center justify-end gap-1 text-[10px] leading-none", inline ? "ml-auto pb-0.5" : "mt-1 pr-1 pb-0.5", metaColor)}>
       <span className="tabular-nums">{clockTime(message.at)}</span>
       {message.editedAt ? <span className="italic">edited</span> : null}
-      {mine && showReceipts && <Ticks status={message.status} seenAt={message.seenAt} />}
     </span>
   );
-}
-
-/**
- * The tick ladder: one tick = delivered, two ticks (accent) = seen.
- * When we know the exact read moment it's shown right after.
- */
-function Ticks({ status, seenAt }: { status?: ChatMessage["status"]; seenAt?: number | null }) {
-  if (status === "failed") return <AlertCircle className="h-3 w-3 text-red-300" aria-label="Not sent" />;
-  if (status === "sending" || !status) return <Clock className="h-3 w-3 text-white/40" aria-label="Sending" />;
-  if (status === "read") {
-    return <CheckCheck className="h-3 w-3 text-white/60" aria-label={seenAt ? `Seen at ${clockTime(seenAt)}` : "Seen"} />;
-  }
-  // "sent" (the brief demo beat) and "delivered" both read as: one tick
-  return <Check className="h-3 w-3 text-white/60" aria-label={status === "sent" ? "Sent to server" : "Delivered"} />;
 }
 
 function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: number; mine: boolean }) {

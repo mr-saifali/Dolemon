@@ -26,6 +26,7 @@ import {
   Wind,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PushSettings } from "@/components/pwa/push-settings";
 import { AppGuard } from "@/components/app-guard";
 import { ChatThemePicker } from "@/components/chat/ChatThemePicker";
 import { getChatTheme } from "@/lib/chat-themes";
@@ -387,6 +388,8 @@ function SettingsContent() {
             </button>
           </div>
         </Section>
+
+        <Section title="Notifications"><PushSettings /></Section>
 
         <Section title="Chats &amp; privacy">
           <div className="py-3.5">

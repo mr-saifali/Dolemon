@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileText, ImagePlus, Mic, Square, X } from "lucide-react";
+import { FileText, ImagePlus, Mic, Square, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import { blobToDataUrl, compressImage, pickAudioMime } from "@/lib/media";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ export function AttachmentSheet({
   onPhoto,
   onVoice,
   onFile,
+  onVideo,
   publicMedia = false,
 }: {
   open: boolean;
@@ -28,10 +29,12 @@ export function AttachmentSheet({
   onPhoto: (image: PhotoPayload) => void;
   onVoice: (audio: VoicePayload) => void;
   onFile?: (file: FilePayload) => void;
+  onVideo?: (file: File) => Promise<void>;
   publicMedia?: boolean;
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const docInput = useRef<HTMLInputElement | null>(null);
+  const videoInput = useRef<HTMLInputElement | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const startedAt = useRef(0);
@@ -69,8 +72,17 @@ export function AttachmentSheet({
     }
   };
 
+  const handleVideo = async (file: File | undefined) => {
+    if (!file || !onVideo) return;
+    setBusy(true);
+    try { await onVideo(file); onClose(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Couldn’t send that video."); }
+    finally { setBusy(false); if (videoInput.current) videoInput.current.value = ""; }
+  };
+
   const handleDoc = async (file: File | undefined) => {
     if (!file) return;
+    if (file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(file.name)) { await handleVideo(file); if (docInput.current) docInput.current.value = ""; return; }
     if (file.size > MAX_FILE_BYTES) {
       toast.error("Files up to 20 MB");
       return;
@@ -162,6 +174,7 @@ export function AttachmentSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => {
+              if (busy) return;
               if (recording) cancelRecording();
               onClose();
             }}
@@ -172,6 +185,7 @@ export function AttachmentSheet({
             role="dialog"
             aria-modal="true"
             aria-label="Attach"
+            aria-busy={busy}
             initial={{ y: "100%", opacity: 0.7 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0.7 }}
@@ -184,6 +198,7 @@ export function AttachmentSheet({
               <h2 className="text-[18px] font-semibold">Send something</h2>
               <button
                 type="button"
+                disabled={busy}
                 onClick={() => {
                   if (recording) cancelRecording();
                   onClose();
@@ -195,7 +210,7 @@ export function AttachmentSheet({
               </button>
             </div>
 
-            {publicMedia && <p role="note" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-100">Attachments use public links. Anyone with a link can open the file; deleting a message may not remove the file.</p>}
+            {publicMedia && <p role="note" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-100">Photos, voice notes and files use public links. Videos use a private, temporary handoff and a device-local copy.</p>}
 
             {recording ? (
               <div className="rounded-xl2 border border-rose/25 bg-rose/[0.06] p-4">
@@ -242,7 +257,7 @@ export function AttachmentSheet({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 gap-2.5">
                 <Tile
                   icon={<ImagePlus className="h-5 w-5" />}
                   label="Photo"
@@ -251,17 +266,25 @@ export function AttachmentSheet({
                   disabled={busy}
                 />
                 <Tile
+                  icon={<Video className="h-5 w-5" />}
+                  label="Video"
+                  hint="Up to 50 MB"
+                  onClick={() => videoInput.current?.click()}
+                  disabled={busy || !onVideo}
+                />
+                <Tile
                   icon={<Mic className="h-5 w-5" />}
                   label="Voice note"
                   hint="Hold up to 60s"
                   onClick={startRecording}
+                  disabled={busy}
                 />
                 <Tile
                   icon={<FileText className="h-5 w-5" />}
                   label="File"
                   hint="Up to 20 MB"
                   onClick={() => docInput.current?.click()}
-                  disabled={readingDoc || !onFile}
+                  disabled={busy || readingDoc || !onFile}
                 />
               </div>
             )}
@@ -273,6 +296,7 @@ export function AttachmentSheet({
               className="hidden"
               onChange={(e) => void handleFile(e.target.files?.[0])}
             />
+            <input ref={videoInput} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={(e) => void handleVideo(e.target.files?.[0])} />
             <input
               ref={docInput}
               type="file"
@@ -280,8 +304,9 @@ export function AttachmentSheet({
               onChange={(e) => void handleDoc(e.target.files?.[0])}
             />
 
+            {busy && <p role="status" className="mt-3 text-center text-xs text-zinc-400">Saving and uploading… Keep this chat open.</p>}
             <p className="mt-4 text-center text-[11px] text-text-muted/60">
-              Voice notes up to 60s · files up to 20 MB
+              Voice notes up to 60s · files up to 20 MB · videos up to 50 MB
             </p>
           </motion.div>
         </div>

@@ -75,3 +75,29 @@ self.addEventListener("fetch", (event) => {
     return response;
   })());
 });
+
+// Notifications intentionally contain no sender name or private message text.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { /* generic notification */ }
+  const path = typeof payload.url === "string" && /^\/app\/chat\/[0-9a-f-]{36}$/i.test(payload.url) ? payload.url : "/app";
+  event.waitUntil(self.registration.showNotification("Dolemon", {
+    body: "You have a new message.", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png",
+    data: { path },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const path = event.notification.data?.path;
+  const safePath = typeof path === "string" && /^\/app\/chat\/[0-9a-f-]{36}$/i.test(path) ? path : "/app";
+  const target = new URL(safePath, self.location.origin).href;
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+    if (existing) {
+      try { const next = await existing.navigate(target); if (next) return await next.focus(); } catch { /* open a fresh window */ }
+    }
+    return self.clients.openWindow(target);
+  })());
+});

@@ -1,3 +1,4 @@
+import { parseVideoReference } from "@/lib/video-reference";
 import type { useThread } from "@/lib/thread";
 import type { RemoteSendOptions } from "@/lib/use-remote-thread";
 
@@ -10,7 +11,7 @@ export function toRemoteSendOptions(options?: Parameters<ReturnType<typeof useTh
     sticker: options?.sticker,
     replyTo: options?.replyTo,
     media: options?.media ? {
-      dataUrl: options.media.url,
+      ...(parseVideoReference(options.media.url) ? { url: options.media.url } : { dataUrl: options.media.url }),
       name: options.media.name,
       sizeBytes: options.media.sizeBytes,
       durationMs: options.media.durationMs,

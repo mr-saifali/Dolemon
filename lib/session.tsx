@@ -76,6 +76,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const signOut = useCallback(async () => {
+    // Unsubscribe this browser before removing its authenticated session.
+    if (auth.mode === "supabase") {
+      try { const { disablePush } = await import("@/lib/push"); await disablePush(); } catch { /* sign-out must remain available offline */ }
+    }
     await auth.signOut();
     setAccount(null);
     cacheAccount(null);

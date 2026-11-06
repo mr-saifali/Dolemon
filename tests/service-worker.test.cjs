@@ -35,7 +35,8 @@ function worker({ hangNavigation = false } = {}) {
     async keys() { return [...stores.keys()]; },
     async delete(name) { return stores.delete(name); },
   };
-  const self = { location: { origin: 'https://dolemon.test' }, clients: { claim: async () => {} }, skipWaiting: async () => {}, addEventListener: (name, fn) => { handlers[name] = fn; } };
+  let shown, opened;
+  const self = { location: { origin: 'https://dolemon.test' }, registration: { showNotification: async (title, options) => { shown = { title, options }; } }, clients: { claim: async () => {}, matchAll: async () => [], openWindow: async (url) => { opened = url; } }, skipWaiting: async () => {}, addEventListener: (name, fn) => { handlers[name] = fn; } };
   vm.runInNewContext(fs.readFileSync('public/sw.js', 'utf8'), { self, caches, fetch: (...args) => fetcher(...args), URL, Response, AbortController, setTimeout: hangNavigation ? (fn) => { queueMicrotask(fn); return 1; } : setTimeout, clearTimeout });
   async function lifecycle(name) { let pending; handlers[name]({ waitUntil(p) { pending = p; } }); await pending; }
   async function request(path, { method = 'GET', mode = 'cors', headers = {} } = {}) {
@@ -44,7 +45,9 @@ function worker({ hangNavigation = false } = {}) {
     if (!result) return undefined;
     const response = await result; await Promise.all(pending); return response;
   }
-  return { stores, fetched, caches, lifecycle, request, setOnline(value) { online = value; }, failIcon() { failIcon = true; } };
+  async function push(payload) { let pending; handlers.push({ data: { json: () => payload }, waitUntil(p) { pending = p; } }); await pending; return shown; }
+  async function click(path) { let pending; handlers.notificationclick({ notification: { data: { path }, close() {} }, waitUntil(p) { pending = p; } }); await pending; return opened; }
+  return { stores, fetched, caches, lifecycle, request, push, click, setOnline(value) { online = value; }, failIcon() { failIcon = true; } };
 }
 
 test('install handles individual missing assets and only deletes Dolemon caches', async () => {
@@ -84,4 +87,15 @@ test('a stalled navigation is aborted and falls back offline', async () => {
   const w = worker({ hangNavigation: true }); await w.lifecycle('install');
   const response = await w.request('/settings', { mode: 'navigate' });
   assert.equal(await response.text(), 'offline page');
+});
+
+
+test('push is private and notification clicks are restricted to app chat routes', async () => {
+  const w = worker(); const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  const note = await w.push({ url: `/app/chat/${id}`, body: 'secret', title: 'secret' });
+  assert.equal(note.title, 'Dolemon'); assert.equal(note.options.body, 'You have a new message.');
+  assert.equal(await w.click(note.options.data.path), `https://dolemon.test/app/chat/${id}`);
+  const unsafe = await w.push({ url: 'https://evil.test/', body: 'secret' });
+  assert.equal(unsafe.options.data.path, '/app');
+  assert.equal(await w.click('https://evil.test/'), 'https://dolemon.test/app');
 });

@@ -27,7 +27,7 @@ first builds were fixed, and the OTP/SMTP caveats before switching to real auth.
 - The documented `chat-media` bucket is **public**. Anyone with an attachment URL can access it. Deleting a message or chat does not remove its stored files. Check the actual bucket configuration before using sensitive media.
 - App lock is a UI gate, not encryption. Local preferences and presence history are device-specific. New local secrets require Web Crypto; users with old weak fallback hashes should reset their password/app lock on HTTPS.
 - Typing and presence controls stop future signals from this device; a previously shared last-seen timestamp may remain. An untracked partner is not necessarily offline. Live room history is an incomplete, device-local observation, not an authoritative shared record. Legacy history is preserved but excluded because it could contain demo data.
-- Live pulses and server-enforced blocking are not implemented. The lamp is local only. Push notifications, TURN relay, message E2EE and a durable offline outbox are also not implemented. Retry after an ambiguous failure may duplicate a message.
+- Live pulses and server-enforced blocking are not implemented. The lamp is local only. TURN relay, message E2EE and a durable offline outbox are also not implemented. Web Push requires explicit server setup and per-device opt-in; see [push setup](docs/push-notifications.md). Retry after an ambiguous failure may duplicate a message.
 - Realtime calling uses DTLS-SRTP transport, but signalling needs private, authenticated Realtime policies and live two-account security testing before making an identity-authenticated end-to-end privacy claim. Calls may fail on restrictive networks and cannot ring a suspended app without push.
 - Automatic local Doremon analysis is opt-in under Settings. Explicit questions and briefings can send recent excerpts and memory to Google Gemini; consider the other person's consent. Inferences can be wrong. Memory controls allow summary edits, JSON export and deletion of your copy (other devices may recreate it if analysis remains enabled).
 - Apply `docs/migrations/011_privacy_and_memory.sql` **only after 004, 008 and 010**, after a backup and staging verification. This fixes the visibility function and memory-related deletion conflict; it does not remove storage objects. The migration is not automatically applied by deploying the app. Do not rerun 010 after 011: it reinstates the old foreign key and policy.
@@ -184,7 +184,7 @@ The local demo keeps the simulated call screen (no media) for click-through.
 | Gap | Why |
 | --- | --- |
 | End-to-end encrypted **messages** | Call media uses DTLS-SRTP, but signalling identity is not yet independently authenticated. Text is stored in Postgres under RLS, so it is encrypted in transit but readable by the project owner. Real message E2EE needs a key exchange per device |
-| Push notifications | Requires Web Push + service worker + a backend sender |
+| Push notifications | Opt-in Web Push; requires deployment configuration and a Supabase INSERT webhook. See [setup](docs/push-notifications.md). |
 | Private media | Live attachments use public links; private storage and object cleanup need a migration |
 | Full multi-device state | Messages sync, but preferences, themes, drafts and local room history do not |
 | Block / report, backups | Server-authoritative features that follow the backend |
@@ -218,3 +218,11 @@ full-rounded buttons · 24px mobile gutters · 200–250ms fade + 12px rise on e
 Live chats initially load the newest 80 messages; scrolling back loads older pages of 100. The inbox and a failed initial chat load refresh when the browser reports connectivity has returned. The browser's online indicator is only a hint, not proof that the server is reachable.
 
 In production the service worker caches a standalone offline page and a bounded set of Next.js static build assets. Navigations are network-first with a five-second timeout; if the network fails, the offline page explains how to retry. The worker does not cache private pages, API/RSC responses, messages, or uploaded media. The offline page is available only after a successful worker installation. Remote chats, calls, and delivery still require a connection: there is no persistent offline message queue or automatic resend, and a refresh can lose unsent messages. Local demo data follows its existing device-local storage behavior.
+
+### Link previews and Instagram embeds
+
+Chat links open their original address in a new tab. Cards display the domain and path without contacting the link target; “Load preview” sends that URL to this app's server and the linked site to request a title and description. The preview service checks destinations and redirects against private and reserved networks. The link target can see the server request; don't load previews for sensitive URLs. Instagram's optional in-app viewer loads Instagram only after tapping “Watch here.” Private, login-required, removed, or embedding-restricted posts may not play; use “Open on Instagram” instead.
+
+### Videos
+
+Videos up to 50 MB use a separate private, temporary Supabase handoff and device-local IndexedDB copies. Recipient download is manual, and the app attempts to remove the temporary copy after saving. Availability, expiry, scheduled cleanup and deployment requirements are described in [temporary video setup](docs/temporary-video.md). This is not end-to-end encryption; the existing public photo/voice/file storage behavior is unchanged.

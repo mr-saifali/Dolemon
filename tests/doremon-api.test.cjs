@@ -70,3 +70,14 @@ test('failure explanations distinguish quota scope, network and expired sessions
   const { offlineReason, isOfflineNotice, OFFLINE_NOTICE } = require('../lib/doremon/offline.ts');
   assert.match(offlineReason('QUOTA', 25, 'day'), /midnight Pacific/); assert.match(offlineReason('QUOTA', 25, 'minute'), /per-minute.*25 seconds/); assert.match(offlineReason('NETWORK'), /network/); assert.match(offlineReason('AUTH_REQUIRED'), /sign in/); assert.equal(isOfflineNotice(OFFLINE_NOTICE), true);
 });
+
+test('a temporary 503 retries the same model once and can recover', async () => {
+  let count = 0;
+  const out = await withResponse(() => ++count === 1 ? new Response('high demand', { status: 503 }) : Response.json({ candidates: [{ content: { parts: [{ text: 'Recovered' }] } }] }));
+  assert.equal(out.body.answer, 'Recovered'); assert.equal(out.calls.length, 2);
+  assert.ok(out.calls.every(c => c.url.includes('gemini-3.1-flash-lite:generateContent')));
+});
+test('a persistent 503 stops after one retry', async () => {
+  const out = await withResponse(() => new Response('high demand', { status: 503 }));
+  assert.equal(out.body.error, 'GEMINI'); assert.equal(out.calls.length, 2);
+});

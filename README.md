@@ -55,7 +55,8 @@ preview key on 2026-11-06. `GEMINI_MODEL` is intentionally ignored. Never use a
 Each question uses one generation request; Sunrise is a separate optional
 request. Google enforces rate, token and daily limits, which can differ by
 project and change over time; a successful test is not a guarantee of future
-availability or free quota. No automatic fallback or retry is made. If a quota
+availability or free quota. A temporary HTTP 503 gets one retry of the same
+model; other failures are not retried and no model fallback is used. If a quota
 error occurs, check the project's quota and billing in Google AI Studio.
 `/api/doremon?models=1` lists models visible to the key, but the list and room
 status check do not guarantee generation access. AI generation requires a valid

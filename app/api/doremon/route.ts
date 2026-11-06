@@ -27,7 +27,7 @@ import type { DoremonMemory, DoremonStats } from "@/lib/doremon/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Allow time for authentication and a bounded generation request.
+// Allow time for authentication and one bounded retry after a 503.
 export const maxDuration = 60;
 
 type RequestBody = {
@@ -60,6 +60,7 @@ class GeminiKeyError extends Error {}
 /** The key is fine, but THIS MODEL isn't available to it (404 "model is not
  *  found for API key"). The configured model must be changed. */
 class GeminiModelError extends Error {}
+class GeminiUnavailableError extends Error {}
 class GeminiQuotaError extends Error {
   constructor(public retryAfterSeconds: number | null, public noModelQuota = false, public scope: "day" | "minute" | "unknown" = "unknown") {
     super("Gemini rate or quota limit exceeded");
@@ -176,7 +177,7 @@ export async function POST(req: NextRequest) {
   try {
     const { system, user } = promptsFor(body);
     const wantJson = body.action === "analyze" || body.action === "finalize";
-    const raw = await callGemini(key, model, system, user, wantJson, body.action);
+    const raw = await generateReply(key, model, system, user, wantJson, body.action);
     if (body.action === "analyze") {
       const parsed = parseJson(raw);
       if (!parsed) throw new Error("unparseable analysis");
@@ -331,6 +332,18 @@ async function discoverModels(key: string): Promise<{ usable: string[]; total: n
   return modelListCache;
 }
 
+// A 503 is an explicit temporary capacity failure. Retry the SAME model once;
+// never retry timeouts, quota, auth or 404s, which can waste quota or mislead.
+async function generateReply(key: string, model: string, system: string, user: string, wantJson: boolean, action: string): Promise<string> {
+  try {
+    return await callGemini(key, model, system, user, wantJson, action);
+  } catch (error) {
+    if (!(error instanceof GeminiUnavailableError)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return callGemini(key, model, system, user, wantJson, action);
+  }
+}
+
 /** One attempt against one model — classifies Google's failure precisely. */
 async function callGemini(
   key: string,
@@ -389,6 +402,7 @@ async function callGemini(
   if (!res.ok) {
     const text = responseText.slice(0, 20000);
     const msg = `gemini ${res.status} (${model}): ${text.slice(0, 200)}`;
+    if (res.status === 503) throw new GeminiUnavailableError(msg);
     if (res.status === 429) {
       let noModelQuota = false;
       let quotaScope: "day" | "minute" | "unknown" = "unknown";

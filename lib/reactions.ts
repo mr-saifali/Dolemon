@@ -1,5 +1,5 @@
 /**
- * Reactions are Dolemon's own five faces — not unicode emoji.
+ * Stored reaction IDs stay stable while the UI displays native Unicode emoji.
  *
  * One reaction per person per message (picking a new one replaces the old), which is what
  * keeps a two-person thread feeling like a note being underlined, not a scoreboard.
@@ -8,6 +8,11 @@
 export const REACTION_TYPES = ["dil", "haha", "wow", "aww", "hype"] as const;
 
 export type ReactionType = (typeof REACTION_TYPES)[number];
+
+/** Keep these mappings stable so existing reaction and sticker records still render. */
+export const REACTION_EMOJI: Record<ReactionType, string> = {
+  dil: "❤️", haha: "😂", wow: "😮", aww: "🥹", hype: "🔥",
+};
 
 /** Reactions are only ever cast by the two people in the thread. */
 export type ReactionBy = "me" | "them";

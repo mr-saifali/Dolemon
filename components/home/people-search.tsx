@@ -9,7 +9,7 @@ import { searchUsers, type DbPerson } from "@/lib/db";
  * Find someone by handle. Results drop down under the field so the inbox
  * itself never has to leave the screen.
  */
-export function PeopleSearch({ onPick }: { onPick: (username: string) => void }) {
+export function PeopleSearch({ onPick, onQueryChange, searchRemote = true }: { onPick: (username: string) => void; onQueryChange?: (query: string) => void; searchRemote?: boolean }) {
   const [query, setQuery] = useState("");
   const [people, setPeople] = useState<DbPerson[]>([]);
   const [loading, setLoading] = useState(false);
@@ -17,9 +17,10 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
   const seq = useRef(0);
 
   const term = query.trim().replace(/^@+/, "");
-  const active = term.length >= 2;
+  const active = searchRemote && term.length >= 2;
 
   useEffect(() => {
+    const mine = ++seq.current;
     if (!active) {
       setPeople([]);
       setLoading(false);
@@ -27,7 +28,6 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
       return;
     }
 
-    const mine = ++seq.current;
     setLoading(true);
     setFailed(false);
 
@@ -65,14 +65,14 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
 
         <input
           value={query}
-          onChange={(e) => setQuery(e.target.value.replace(/[^a-zA-Z0-9._@]/g, ""))}
+          onChange={(e) => { setQuery(e.target.value); onQueryChange?.(e.target.value); }}
           inputMode="search"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          aria-label="Find someone by handle"
-          placeholder="Find someone by @handle"
-          className="h-11 w-full rounded-full border border-white/[0.05] bg-[#121215] pl-10 pr-10 text-[14px] text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-white/10 focus:outline-none"
+          aria-label="Search chats"
+          placeholder={searchRemote ? "Search chats or @handle" : "Search chats"}
+          className="w-full rounded-full bg-[#1C1C1E] py-2.5 pl-10 pr-10 text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
         />
 
         <AnimatePresence>
@@ -82,7 +82,7 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
-              onClick={() => setQuery("")}
+              onClick={() => { setQuery(""); onQueryChange?.(""); }}
               aria-label="Clear search"
               className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/[0.06] text-[13px] leading-none text-zinc-400"
             >
@@ -121,6 +121,7 @@ export function PeopleSearch({ onPick }: { onPick: (username: string) => void })
                 type="button"
                 onClick={() => {
                   setQuery("");
+                  onQueryChange?.("");
                   onPick(person.username);
                 }}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04] active:bg-white/[0.06]"

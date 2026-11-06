@@ -6,6 +6,9 @@ export const CHAT_THEMES = [
   { id: "sky-garden", name: "Sky garden", description: "Float beyond the clouds", image: "/chat-themes/sky-garden.jpg", bubble: "#48436e", outline: "rgba(215, 205, 248, .4)" },
   { id: "aurora-dream", name: "Aurora dream", description: "Follow the northern lights", image: "/chat-themes/aurora-dream.jpg", bubble: "#254e55", outline: "rgba(174, 229, 224, .4)" },
   { id: "endless-horizon", name: "Endless horizon", description: "A world without limits", image: "/chat-themes/endless-horizon.jpg", bubble: "#34466b", outline: "rgba(193, 210, 246, .4)" },
+  { id: "artist-open-sky", name: "Open air", description: "A sky full of possibility", image: "/chat-themes/artist-open-sky.jpg", bubble: "#5c3f52", outline: "rgba(244, 202, 220, .4)" },
+  { id: "artist-wild-canvas", name: "Wild canvas", description: "Colour outside the lines", image: "/chat-themes/artist-wild-canvas.jpg", bubble: "#3a4f4b", outline: "rgba(190, 227, 216, .4)" },
+  { id: "artist-moonlit-flight", name: "Moonlit flight", description: "Find your own horizon", image: "/chat-themes/artist-moonlit-flight.jpg", bubble: "#343d64", outline: "rgba(206, 210, 245, .4)" },
 ] as const;
 
 export type ChatThemeId = (typeof CHAT_THEMES)[number]["id"];

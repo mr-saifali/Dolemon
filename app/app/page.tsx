@@ -15,7 +15,6 @@ import { authMode } from "@/lib/auth";
 import { demoConversations, greetingFor } from "@/lib/chat";
 import { useChatMeta } from "@/lib/conversation-meta";
 import {
-  conversationReadState,
   listConversations,
   openDirectConversation,
   watchInbox,
@@ -27,7 +26,6 @@ import { useSession } from "@/lib/session";
 import { usePrefs } from "@/lib/prefs";
 import { lastMessageOf, previewFor, threadExists, unreadSince } from "@/lib/thread";
 import type { ChatMessage } from "@/lib/thread";
-import type { MessageStatus } from "@/lib/thread";
 
 const REMOTE = authMode === "supabase";
 
@@ -35,14 +33,13 @@ function HomeScreen() {
   const router = useRouter();
   const { account } = useSession();
   const metaMap = useChatMeta();
-  const { readReceipts, introMusic } = usePrefs();
+  const { introMusic } = usePrefs();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [remoteChats, setRemoteChats] = useState<DbConversation[] | null>(null);
   const [inboxError, setInboxError] = useState(false);
-  /** per-conversation partner read cursor (live mode) — powers the list ticks */
-  const [readStates, setReadStates] = useState<Record<string, number | null>>({});
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!REMOTE) return;
@@ -87,28 +84,6 @@ function HomeScreen() {
     playIntroJingle();
   }, [introMusic]);
 
-  // When the list changes, learn where each partner's read cursor sits.
-  useEffect(() => {
-    if (!REMOTE || !remoteChats) return;
-    let alive = true;
-    void Promise.all(
-      remoteChats.map(async (c) => {
-        const at = await conversationReadState(c.id).catch(() => null);
-        return [c.id, at] as const;
-      })
-    ).then((entries) => {
-      if (!alive) return;
-      setReadStates((prev) => {
-        const next = { ...prev };
-        for (const [id, at] of entries) next[id] = at;
-        return next;
-      });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [remoteChats]);
-
   // Doremon's memory — the records he keeps, including chats that are deleted.
   const [doremonRecords, setDoremonRecords] = useState<DoremonRecord[]>([]);
   useEffect(() => {
@@ -128,11 +103,7 @@ function HomeScreen() {
 
   const rows = useMemo<ChatRowData[]>(() => {
     if (REMOTE) {
-      const myId = account?.id ?? null;
       return (remoteChats ?? []).map((c) => {
-        const lastMine = myId != null && c.lastSender === myId;
-        const cursor = readStates[c.id] ?? null;
-        const seen = lastMine && c.lastAt != null && cursor != null && cursor >= c.lastAt;
         return {
           id: c.id,
           name: c.partnerUsername,
@@ -142,8 +113,6 @@ function HomeScreen() {
           preview: previewOf(c),
           at: c.lastAt,
           unread: c.unread,
-          lastMine,
-          lastStatus: lastMine ? (readReceipts && seen ? "read" : "sent") : null,
         };
       });
     }
@@ -158,14 +127,6 @@ function HomeScreen() {
         const unread = meta?.lastReadAt
           ? unreadSince(c.id, meta.lastReadAt)
           : (meta?.unread ?? c.unread);
-        const lastStatus: MessageStatus | null =
-          last?.author === "me" && last.status
-            ? readReceipts
-              ? last.status
-              : last.status === "read"
-                ? "delivered"
-                : last.status
-            : null;
         return {
           id: c.id,
           name: c.name,
@@ -175,12 +136,14 @@ function HomeScreen() {
           at: last?.at ?? c.lastAt,
           unread,
           typing: meta?.muted ? false : c.typing,
-          lastMine: last?.author === "me",
-          lastStatus,
         };
       })
       .sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
-  }, [remoteChats, metaMap, readStates, readReceipts, account?.id]);
+  }, [remoteChats, metaMap]);
+  const filteredRows = useMemo(() => {
+    const term = search.trim().toLowerCase().replace(/^@/, "");
+    return term ? rows.filter((chat) => `${chat.name} ${chat.handle} ${chat.preview}`.toLowerCase().includes(term)) : rows;
+  }, [rows, search]);
 
   const startChat = async (handle: string) => {
     setStartError(null);
@@ -202,81 +165,36 @@ function HomeScreen() {
   };
 
   return (
-    <main className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-[#09090B]">
-      {/* warm glow, top right */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-28 -top-36 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(255,92,122,0.16),rgba(255,140,90,0.06)_45%,transparent_72%)]"
-      />
-      {/* cool counterweight, bottom left */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-44 -left-32 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(104,120,255,0.13),rgba(150,92,255,0.05)_50%,transparent_72%)]"
-      />
-      {/* soft sheen along the top edge */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-52 bg-[radial-gradient(120%_100%_at_50%_0%,rgba(255,92,122,0.09),transparent_72%)]"
-      />
-
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-6 safe-t">
-        <header className="flex items-center justify-between gap-3 pb-5 pt-9">
-          <div className="min-w-0">
-            <p className="wordmark flex items-center gap-1.5 text-[10px] font-medium uppercase text-zinc-500">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} aria-hidden />
-              Dolemon
-            </p>
-            <motion.h1
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-1.5 min-w-0 truncate text-2xl font-light leading-tight tracking-[-0.01em] text-zinc-100"
-            >
-              {greetingFor()},{" "}
-              <span className="text-brand font-normal">@{account?.username ?? "you"}</span>
-            </motion.h1>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              onClick={openStart}
-              aria-label="Start a conversation"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white active:scale-95"
-            >
-              <Plus className="h-6 w-6" strokeWidth={1.6} />
-            </button>
-
-            <Link
-              href="/settings"
-              aria-label="Profile and settings"
-              className="rounded-2xl transition-transform active:scale-95"
-            >
-              <ChatAvatar
-                avatarId={account?.avatarId ?? null}
-                avatarUrl={account?.avatarUrl ?? null}
-                name={account?.username ?? "you"}
-                size={36}
-              />
+    <main className="relative isolate flex h-dvh flex-col overflow-hidden bg-[#09090B]">
+      <div className="relative z-10 mx-auto flex h-dvh w-full max-w-md flex-col overflow-y-auto overscroll-contain px-6">
+        <header className="sticky top-0 z-30 -mx-6 bg-[#09090B]/90 px-6 pb-4 pt-[max(env(safe-area-inset-top),20px)] backdrop-blur-xl">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-[radial-gradient(ellipse_at_50%_0%,rgba(255,92,122,0.09),transparent_70%)]" />
+          <div className="relative flex items-center justify-between gap-4 pb-6 pt-3">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-widest text-zinc-500">Dolemon</p>
+              <motion.h1 initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="mt-2 break-words text-2xl font-medium leading-tight text-white">
+                {greetingFor()},{" "}<span className="bg-gradient-to-r from-[#F5C992] to-[#FF829C] bg-clip-text text-transparent">@{account?.username ?? "you"}</span>
+              </motion.h1>
+            </div>
+            <Link href="/settings" aria-label="Profile and settings" className="shrink-0 rounded-full transition-transform active:scale-95">
+              <ChatAvatar avatarId={account?.avatarId ?? null} avatarUrl={account?.avatarUrl ?? null} name={account?.username ?? "you"} size={40} />
             </Link>
           </div>
+          <PeopleSearch onPick={(username) => void startChat(username)} onQueryChange={setSearch} searchRemote={REMOTE} />
         </header>
 
-        {REMOTE && (
-          <div className="pb-5">
-            <PeopleSearch onPick={(username) => void startChat(username)} />
-          </div>
-        )}
-
-        <div className="flex-1 pb-10">
+        <div className="flex-1 pb-28">
+          {!sheetOpen && startError && <p role="alert" className="mb-3 rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{startError}</p>}
           {REMOTE && inboxError && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-amber-400/10 p-3 text-xs text-amber-100"><span>Couldn’t refresh your chats. Your existing messages may still be on the server.</span><button type="button" className="underline" onClick={() => { void listConversations().then((rows) => { setRemoteChats(rows); setInboxError(false); }).catch(() => setInboxError(true)); }}>Retry</button></div>}
           {REMOTE && !remoteChats ? (
             !inboxError && <p className="py-8 text-center text-sm text-zinc-500">Loading chats…</p>
-          ) : rows.length === 0 ? (
-            <HomeEmptyState onInvite={openStart} />
+          ) : rows.length === 0 && !search.trim() ? (
+            <HomeEmptyState />
+          ) : filteredRows.length === 0 ? (
+            <p className="py-8 text-center text-sm text-zinc-500">No matching conversations.</p>
           ) : (
             <div className="flex flex-col">
-              {rows.map((chat, i) => (
+              {filteredRows.map((chat, i) => (
                 <ChatRow key={chat.id} chat={chat} index={i} />
               ))}
             </div>
@@ -321,6 +239,10 @@ function HomeScreen() {
           )}
         </div>
       </div>
+
+      <button type="button" onClick={openStart} aria-label="Start a conversation" className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#FF5C7A] text-white shadow-lg shadow-rose-500/20 transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+        <Plus className="h-6 w-6" strokeWidth={2} />
+      </button>
 
       <StartChatSheet
         open={sheetOpen}

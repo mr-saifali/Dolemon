@@ -10,6 +10,7 @@ import { buzz } from "@/lib/prefs";
 import { reactionChips, reactionLabel, reactionSentence } from "@/lib/reactions";
 import { clockTime, formatBytes, formatCallDuration, type ChatMessage } from "@/lib/thread";
 import { cn } from "@/lib/utils";
+import { isEmojiOnly } from "@/lib/emoji";
 
 export const MessageBubble = memo(function MessageBubble({
   message,
@@ -57,6 +58,7 @@ export const MessageBubble = memo(function MessageBubble({
 
   const chips = reactionChips(message.reactions);
   const failed = message.status === "failed";
+  const emojiOnly = message.kind === "sticker" || (message.kind === "text" && isEmojiOnly(message.text));
 
   const clearTimer = () => {
     if (longTimer.current) clearTimeout(longTimer.current);
@@ -102,7 +104,7 @@ export const MessageBubble = memo(function MessageBubble({
     lastTap.current = now;
   };
 
-  const metaColor = mine ? "text-white/75" : "text-white/70";
+  const metaColor = emojiOnly ? "text-white/80 [text-shadow:0_1px_4px_rgba(0,0,0,0.9)]" : mine ? "text-white/75" : "text-white/70";
 
   return (
     <motion.div
@@ -155,7 +157,7 @@ export const MessageBubble = memo(function MessageBubble({
           <div
             role="button"
             tabIndex={0}
-            aria-label={`${mine ? "You" : partnerName}: ${message.text || "attachment"}. Open message options.`}
+            aria-label={`${mine ? "You" : partnerName}: ${message.kind === "sticker" && message.sticker ? reactionLabel(message.sticker) : message.text || "attachment"}. Open message options.`}
             onPointerDown={onPointerDown}
             onPointerUp={onPointerUp}
             onPointerLeave={clearTimer}
@@ -178,13 +180,13 @@ export const MessageBubble = memo(function MessageBubble({
             }}
             className={cn(
               "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-violet/50",
-              message.kind === "image" || message.kind === "audio"
-                ? "p-1"
-                : message.kind === "file"
-                  ? "px-2.5 py-2"
-                  : "px-3 py-1.5",
-              "border text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
-              mine ? "rounded-[16px] rounded-br-[5px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[16px] rounded-bl-[5px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-black/20 backdrop-blur-md"
+              emojiOnly
+                ? "px-1 py-1 text-white"
+                : cn(
+                  message.kind === "image" || message.kind === "audio" ? "p-1" : message.kind === "file" ? "px-2.5 py-2" : "px-3 py-1.5",
+                  "border text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
+                  mine ? "rounded-[16px] rounded-br-[5px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[16px] rounded-bl-[5px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-black/20 backdrop-blur-md"
+                )
             )}
           >
             {message.replyTo && (
@@ -205,8 +207,13 @@ export const MessageBubble = memo(function MessageBubble({
             )}
 
             {message.kind === "sticker" && message.sticker ? (
-              <div className="min-w-[64px]">
+              <div>
                 <ReactionIcon type={message.sticker} size={44} />
+                <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
+              </div>
+            ) : emojiOnly ? (
+              <div>
+                <span className="block whitespace-pre-wrap break-words text-[36px] leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}>{message.text}</span>
                 <BubbleMeta message={message} mine={mine} showReceipts={showReceipts} metaColor={metaColor} />
               </div>
             ) : message.kind === "image" && message.media ? (

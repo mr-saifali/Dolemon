@@ -19,8 +19,8 @@ for (const ext of ['.ts', '.tsx']) {
 const { CHAT_THEMES, DEFAULT_CHAT_THEME, getChatTheme, resolveChatTheme } = require('../lib/chat-themes.ts');
 const { ChatThemePicker } = require('../components/chat/ChatThemePicker.tsx');
 
-test('six image themes and a safe classic fallback are available', () => {
-  assert.equal(CHAT_THEMES.length, 7);
+test('nine image themes and a safe classic fallback are available', () => {
+  assert.equal(CHAT_THEMES.length, 10);
   assert.equal(getChatTheme(undefined).id, DEFAULT_CHAT_THEME);
   assert.equal(getChatTheme('unknown-theme').id, DEFAULT_CHAT_THEME);
   assert.equal(resolveChatTheme('unknown-theme', 'open-sky').id, 'open-sky');
@@ -33,7 +33,7 @@ test('six image themes and a safe classic fallback are available', () => {
 test('theme picker exposes a labeled single-choice control with current value', () => {
   const html = renderToStaticMarkup(React.createElement(ChatThemePicker, { value: 'wild-coast', onChange() {} }));
   assert.match(html, /Choose a chat background/);
-  assert.equal((html.match(/type="radio"/g) || []).length, 7);
+  assert.equal((html.match(/type="radio"/g) || []).length, 10);
   assert.match(html, /checked="" value="wild-coast"/);
   assert.match(html, /Open sky/);
   assert.match(html, /Golden road/);

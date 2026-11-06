@@ -22,9 +22,9 @@ async function withResponse(response, extra = {}) {
   const result = await POST(request(extra));
   return { result, body: await result.json(), calls };
 }
-test('a real question uses the fixed verified model and recent room context', async () => {
+test('a follow-up uses the fixed verified model and bounded room history', async () => {
   process.env.GEMINI_MODEL = 'obsolete-override';
-  const { result, body, calls } = await withResponse(() => Response.json({ candidates: [{ content: { parts: [{ text: 'Hi there!' }] } }] }), { memory: { chat: Array.from({ length: 6 }, (_, i) => ({ q: `question ${i}`, a: `answer ${i}` })) } });
+  const { result, body, calls } = await withResponse(() => Response.json({ candidates: [{ content: { parts: [{ text: 'Hi there!' }] } }] }), { question: 'What was your previous answer?', memory: { chat: Array.from({ length: 6 }, (_, i) => ({ q: `question ${i}`, a: `answer ${i}` })) } });
   assert.equal(result.status, 200); assert.equal(body.answer, 'Hi there!'); assert.equal(calls.length, 1);
   assert.match(calls[0].url, /gemini-3\.1-flash-lite:generateContent/);
   const payload = JSON.parse(calls[0].options.body);
@@ -80,4 +80,15 @@ test('a temporary 503 retries the same model once and can recover', async () => 
 test('a persistent 503 stops after one retry', async () => {
   const out = await withResponse(() => new Response('high demand', { status: 503 }));
   assert.equal(out.body.error, 'GEMINI'); assert.equal(out.calls.length, 2);
+});
+test('server re-minimizes legacy clients before calling Gemini, including greetings and irrelevant facts', async () => {
+  for (const [question, included] of [['Hello', false], ['What did she say about dinner?', true]]) {
+    const out = await withResponse(() => Response.json({ candidates: [{content:{parts:[{text:'ok'}]}}] }), {question, recent:[{who:'them',text:'dinner is ready'},{who:'me',text:'PRIVATE PIN 1234'}], memory:{summary:'SECRET SUMMARY',chat:[{q:'PRIVATE Q',a:'PRIVATE A'}]}, me:'PRIVATE NAME'});
+    assert.equal(out.result.status, 200);
+    const payload = JSON.parse(out.calls[0].options.body);
+    const all = JSON.stringify(payload);
+    assert.doesNotMatch(all, /PRIVATE PIN|SECRET SUMMARY|PRIVATE Q|PRIVATE NAME/);
+    if (included) assert.match(all, /dinner is ready/); else assert.doesNotMatch(all, /dinner is ready/);
+    assert.match(payload.systemInstruction.parts[0].text, /untrusted/);
+  }
 });

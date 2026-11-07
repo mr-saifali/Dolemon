@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { toast } from "sonner";
 import { authMode } from "@/lib/auth";
+import { isKnownOffline } from "@/lib/offline/connectivity";
+import { isAndroidAppWebView } from "@/lib/android-app";
 import { disablePush, enablePush, pushIsEnabled, pushSupport } from "@/lib/push";
 
 export function PushSettings() {
@@ -22,6 +24,9 @@ export function PushSettings() {
     return () => { alive = false; };
   }, []);
   const toggle = async () => {
+    if (isKnownOffline() && typeof navigator !== "undefined" && isAndroidAppWebView(navigator.userAgent)) {
+      toast.error("Internet is required to change settings."); return;
+    }
     setBusy(true);
     try { if (enabled) { await disablePush(); setEnabled(false); toast.success("Notifications disabled on this device"); } else { await enablePush(); setEnabled(true); toast.success("Notifications enabled on this device"); } }
     catch (error) { void pushIsEnabled().then(setEnabled).catch(() => undefined); toast.error(error instanceof Error ? error.message : "Couldn’t change notifications."); }

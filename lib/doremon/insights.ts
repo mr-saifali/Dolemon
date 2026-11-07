@@ -507,33 +507,14 @@ export function localDailyBriefing(
 
 /** When the conversation ends, Doremon writes the closing note + summary. */
 export function localFinalize(
-  view: StatsView,
+  _view: StatsView,
   memory: DoremonMemory | null,
-  partnerName: string
+  _partnerName: string
 ): { summary: string; note: string } {
-  const v = view;
-  const bits: string[] = [];
-  if (memory?.summary) bits.push(memory.summary);
-  if (v.me && v.them) {
-    bits.push(
-      `The last session ended with ${v.me.total + v.them.total} total messages exchanged; ${
-        (v.meShare ?? 0) >= (v.themShare ?? 0) ? "my user" : "the partner"
-      } carried more of the conversation (~${Math.round(Math.max(v.meShare ?? 0, v.themShare ?? 0) * 100)}%).`
-    );
-  }
-  if (memory?.tension != null) bits.push(`Tension closed at ${memory.tension}/10.`);
-  if (memory?.conflictTopics?.[0]) bits.push(`Unresolved thread: ${memory.conflictTopics[0]}.`);
-  const summary =
-    bits.length > 0
-      ? bits.slice(0, 4).join(" ")
-      : "A short conversation with no strong signal yet; the record stays open for the next session.";
-
-  const silent = v.silentFor != null && v.silentFor > MS_DAY ? `, ${silenceLabel(v.silentFor)} ki khamoshi ke saath` : "";
-  const note = pick([
-    `Bas, is session ka poora record meri 4D memory mein${silent}. 22vi sadi ka robot, Nobita — main pehli line se jaanta hoon. Wapas aao, sab yaad hai. 🐱`,
-    `Ye session band${silent} — moods, timings, har pattern, sab future-grade save ho gaya. Kuch poochhna ho toh meri room mein mil lena. 😌`,
-  ]);
-  return { summary, note };
+  return {
+    summary: memory?.summary || "No saved summary is available.",
+    note: "Saved notes may be incomplete or inaccurate; they do not record every message.",
+  };
 }
 
 /* ---------------------------------------------------------- gemini prompt */

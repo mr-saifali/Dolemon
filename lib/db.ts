@@ -124,10 +124,8 @@ export async function myId(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
-export async function listConversations(): Promise<DbConversation[]> {
-  const { data, error } = await client().rpc("my_conversations");
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as ConversationRow[]).map((row) => ({
+function mapConversation(row: ConversationRow): DbConversation {
+  return {
     id: row.conversation_id,
     partnerId: row.partner_id,
     partnerUsername: row.partner_username ?? "someone",
@@ -139,7 +137,23 @@ export async function listConversations(): Promise<DbConversation[]> {
     lastAt: row.last_at ? new Date(row.last_at).getTime() : null,
     lastSender: row.last_sender,
     unread: row.unread ?? 0,
-  }));
+  };
+}
+
+export async function listConversations(): Promise<DbConversation[]> {
+  const { data, error } = await client().rpc("my_conversations");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as ConversationRow[]).map(mapConversation);
+}
+
+/** Stable keyset page for a future offline sync. An empty page ends the scan;
+ * a short page does not, because a server may enforce a lower row limit. */
+export async function listOfflineConversationPage(afterId: string | null, signal: AbortSignal): Promise<DbConversation[]> {
+  let query = client().rpc("my_conversations").order("conversation_id", { ascending: true }).limit(100).abortSignal(signal);
+  if (afterId) query = query.gt("conversation_id", afterId);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as ConversationRow[]).map(mapConversation);
 }
 
 /** Opens (or creates) the 1:1 thread with a handle. Returns the conversation id. */
@@ -221,7 +235,8 @@ export const INITIAL_THREAD_PAGE_SIZE = 6;
 export const OLDER_THREAD_PAGE_SIZE = 6;
 
 export async function loadThread(
-  conversationId: string
+  conversationId: string,
+  options: { strictOfflineSync?: boolean } = {}
 ): Promise<{ messages: DbMessage[]; me: string | null }> {
   const sb = client();
   // Fetch the most recent window and the local session concurrently; RLS still
@@ -230,8 +245,8 @@ export async function loadThread(
   const sessionRequest = sb.auth.getSession();
   // Start reactions as soon as the local session is known, in parallel with
   // the message query rather than adding an extra network round trip.
-  const reactionRequest = sessionRequest.then(({ data }) => loadReactions(conversationId, data.session?.user.id ?? null));
-  const [session, result, reactions] = await Promise.all([
+  const reactionRequest = options.strictOfflineSync ? Promise.resolve(null) : sessionRequest.then(({ data }) => loadReactions(conversationId, data.session?.user.id ?? null));
+  const [session, result, initialReactions] = await Promise.all([
     sessionRequest,
     sb.from("messages").select("*").eq("conversation_id", conversationId)
       .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(INITIAL_THREAD_PAGE_SIZE),
@@ -243,7 +258,8 @@ export async function loadThread(
     ...mapRow(row),
     reactions: [] as MessageReaction[],
   }));
-  await resolveQuotes(messages, me);
+  const reactions = initialReactions ?? await loadOfflineReactions(messages.map((message) => message.id), me);
+  await resolveQuotes(messages, me, options.strictOfflineSync);
   const withReactions = messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] }));
   return { messages: withReactions, me };
 }
@@ -294,7 +310,7 @@ export async function loadOlderMessages(conversationId: string, cursor: { create
  */
 type QuoteRef = { id: string; senderId: string; kind: string; body: string; name?: string | null };
 
-async function resolveQuotes(messages: DbMessage[], me: string | null): Promise<void> {
+async function resolveQuotes(messages: DbMessage[], me: string | null, strict = false): Promise<void> {
   const byId = new Map<string, QuoteRef>(
     messages.map((m) => [
       m.id,
@@ -318,6 +334,7 @@ async function resolveQuotes(messages: DbMessage[], me: string | null): Promise<
       .select("id, sender_id, kind, body, media_name")
       .in("id", ids)
       .limit(50)));
+    if (strict && results.some((result) => result.error)) throw new Error("Unable to load message quotes for offline sync.");
     const data = results.flatMap((result) => result.data ?? []);
     for (const row of (data ?? []) as {
       id: string;
@@ -371,21 +388,33 @@ export async function fetchMessageQuote(
   };
 }
 
-export async function loadReactions(
-  conversationId: string,
-  me: string | null
-): Promise<Map<string, MessageReaction[]>> {
-  const { data, error } = await client().rpc("reactions_for_conversation", { target: conversationId });
-  if (error) return new Map();
+/** Only the current offline window: fetching all historical reactions can be
+ * silently capped by PostgREST before it reaches recent messages. */
+async function loadOfflineReactions(messageIds: string[], me: string | null): Promise<Map<string, MessageReaction[]>> {
+  if (!messageIds.length) return new Map();
+  const { data, error } = await client().from("message_reactions").select("message_id,user_id,reaction_type").in("message_id", messageIds);
+  if (error) throw new Error("Unable to load reactions for offline sync.");
+  return mapReactionRows((data ?? []) as ReactionRow[], me);
+}
 
+function mapReactionRows(rows: ReactionRow[], me: string | null): Map<string, MessageReaction[]> {
   const map = new Map<string, MessageReaction[]>();
-  for (const row of (data ?? []) as ReactionRow[]) {
+  for (const row of rows) {
     if (!isReactionType(row.reaction_type)) continue;
     const list = map.get(row.message_id) ?? [];
     list.push({ type: row.reaction_type, by: row.user_id === me ? "me" : "them" });
     map.set(row.message_id, list);
   }
   return map;
+}
+
+export async function loadReactions(
+  conversationId: string,
+  me: string | null
+): Promise<Map<string, MessageReaction[]>> {
+  const { data, error } = await client().rpc("reactions_for_conversation", { target: conversationId });
+  if (error) return new Map();
+  return mapReactionRows((data ?? []) as ReactionRow[], me);
 }
 
 export type MessageKind = "text" | "sticker" | "call" | "image" | "audio" | "file" | "presence";
@@ -503,13 +532,15 @@ export async function setMyReaction(messageId: string, type: ReactionType): Prom
 export async function removeMyReaction(messageId: string): Promise<void> {
   const sb = client();
   const me = (await sb.auth.getUser()).data.user?.id;
-  if (!me) return;
-  const { error } = await sb
+  if (!me) throw new Error("You're signed out.");
+  const { data, error } = await sb
     .from("message_reactions")
     .delete()
     .eq("message_id", messageId)
-    .eq("user_id", me);
+    .eq("user_id", me)
+    .select("message_id");
   if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Reaction removal could not be confirmed.");
 }
 
 /** Mark locally unread messages and, if enabled, publish a server read cursor.

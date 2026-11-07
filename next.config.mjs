@@ -5,14 +5,14 @@ const nextConfig = {
     return [{ source: "/", destination: "/app", permanent: false }];
   },
   async headers() {
-    return [{
-      source: "/downloads/dolemon-test-1.1.0.apk",
+    return ["1.0.0", "1.1.0", "1.2.0"].map((version) => ({
+      source: `/downloads/dolemon-test-${version}.apk`,
       headers: [
         { key: "Content-Type", value: "application/vnd.android.package-archive" },
-        { key: "Content-Disposition", value: 'attachment; filename="Dolemon-test-1.1.0.apk"' },
+        { key: "Content-Disposition", value: `attachment; filename="Dolemon-test-${version}.apk"` },
         { key: "X-Content-Type-Options", value: "nosniff" },
       ],
-    }];
+    }));
   },
   experimental: { optimizePackageImports: ["lucide-react", "framer-motion"] },
 };

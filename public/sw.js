@@ -1,10 +1,10 @@
 /* Only public, versioned assets and the standalone offline page are cached.
  * Conversation data, navigations and RSC requests always go to the network. */
-const SHELL_CACHE = "dolemon-shell-v3";
+const SHELL_CACHE = "dolemon-shell-v4";
 const STATIC_CACHE = "dolemon-static-v1";
 const MAX_STATIC_ENTRIES = 500;
 const OFFLINE_PAGE = "/offline.html";
-const PUBLIC_ASSETS = [OFFLINE_PAGE, "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable.png"];
+const PUBLIC_ASSETS = [OFFLINE_PAGE, "/icons/icon-192.png?v=2", "/icons/icon-512.png?v=2", "/icons/icon-maskable.png?v=2"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -82,7 +82,7 @@ self.addEventListener("push", (event) => {
   try { payload = event.data ? event.data.json() : {}; } catch { /* generic notification */ }
   const path = typeof payload.url === "string" && /^\/app\/chat\/[0-9a-f-]{36}$/i.test(payload.url) ? payload.url : "/app";
   event.waitUntil(self.registration.showNotification("Dolemon", {
-    body: "You have a new message.", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png",
+    body: "You have a new message.", icon: "/icons/icon-192.png?v=2", badge: "/icons/icon-192.png?v=2",
     data: { path },
   }));
 });

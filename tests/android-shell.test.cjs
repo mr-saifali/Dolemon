@@ -40,3 +40,12 @@ test('offline vault scaffolding binds encrypted entries to their account and req
   // No access path is shipped until the reader and native credential gate exist.
   assert.doesNotMatch(activity,/new OfflineVault|addJavascriptInterface/);
 });
+
+
+test('the release shell version and package configuration match the published update',()=>{
+  const build=fs.readFileSync('android/app/build.gradle','utf8');
+  assert.match(build,/applicationId 'app\.dolemon\.mobile'/);
+  assert.match(build,/versionCode 3/);
+  assert.match(build,/versionName '1\.2\.0'/);
+  assert.match(activity,/DolemonAndroid\/1\.2\.0/);
+});

@@ -12,7 +12,7 @@ function worker({ hangNavigation = false } = {}) {
     if (hangNavigation && options?.signal) {
       return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))));
     }
-    if (!online || (failIcon && url.endsWith('icon-192.png'))) throw new Error('offline');
+    if (!online || (failIcon && new URL(url).pathname.endsWith('icon-192.png'))) throw new Error('offline');
     const response = new Response(url.endsWith('/offline.html') ? 'offline page' : `network: ${url}`, { status: 200 });
     Object.defineProperty(response, 'type', { value: 'basic' });
     return response;
@@ -54,7 +54,7 @@ test('install handles individual missing assets and only deletes Dolemon caches'
   const w = worker();
   await w.caches.open('dolemon-v0.4.0'); await w.caches.open('other-app');
   w.failIcon(); await w.lifecycle('install'); await w.lifecycle('activate');
-  assert.ok(await (await w.caches.open('dolemon-shell-v3')).match('/offline.html'));
+  assert.ok(await (await w.caches.open('dolemon-shell-v4')).match('/offline.html'));
   assert.equal(w.stores.has('dolemon-v0.4.0'), false);
   assert.equal(w.stores.has('other-app'), true);
 });
@@ -66,7 +66,7 @@ test('navigation stays network-first and uses a standalone offline page, never p
   w.setOnline(false);
   const offline = await w.request('/app/chat/private-room', { mode: 'navigate' });
   assert.equal(await offline.text(), 'offline page');
-  assert.equal((await (await w.caches.open('dolemon-shell-v3')).match('/app/chat/private-room')), undefined);
+  assert.equal((await (await w.caches.open('dolemon-shell-v4')).match('/app/chat/private-room')), undefined);
 });
 
 test('only same-origin Next static assets are cached and cache hits avoid network', async () => {

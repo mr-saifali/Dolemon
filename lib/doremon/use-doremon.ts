@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { previewFor, type ChatMessage } from "@/lib/thread";
 import type { BrainMessage } from "./local-brain";
-import { localAnalyze, localAsk } from "./local-brain";
+import { localAnalyze } from "./local-brain";
 import {
   loadDoremonMemory,
   loadDoremonMessages,
@@ -58,11 +58,11 @@ export function useDoremon(
         const next = [...prev, { id: uid(), kind, text, at: Date.now() }].slice(-40);
         // The offline notice is live feedback, not conversation — show it on
         // screen, but never let it pile up in the saved history.
-        if (!isOfflineNotice(text)) saveDoremonMessages(conversationId, next);
+        if (!isOfflineNotice(text)) saveDoremonMessages(conversationId, next, meId);
         return next;
       });
     },
-    [conversationId]
+    [conversationId, meId]
   );
 
   const commitMemory = useCallback(
@@ -80,14 +80,14 @@ export function useDoremon(
   /* ------------------------------------------------ load memory + old messages */
   useEffect(() => {
     // drop any offline notices saved before they were excluded from history
-    setDoremonMessages(loadDoremonMessages(conversationId).filter((m) => !isOfflineNotice(m.text)));
+    setDoremonMessages(loadDoremonMessages(conversationId, meId).filter((m) => !isOfflineNotice(m.text)));
     void loadDoremonMemory(conversationId, remote).then((mem) => {
       memoryRef.current = mem;
       setMemory(mem);
       // keep the partner's handle in the record, even before the first analysis
       if (analysisEnabledRef.current && mem && mem.partnerUsername !== partner) commitMemory(mem);
     });
-  }, [conversationId, remote, partner, commitMemory]);
+  }, [conversationId, remote, partner, commitMemory, meId]);
 
   /* --------------------------------------------------------- the watcher */
   const humanMessages = messages.filter((m) => m.author === "me" || m.author === "them");
@@ -216,7 +216,7 @@ export function useDoremon(
           answer = OFFLINE_NOTICE + (reason ? ` (${reason})` : "");
         } else {
           // Pure demo mode (no backend at all): the pocket brain IS the brain.
-          answer = localAsk(question, memoryRef.current, recent);
+          answer = "I cannot answer from message details in demo mode. Try a specific question in Doremon's room.";
         }
       }
 

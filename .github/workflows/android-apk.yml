@@ -20,8 +20,18 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle --no-daemon assembleDebug
-      - name: Verify published test APK signature
-        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs public/downloads/dolemon-test-1.1.0.apk'
+      - name: Verify new test APK
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -5
+          sha256sum "$APK"
+      - name: Verify published APK
+        run: |
+          APK=public/downloads/dolemon-test-1.2.0.apk
+          echo "278bc8a1f1710ed4e0486792b408f1aa69c4a13bfbfbdacc9c267047eea13d26  $APK" | sha256sum -c
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='app.dolemon.mobile' versionCode='3' versionName='1.2.0'"
       - uses: actions/upload-artifact@v4
         with:
           name: Dolemon-android-debug

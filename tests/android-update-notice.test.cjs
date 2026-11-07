@@ -15,7 +15,8 @@ const wv='Mozilla/5.0 (Linux; Android 10; Pixel; wv) AppleWebKit/537.36';
 
 test('notice targets older marked versions and unmarked Android WebViews, not browsers or current apps',()=>{
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.0.0`),'older-marked');
-  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.1.0`),null);
+  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.1.0`),'older-marked');
+  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.2.0`),null);
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.10.0`),null);
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/2.0.0`),null);
   assert.equal(androidUpdateTarget(wv),'unmarked-webview');
@@ -38,6 +39,7 @@ test('legacy notice links to the published APK, warns of data loss and dismisses
     const text=JSON.stringify(tree.toJSON());
     assert.match(text,/If you’re using the older Dolemon/);
     assert.match(text,/erases its local app data/);
+    assert.match(text,/Versions 1.0 and 1.1 use different signing keys/);
     const link=tree.root.findByType('a');
     assert.equal(link.props.href,ANDROID_APK_URL); assert.equal(link.props.download,ANDROID_APK_FILENAME);
     await act(async()=>tree.root.findByType('button').props.onClick());

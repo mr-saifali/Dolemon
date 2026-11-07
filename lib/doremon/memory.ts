@@ -58,18 +58,20 @@ export async function saveDoremonMemory(conversationId: string, memory: DoremonM
 }
 
 /** Delete only this user's copy and this device's local Doremon messages. */
-export async function deleteDoremonMemory(conversationId: string, remote: boolean): Promise<void> {
+export async function deleteDoremonMemory(conversationId: string, remote: boolean, localUserId?: string | null): Promise<void> {
   if (remote) {
     const sb = getSupabase();
     if (!sb) throw new Error("Supabase is unavailable");
     const { data, error: authError } = await sb.auth.getUser();
     if (authError || !data.user?.id) throw new Error("Sign in to delete memory");
+    localUserId = data.user.id;
     const { error } = await sb.from("doremon_memory").delete().eq("user_id", data.user.id).eq("conversation_id", conversationId);
     if (error) throw new Error(error.message);
   }
   if (typeof window !== "undefined") {
     if (!remote) window.localStorage.removeItem(MEM_PREFIX + conversationId);
     window.localStorage.removeItem(MSG_PREFIX + conversationId);
+    if (localUserId) window.localStorage.removeItem(messageKey(conversationId, localUserId));
   }
 }
 
@@ -131,20 +133,22 @@ export async function loadDoremonStats(
 }
 
 /** Doremon responses stored locally for this conversation. */
-export function loadDoremonMessages(conversationId: string): DoremonMessage[] {
-  if (typeof window === "undefined") return [];
+const messageKey = (conversationId: string, userId: string) => `${MSG_PREFIX}v2:${encodeURIComponent(userId)}:${encodeURIComponent(conversationId)}`;
+
+export function loadDoremonMessages(conversationId: string, userId: string | null): DoremonMessage[] {
+  if (typeof window === "undefined" || !userId) return [];
   try {
-    const raw = window.localStorage.getItem(MSG_PREFIX + conversationId);
+    const raw = window.localStorage.getItem(messageKey(conversationId, userId));
     return raw ? ((JSON.parse(raw) as DoremonMessage[]).slice(-MAX_MSGS) ?? []) : [];
   } catch {
     return [];
   }
 }
 
-export function saveDoremonMessages(conversationId: string, messages: DoremonMessage[]): void {
-  if (typeof window === "undefined") return;
+export function saveDoremonMessages(conversationId: string, messages: DoremonMessage[], userId: string | null): void {
+  if (typeof window === "undefined" || !userId) return;
   try {
-    window.localStorage.setItem(MSG_PREFIX + conversationId, JSON.stringify(messages.slice(-MAX_MSGS)));
+    window.localStorage.setItem(messageKey(conversationId, userId), JSON.stringify(messages.slice(-MAX_MSGS)));
   } catch {
     /* quota — drop persistence, keep the session */
   }

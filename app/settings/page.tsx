@@ -43,7 +43,9 @@ import { compressImage } from "@/lib/media";
 import { passwordStrength } from "@/lib/password";
 import { confirmDoremonAnalysis } from "@/lib/doremon/consent";
 import { useSession } from "@/lib/session";
-import { setPref, usePrefs } from "@/lib/prefs";
+import { setPref, usePrefs, type Prefs } from "@/lib/prefs";
+import { isKnownOffline } from "@/lib/offline/connectivity";
+import { isAndroidAppWebView } from "@/lib/android-app";
 import { cn } from "@/lib/utils";
 import { APP_RELEASE_NAME, APP_VERSION } from "@/lib/version";
 
@@ -103,7 +105,19 @@ function SettingsContent() {
   const avatar = avatarById(account?.avatarId);
   const strength = passwordStrength(lockPassword);
 
+  // The future offline reader must not silently save settings changes. Privacy
+  // stop, sign-out and lock-now remain available even without a connection.
+  const canChangeSettings = () => {
+    if ((androidApp || (typeof navigator !== "undefined" && isAndroidAppWebView(navigator.userAgent))) && isKnownOffline()) { toast.error("Internet is required to change settings."); return false; }
+    return true;
+  };
+  const setSetting = <K extends keyof Prefs>(key: K, value: Prefs[K]) => {
+    if (key === "doremonAnalysis" && value === false) { setPref(key, value); return; }
+    if (canChangeSettings()) setPref(key, value);
+  };
+
   const setPrivacy = async (value: boolean) => {
+    if (!canChangeSettings()) return;
     try {
       await auth.setPrivate(value);
       await refresh();
@@ -114,7 +128,7 @@ function SettingsContent() {
   };
 
   const saveAvatar = async (avatarId: string | null) => {
-    if (!account?.username) return;
+    if (!canChangeSettings() || !account?.username) return;
     setSavingAvatar(true);
     try {
       await auth.saveProfile({ username: account.username, avatarId });
@@ -126,9 +140,10 @@ function SettingsContent() {
     }
   };
 
-  const pickPhoto = () => photoInput.current?.click();
+  const pickPhoto = () => { if (canChangeSettings()) photoInput.current?.click(); };
 
   const uploadPhoto = async (file: File) => {
+    if (!canChangeSettings()) return;
     setUploadingPhoto(true);
     try {
       const { dataUrl } = await compressImage(file, 720, 0.82);
@@ -145,6 +160,7 @@ function SettingsContent() {
   };
 
   const removePhoto = async () => {
+    if (!canChangeSettings()) return;
     setUploadingPhoto(true);
     try {
       await auth.setAvatar(null);
@@ -159,6 +175,7 @@ function SettingsContent() {
 
   const saveLock = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canChangeSettings()) return;
     if (lockPassword.length < 4) {
       setLockError("At least 4 characters.");
       return;
@@ -180,6 +197,7 @@ function SettingsContent() {
   };
 
   const removeLock = async () => {
+    if (!canChangeSettings()) return;
     setSavingLock(true);
     try {
       await auth.setAppLock(null);
@@ -329,7 +347,7 @@ function SettingsContent() {
           <div className="grid grid-cols-2 gap-2.5 p-3.5">
             <button
               type="button"
-              onClick={() => setPref("appearance", "feminine")}
+              onClick={() => setSetting("appearance", "feminine")}
               aria-pressed={prefs.appearance === "feminine"}
               className={cn(
                 "flex flex-col gap-3 rounded-[18px] border p-3.5 text-left transition-colors",
@@ -359,7 +377,7 @@ function SettingsContent() {
 
             <button
               type="button"
-              onClick={() => setPref("appearance", "masculine")}
+              onClick={() => setSetting("appearance", "masculine")}
               aria-pressed={prefs.appearance === "masculine"}
               className={cn(
                 "flex flex-col gap-3 rounded-[18px] border p-3.5 text-left transition-colors",
@@ -472,7 +490,7 @@ function SettingsContent() {
                             <button
                               key={option.id}
                               type="button"
-                              onClick={() => setPref("autoLock", option.id as AutoLockId)}
+                              onClick={() => setSetting("autoLock", option.id as AutoLockId)}
                               className={cn(
                                 "flex-1 rounded-full px-2 py-1.5 text-[11.5px] font-medium transition-colors",
                                 active
@@ -538,7 +556,7 @@ function SettingsContent() {
               label="Read receipts"
               description="Let them know you've seen it."
               checked={prefs.readReceipts}
-              onChange={(v) => setPref("readReceipts", v)}
+              onChange={(v) => setSetting("readReceipts", v)}
             />
           </div>
 
@@ -548,7 +566,7 @@ function SettingsContent() {
               label="Typing"
               description="Show the dots while you write."
               checked={prefs.typingIndicator}
-              onChange={(v) => setPref("typingIndicator", v)}
+              onChange={(v) => setSetting("typingIndicator", v)}
             />
           </div>
         </Section>
@@ -560,9 +578,9 @@ function SettingsContent() {
               label="Automatic chat analysis"
               description="Optional: analyze recent chat text on this device and save a personal memory, including to your account when available. Turn off to stop future analysis; existing memories remain. Ask the other person first."
               checked={prefs.doremonAnalysis}
-              onChange={(v) => { if (!v || confirmDoremonAnalysis()) setPref("doremonAnalysis", v); }}
+              onChange={(v) => { if (!v || confirmDoremonAnalysis()) setSetting("doremonAnalysis", v); }}
             />
-            <p className="mt-2 pl-12 text-xs leading-relaxed text-zinc-500">When you ask Doremon or request a daily briefing, chat excerpts and memory can be sent to Google Gemini. AI interpretations may be wrong.</p>
+            <p className="mt-2 pl-12 text-xs leading-relaxed text-zinc-500">Questions and daily briefs send only generic labels and partial message counts to an external AI service, which may use or review them. AI cannot see message details and can be wrong. Existing saved memories may still be in your account.</p>
           </div>
         </Section>
 
@@ -573,7 +591,7 @@ function SettingsContent() {
               label="Share presence"
               description="Shares your online status while this app is visible. Turning it off stops future updates from this device; earlier timestamps may remain."
               checked={prefs.showPresence}
-              onChange={(v) => setPref("showPresence", v)}
+              onChange={(v) => setSetting("showPresence", v)}
             />
           </div>
           <div className="py-3.5">
@@ -582,7 +600,7 @@ function SettingsContent() {
               label="Pulses"
               description="Demo pulses only. Live pulses are not available yet."
               checked={prefs.allowPulses}
-              onChange={(v) => setPref("allowPulses", v)}
+              onChange={(v) => setSetting("allowPulses", v)}
             />
           </div>
           <div className="py-3.5">
@@ -591,7 +609,7 @@ function SettingsContent() {
               label="Haptics"
               description="A small buzz when they reach out."
               checked={prefs.haptics}
-              onChange={(v) => setPref("haptics", v)}
+              onChange={(v) => setSetting("haptics", v)}
             />
           </div>
         </Section>
@@ -601,7 +619,7 @@ function SettingsContent() {
             <p className="text-[14.5px] font-medium text-zinc-200">Make the room yours</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-500">Choose a default for your chats, or pick a different background inside each chat. Your choice stays on this device.</p>
             <div className="mt-4">
-              <ChatThemePicker value={getChatTheme(prefs.chatTheme).id} onChange={(id) => setPref("chatTheme", id)} />
+              <ChatThemePicker value={getChatTheme(prefs.chatTheme).id} onChange={(id) => setSetting("chatTheme", id)} />
             </div>
           </div>
         </Section>
@@ -613,7 +631,7 @@ function SettingsContent() {
               label="Reduce motion"
               description="Fewer slides and springs, everywhere."
               checked={prefs.reduceMotion}
-              onChange={(v) => setPref("reduceMotion", v)}
+              onChange={(v) => setSetting("reduceMotion", v)}
             />
           </div>
           <div className="py-3.5">
@@ -622,7 +640,7 @@ function SettingsContent() {
               label="Compact chat"
               description="Tighter bubbles, more of the thread on screen."
               checked={prefs.compactChat}
-              onChange={(v) => setPref("compactChat", v)}
+              onChange={(v) => setSetting("compactChat", v)}
             />
           </div>
           <div className="py-3.5">
@@ -631,7 +649,7 @@ function SettingsContent() {
               label="Message sounds"
               description="A quiet chime when their message lands."
               checked={prefs.sounds}
-              onChange={(v) => setPref("sounds", v)}
+              onChange={(v) => setSetting("sounds", v)}
             />
           </div>
           <div className="py-3.5">
@@ -640,7 +658,7 @@ function SettingsContent() {
               label="Intro music"
               description="A short jingle when you open Dolemon."
               checked={prefs.introMusic}
-              onChange={(v) => setPref("introMusic", v)}
+              onChange={(v) => setSetting("introMusic", v)}
             />
           </div>
         </Section>

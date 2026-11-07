@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Camera, ImagePlus, Mic, Smile, X } from "lucide-react";
+import { ArrowUp, Camera, FileText, ImagePlus, Mic, Plus, Smile, Video, X } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { PulseButton } from "./pulse-button";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
@@ -18,6 +18,9 @@ export function ChatInput({
   onAttach,
   onCamera,
   onVoice,
+  onFile,
+  onVideo,
+  publicMedia = false,
   onTyping,
   showPulse = true,
   pulseCoolingUntil = 0,
@@ -34,6 +37,9 @@ export function ChatInput({
   onAttach: () => void;
   onCamera: () => void;
   onVoice: () => void;
+  onFile?: () => void;
+  onVideo?: () => void;
+  publicMedia?: boolean;
   /** fired while the user types — drives the partner's "typing…" */
   onTyping?: () => void;
   showPulse?: boolean;
@@ -47,8 +53,12 @@ export function ChatInput({
 }) {
   const [value, setValue] = useState("");
   const [trayOpen, setTrayOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement | null>(null);
+  const composer = useRef<HTMLDivElement | null>(null);
+  const plus = useRef<HTMLButtonElement | null>(null);
   const hasText = value.trim().length > 0;
+  const hasDraft = value.length > 0;
 
   useEffect(() => {
     const el = area.current;
@@ -57,12 +67,30 @@ export function ChatInput({
     el.style.height = `${Math.min(el.scrollHeight, MAX_LINES_PX)}px`;
   }, [value]);
 
+  useEffect(() => {
+    if ((!optionsOpen && !trayOpen) || typeof window === "undefined") return;
+    if (optionsOpen && document.activeElement === plus.current) {
+      composer.current?.querySelector<HTMLButtonElement>('[role="group"][aria-label="Add to your message"] button')?.focus();
+    }
+    const onPointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !composer.current?.contains(event.target)) { setOptionsOpen(false); setTrayOpen(false); }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); setOptionsOpen(false); setTrayOpen(false); plus.current?.focus();
+    };
+    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", onPointer); window.removeEventListener("keydown", onKey); };
+  }, [optionsOpen, trayOpen]);
+
   const submit = () => {
     const text = value.trim();
     if (!text || disabled) return;
     if (onSend(text) === false) return;
     setValue("");
     setTrayOpen(false);
+    setOptionsOpen(false);
     // Keep the keyboard exactly where it is. Re-focusing an already-focused
     // field on iOS/Android makes the keyboard dip and come back — the glitch.
     if (document.activeElement !== area.current) {
@@ -71,10 +99,10 @@ export function ChatInput({
   };
 
   return (
-    <div className="relative z-20">
+    <div ref={composer} className="relative z-20">
       <div className="mx-auto flow-root w-full max-w-2xl pb-[env(safe-area-inset-bottom)] pt-1.5">
         {hint && <div className="mx-3 mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
-        {/^\/doremon\b/i.test(value.trim()) && <p className="mx-3 mb-2 px-1 text-xs leading-relaxed text-sky-200">Asking can send recent chat excerpts and memory to Google Gemini. Consider the other person’s consent; AI interpretations can be wrong.</p>}
+        {/^\/doremon\b/i.test(value.trim()) && <p className="mx-3 mb-2 px-1 text-xs leading-relaxed text-sky-200">Only generic labels and partial counts go to an external AI service; it cannot see message text. Ask the other person first; AI can be wrong.</p>}
 
         <AnimatePresence>
           {replyTo && (
@@ -101,9 +129,35 @@ export function ChatInput({
           )}
         </AnimatePresence>
 
-        <AnimatePresence>
-          {trayOpen && (
+        {optionsOpen && !hasDraft && (
             <motion.div
+              role="group" aria-label="Add to your message"
+              initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6 }}
+              transition={SPRING}
+              className="mx-3 mb-2 rounded-[22px] border border-white/10 bg-[#1C1C1E]/95 p-3 shadow-xl backdrop-blur-xl"
+            >
+              <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">
+                {[
+                  { label: "Photo", icon: <ImagePlus />, action: onAttach },
+                  { label: "Camera", icon: <Camera />, action: onCamera },
+                  { label: "Voice note", icon: <Mic />, action: onVoice },
+                  ...(onFile ? [{ label: "File", icon: <FileText />, action: onFile }] : []),
+                  ...(onVideo ? [{ label: "Video", icon: <Video />, action: onVideo }] : []),
+                  { label: "Stickers", icon: <Smile />, action: () => setTrayOpen(true) },
+                ].map(({ label, icon, action }) => (
+                  <button key={label} type="button" disabled={disabled} onClick={() => { setOptionsOpen(false); action(); }}
+                    className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] text-zinc-300 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-40">
+                    <span className="[&>svg]:h-5 [&>svg]:w-5" aria-hidden>{icon}</span>{label}
+                  </button>
+                ))}
+              </div>
+              {publicMedia && <p role="note" className="mt-2 px-1 text-[11px] leading-relaxed text-amber-200/90">Photos, voice notes and files use public links. Videos use a private temporary handoff.</p>}
+            </motion.div>
+        )}
+
+        {trayOpen && !hasDraft && (
+            <motion.div
+              role="group" aria-label="Stickers and reactions"
               initial={{ opacity: 0, y: 8, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
@@ -138,20 +192,18 @@ export function ChatInput({
                 </div>
               )}
             </motion.div>
-          )}
-        </AnimatePresence>
+        )}
 
         <div data-chat-composer="true" className="mx-3 mb-4 flex items-end gap-0.5 rounded-full border border-white/10 bg-black/40 px-1 py-1 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65)] backdrop-blur-md">
-          <motion.button
-            type="button"
-            onClick={onCamera}
-            disabled={disabled}
-            aria-label="Camera and attachments"
-            whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-          >
-            <Camera className="h-5 w-5" strokeWidth={1.8} />
-          </motion.button>
+          {!hasDraft && (
+            <motion.button ref={plus} type="button" onClick={() => { setTrayOpen(false); setOptionsOpen((open) => !open); }}
+              disabled={disabled} aria-label="Attachment options" aria-expanded={optionsOpen || trayOpen}
+              whileTap={{ scale: 0.9 }}
+              className={cn("mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-40", optionsOpen && "text-rose")}
+            >
+              <Plus className={cn("h-6 w-6 transition-transform", optionsOpen && "rotate-45")} strokeWidth={1.8} />
+            </motion.button>
+          )}
 
           <div className="flex min-w-0 flex-1 items-end px-1 py-2">
             <textarea
@@ -162,6 +214,7 @@ export function ChatInput({
               aria-label={placeholder}
               onChange={(e) => {
                 setValue(e.target.value);
+                if (e.target.value.length) { setOptionsOpen(false); setTrayOpen(false); }
                 if (e.target.value.trim()) onTyping?.();
               }}
               onKeyDown={(e) => {
@@ -174,49 +227,13 @@ export function ChatInput({
             />
           </div>
 
-          <motion.button
-            type="button"
-            onClick={onAttach}
-            disabled={disabled}
-            aria-label="Photos and attachments"
-            whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-          >
-            <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
-          </motion.button>
-
-          <motion.button
-            type="button"
-            onClick={() => !disabled && setTrayOpen((o) => !o)}
-            disabled={disabled}
-            aria-label="Stickers and reactions"
-            aria-expanded={trayOpen}
-            whileTap={{ scale: 0.9 }}
-            className={cn(
-              "mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
-              trayOpen ? "text-rose" : "text-zinc-400"
-            )}
-          >
-            <Smile className="h-6 w-6" strokeWidth={1.8} />
-          </motion.button>
-
-          <motion.button
-            type="button"
-            onClick={onVoice}
-            disabled={disabled}
-            aria-label="Record a voice note"
-            whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-          >
-            <Mic className="h-5 w-5" strokeWidth={1.8} />
-          </motion.button>
           <AnimatePresence initial={false}>
-            {hasText && (
+            {hasDraft && (
               <motion.button
                 key="send"
                 type="button"
                 onClick={submit}
-                disabled={disabled}
+                disabled={disabled || !hasText}
                 aria-label="Send message"
                 initial={{ scale: 0.6, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -225,7 +242,7 @@ export function ChatInput({
                 whileTap={{ scale: 0.9 }}
                 // Keep focus in the field so the keyboard doesn't dip on send.
                 onPointerDown={(e) => e.preventDefault()}
-                className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-[#FF5C7A] transition-colors hover:text-[#ff8198] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+                className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#FF5C7A] transition-colors hover:text-[#ff8198] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-40"
               >
                 <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
               </motion.button>

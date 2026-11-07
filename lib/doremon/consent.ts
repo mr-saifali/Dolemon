@@ -3,7 +3,7 @@ export function confirmDoremonSharing(remote: boolean): boolean {
   if (!remote) return true;
   if (typeof window === "undefined") return false;
   return window.confirm(
-    "This request sends your question, recent chat excerpts and relevant saved memory to Google Gemini for an AI response. The response may be inaccurate. Please ask the other person for permission before sharing their messages.\n\nContinue only if you have permission."
+    "If the external AI service is used, it receives only generic request labels and, when relevant, partial message counts. Questions, message text and Doremon history are not sent to that service. New room history is stored unencrypted on this device; older saved history may remain in your account. The service may use and review submitted content to improve its products. Answers cannot use details it has not received and may be inaccurate. Please ask the other person before sharing information about your conversation.\n\nContinue only if you have permission."
   );
 }
 

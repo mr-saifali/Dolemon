@@ -50,7 +50,7 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
             <div className="flex items-center gap-3">
               <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[14px] border border-white/10 bg-[#0C0C0F]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/icon-192.png" alt="" className="h-full w-full object-cover" />
+                <img src="/icons/icon-192.png?v=2" alt="" className="h-full w-full object-cover" />
               </span>
               <div>
                 <h3 className="text-[17px] font-medium tracking-[-0.01em] text-zinc-100">

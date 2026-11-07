@@ -11,7 +11,7 @@ test('cloud requests and automatic analysis require a clear action-specific ackn
     assert.equal(confirmDoremonSharing(false), true);
     assert.equal(prompts.length, 0);
     assert.equal(confirmDoremonSharing(true), false);
-    assert.match(prompts[0], /Google Gemini/); assert.match(prompts[0], /other person/);
+    assert.match(prompts[0], /external AI service/); assert.match(prompts[0], /may use and review/); assert.match(prompts[0], /other person/); assert.doesNotMatch(prompts[0], /gemini/i);
     assert.equal(confirmDoremonAnalysis(), false);
     assert.match(prompts[1], /until you turn it off/); assert.match(prompts[1], /does not delete/);
     window.confirm = () => true;

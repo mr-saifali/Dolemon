@@ -72,7 +72,7 @@ export default function DownloadPage() {
         >
           <div className="h-[88px] w-[88px] overflow-hidden rounded-[22px] border border-white/10 shadow-[0_18px_50px_-18px_rgba(255,92,122,0.45)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/icon-512.png" alt="Dolemon" className="h-full w-full object-cover" />
+            <img src="/icons/icon-512.png?v=2" alt="Dolemon" className="h-full w-full object-cover" />
           </div>
 
           <h1 className="mt-6 text-[26px] font-medium leading-tight tracking-[-0.02em] text-zinc-100">
@@ -97,7 +97,7 @@ export default function DownloadPage() {
             Download Android APK
           </a>
           <p className="mt-3 text-xs leading-relaxed text-zinc-400">
-            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. To install over the 1.0.0 test build, uninstall it first; uninstalling erases its local app data.
+            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. Versions 1.0 and 1.1 cannot upgrade in place: uninstall the old app first; uninstalling erases its local app data. Back up anything important first.
           </p>
 
           {canInstall ? (

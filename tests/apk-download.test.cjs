@@ -44,7 +44,7 @@ test('Android app marker and legacy Android WebView are recognized without hidin
   assert.equal(isAndroidAppWebView('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'), false);
   assert.equal(isAndroidAppWebView('Mozilla/5.0'), false);
   const activity = fs.readFileSync('android/app/src/main/java/app/dolemon/mobile/MainActivity.java','utf8');
-  assert.match(activity, /setUserAgentString\(settings\.getUserAgentString\(\) \+ " DolemonAndroid\/1\.1\.0"\)/);
+  assert.match(activity, /setUserAgentString\(settings\.getUserAgentString\(\) \+ " DolemonAndroid\/1\.2\.0"\)/);
 });
 
 test('server labels the latest APK download correctly', async () => {

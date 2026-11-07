@@ -58,10 +58,17 @@ project and change over time; a successful test is not a guarantee of future
 availability or free quota. A temporary HTTP 503 gets one retry of the same
 model; other failures are not retried and no model fallback is used. If a quota
 error occurs, check the project's quota and billing in Google AI Studio.
-`/api/doremon?models=1` lists models visible to the key, but the list and room
-status check do not guarantee generation access. AI generation requires a valid
-Supabase login. Conversation data sent to Gemini includes recent chat, a
-compressed memory, and up to four recent private room exchanges.
+The public model-catalog diagnostic is disabled. AI generation requires a valid
+Supabase login. The current client sends only fixed generic intent/language
+labels and bounded partial per-day message counts; raw questions, messages,
+names, code mappings and room Q&A are not sent to the external AI service.
+Older clients can still send raw content to the application server, where it
+is stripped before generation. The AI cannot interpret private chat details
+under this design. Local keyword lookup searches only the loaded window and
+is explicitly incomplete. New room history stores the latest five exchanges
+on this device without encryption, scoped by account and conversation. Older
+history may still exist in account memory until explicitly deleted. This is
+not a security audit or a guarantee against all privacy risks.
 
 Run the mocked API and theme tests with `node --test tests/*.test.cjs`.
 

@@ -22,15 +22,15 @@ async function withResponse(response, extra = {}) {
   const result = await POST(request(extra));
   return { result, body: await result.json(), calls };
 }
-test('a follow-up uses the fixed verified model and bounded room history', async () => {
+test('a follow-up uses the fixed model and only generic history labels', async () => {
   process.env.GEMINI_MODEL = 'obsolete-override';
   const { result, body, calls } = await withResponse(() => Response.json({ candidates: [{ content: { parts: [{ text: 'Hi there!' }] } }] }), { question: 'What was your previous answer?', memory: { chat: Array.from({ length: 6 }, (_, i) => ({ q: `question ${i}`, a: `answer ${i}` })) } });
   assert.equal(result.status, 200); assert.equal(body.answer, 'Hi there!'); assert.equal(calls.length, 1);
   assert.match(calls[0].url, /gemini-3\.1-flash-lite:generateContent/);
   const payload = JSON.parse(calls[0].options.body);
   assert.deepEqual(payload.generationConfig.thinkingConfig, { thinkingLevel: 'low' });
-  assert.equal(payload.generationConfig.maxOutputTokens, 1024);
-  assert.match(payload.contents[0].parts[0].text, /question 5/); assert.doesNotMatch(payload.contents[0].parts[0].text, /question 1/);
+  assert.equal(payload.generationConfig.maxOutputTokens, 512);
+  assert.doesNotMatch(payload.contents[0].parts[0].text, /question \d|answer \d/); assert.equal(JSON.parse(payload.contents[0].parts[0].text).history.length, 5);
 });
 test('quota errors give a retry hint without calling another model', async () => {
   const out = await withResponse(() => Response.json({ error: { details: [{ retryDelay: '12.5s' }] } }, { status: 429 }));
@@ -81,14 +81,34 @@ test('a persistent 503 stops after one retry', async () => {
   const out = await withResponse(() => new Response('high demand', { status: 503 }));
   assert.equal(out.body.error, 'GEMINI'); assert.equal(out.calls.length, 2);
 });
-test('server re-minimizes legacy clients before calling Gemini, including greetings and irrelevant facts', async () => {
-  for (const [question, included] of [['Hello', false], ['What did she say about dinner?', true]]) {
+test('server removes all raw text from legacy clients before the external call', async () => {
+  for (const question of ['Hello', 'What did she say about dinner?']) {
     const out = await withResponse(() => Response.json({ candidates: [{content:{parts:[{text:'ok'}]}}] }), {question, recent:[{who:'them',text:'dinner is ready'},{who:'me',text:'PRIVATE PIN 1234'}], memory:{summary:'SECRET SUMMARY',chat:[{q:'PRIVATE Q',a:'PRIVATE A'}]}, me:'PRIVATE NAME'});
     assert.equal(out.result.status, 200);
     const payload = JSON.parse(out.calls[0].options.body);
     const all = JSON.stringify(payload);
     assert.doesNotMatch(all, /PRIVATE PIN|SECRET SUMMARY|PRIVATE Q|PRIVATE NAME/);
-    if (included) assert.match(all, /dinner is ready/); else assert.doesNotMatch(all, /dinner is ready/);
+    assert.doesNotMatch(all, /dinner is ready|What did she say about dinner/);
     assert.match(payload.systemInstruction.parts[0].text, /untrusted/);
   }
+});
+
+test('AI replies use provider-neutral branding without changing the user question', async () => {
+  const out = await withResponse(() => Response.json({candidates:[{content:{parts:[{text:'I am powered by Gemini.'}]}}]}),{question:'Hello'});
+  assert.equal(out.body.answer,'I am powered by AI service.');
+  assert.match(JSON.parse(out.calls[0].options.body).systemInstruction.parts[0].text,/Do not mention provider or model names/);
+});
+
+test('legacy analysis is rejected and the public diagnostic is disabled', async () => {
+  const { GET } = require('../app/api/doremon/route.ts');
+  assert.equal((await GET()).status, 404);
+  const out = await withResponse(() => Response.json({}), {action:'analyze',recent:[{who:'them',text:'private'}]});
+  assert.equal(out.result.status,400); assert.equal(out.body.error,'BAD_ACTION'); assert.equal(out.calls.length,0);
+});
+test('streamed oversized requests are rejected before generation', async () => {
+  const { NextRequest } = require('next/server');
+  process.env.GEMINI_API_KEY = 'test-key'; let external=0;
+  global.fetch=async url => { if(String(url).includes('/auth/v1/user')) return Response.json({id:'user-1'}); external++; return Response.json({}); };
+  const req = new NextRequest('https://example.test/api/doremon',{method:'POST',headers:{authorization:'Bearer valid'},body:JSON.stringify({action:'daily',padding:'x'.repeat(17000)})});
+  const res=await POST(req); assert.equal(res.status,413); assert.equal(external,0);
 });

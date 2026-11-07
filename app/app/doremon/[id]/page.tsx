@@ -2,14 +2,21 @@
 
 import { useRoomMusic } from "@/lib/use-room-music";
 import { doremonFetch } from "@/lib/doremon/api";
+import { displayDoremonText } from "@/lib/doremon/display";
+import { deleteRoomHistory, loadRoomHistory, saveRoomHistory } from "@/lib/doremon/room-history";
+import { localLookup } from "@/lib/doremon/local-search";
 import { confirmDoremonSharing } from "@/lib/doremon/consent";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
-import { ChevronLeft, Download, Pencil, Send, Sunrise, Trash2, Volume2, VolumeX, MoreHorizontal, X } from "lucide-react";
+import { ArrowLeft, Download, Pencil, Send, Sunrise, Trash2, Volume2, VolumeX, MoreHorizontal, X } from "lucide-react";
 import { AppGuard } from "@/components/app-guard";
 import { DoremonFace } from "@/components/chat/doremon";
+import { ChatWallpaper, chatThemeStyle } from "@/components/chat/ChatWallpaper";
+import { isVividChatTheme, resolveChatTheme } from "@/lib/chat-themes";
+import { useChatMetaFor } from "@/lib/conversation-meta";
+import { usePrefs } from "@/lib/prefs";
 import { authMode } from "@/lib/auth";
 import { useSession } from "@/lib/session";
 import { loadThread, listConversations, type DbMessage } from "@/lib/db";
@@ -22,9 +29,6 @@ import {
   saveDoremonMemory,
 } from "@/lib/doremon/memory";
 import {
-  dossierLines,
-  localDailyBriefing,
-  localRoomAsk,
   viewStats,
   type StatsView,
 } from "@/lib/doremon/insights";
@@ -89,6 +93,9 @@ type BrainState = "unknown" | "ready" | "online" | "no-key" | "bad-key" | "offli
 function Room({ conversationId }: { conversationId: string }) {
   const router = useRouter();
   const { account } = useSession();
+  const prefs = usePrefs();
+  const meta = useChatMetaFor(conversationId);
+  const theme = resolveChatTheme(meta.chatTheme, prefs.chatTheme);
   const myHandle = account?.username ?? "you";
 
   const [data, setData] = useState<Loaded | null>(null);
@@ -127,7 +134,7 @@ function Room({ conversationId }: { conversationId: string }) {
       else if (!event.shiftKey && (index < 0 || index === buttons.length - 1)) { event.preventDefault(); buttons[0].focus(); }
     };
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); if (trigger?.isConnected) trigger.focus(); };
+    return () => { window.removeEventListener("keydown", onKey); if (trigger?.isConnected && (document.activeElement === document.body || panel?.contains(document.activeElement))) trigger.focus(); };
   }, [menuOpen]);
 
   // Demo mode never calls the API — his brain is the local one, by design.
@@ -173,22 +180,30 @@ function Room({ conversationId }: { conversationId: string }) {
       setData(next);
       // offline notices were saved before they became history-free —
       // drop them so the room doesn't replay a wall of "offline" lines
-      setTurns((next.memory.chat ?? []).filter((t) => !isOfflineNotice(t.a)));
+      // Existing server-saved history is imported once; no new Q&A is uploaded.
+      const local = loadRoomHistory(account?.id ?? null, conversationId);
+      const previous = local ?? (next.memory.chat ?? []).filter((t) => !isOfflineNotice(t.a)).slice(-5);
+      if (local === null && previous.length) saveRoomHistory(account?.id ?? null, conversationId, previous);
+      setTurns(previous);
     })();
     return () => {
       alive = false;
     };
-  }, [conversationId]);
+  }, [conversationId, account?.id]);
 
   const view: StatsView = useMemo(
     () => viewStats(data?.stats ?? null, data?.meId ?? null, data?.partnerId ?? null),
     [data?.stats, data?.meId, data?.partnerId]
   );
 
-  const dossier = useMemo(
-    () => (data ? dossierLines(view, data.memory, data.partnerName) : []),
-    [data, view]
-  );
+  const dossier = useMemo(() => {
+    if (!data) return [];
+    const lines: string[] = [];
+    if (view.me && view.them) lines.push(`Saved message counts: you ${view.me.total}, other person ${view.them.total}.`);
+    if (data.memory.summary) lines.push(`Saved note (may be inaccurate): ${data.memory.summary}`);
+    lines.push("The available messages and saved notes may be incomplete. Feelings and future events cannot be determined from counts.");
+    return lines;
+  }, [data, view]);
 
   // Doremon's daily briefing — what happened, what's happening, what's coming.
   // WRITTEN ONLY ON TAP (the Sunrise button): one deliberate call per day,
@@ -205,6 +220,7 @@ function Room({ conversationId }: { conversationId: string }) {
       .map((m) => ({
         who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
         text: m.body || mediaLabel(m),
+        at: m.at,
       }));
     let text: string | null = null;
     if (REMOTE) {
@@ -232,8 +248,9 @@ function Room({ conversationId }: { conversationId: string }) {
       }
     }
     if (!text) {
-      text = localDailyBriefing(view, data.memory, data.partnerName, yesterday);
-      if (REMOTE) toast("Gemini did not answer. This briefing was generated locally.");
+      setDailyBusy(false);
+      toast("Briefing unavailable. The loaded message window may be incomplete; please try again later.");
+      return;
     }
     setDailyBusy(false);
     // land the two daily fields on whatever the FRESHEST memory is
@@ -243,7 +260,7 @@ function Room({ conversationId }: { conversationId: string }) {
       { ...(dataRef.current?.memory ?? data.memory), dailyDay: today, dailyBriefing: text },
       REMOTE
     );
-  }, [data, dailyBusy, conversationId, myHandle, view]);
+  }, [data, dailyBusy, conversationId, myHandle]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -253,23 +270,16 @@ function Room({ conversationId }: { conversationId: string }) {
   const persistTurn = useCallback(
     (q: string, a: string) => {
       const turn: RoomTurn = { id: `rt_${Date.now().toString(36)}`, q, a, at: Date.now() };
-      setTurns((prev) => [...prev, turn]);
-      // The offline notice is live feedback, not conversation — it shows on
-      // screen but is never written to the room's saved history.
-      if (isOfflineNotice(a) || !REMOTE) return;
-      setData((prev) => {
-        if (!prev) return prev;
-        const nextMemory: DoremonMemory = {
-          ...prev.memory,
-          partnerUsername: prev.partnerName,
-          chat: [...(prev.memory.chat ?? []).filter((t) => !isOfflineNotice(t.a)), turn].slice(-40),
-          updatedAt: Date.now(),
-        };
-        void saveDoremonMemory(conversationId, nextMemory, REMOTE);
-        return { ...prev, memory: nextMemory };
+      setTurns((prev) => {
+        const next = [...prev, turn].slice(-5);
+        if (!isOfflineNotice(a) && !saveRoomHistory(account?.id ?? null, conversationId, next.filter((t) => !isOfflineNotice(t.a)))) {
+          // Keep it visible for the session; storage may be blocked or full.
+          console.warn("Doremon history could not be saved on this device");
+        }
+        return next;
       });
     },
-    [conversationId]
+    [conversationId, account?.id]
   );
 
   const ask = useCallback(
@@ -284,7 +294,16 @@ function Room({ conversationId }: { conversationId: string }) {
         .map((m) => ({
           who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
           text: m.body || mediaLabel(m),
+          at: m.at,
         }));
+
+      const previous = turns.filter((turn) => !isOfflineNotice(turn.a));
+      if (/previous (?:answer|reply|response)|you said|tumne kaha/i.test(q) && previous.length) {
+        persistTurn(q, `Previous answer (on this device): ${previous[previous.length - 1].a}`);
+        return;
+      }
+      const lookup = localLookup(q, recent);
+      if (lookup) { persistTurn(q, lookup); return; }
 
       setThinking(true);
       setPendingQuestion({ text: q, at: Date.now() });
@@ -299,7 +318,7 @@ function Room({ conversationId }: { conversationId: string }) {
         try {
           const res = await doremonFetch({
             action: "roomAsk", me: myHandle, partner, meId: data.meId,
-            partnerId: data.partnerId, recent, memory: data.memory,
+            partnerId: data.partnerId, recent, memory: { chat: turns },
             stats: data.stats, question: q,
           }, controller.signal);
           const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string; retryAfterSeconds?: number | null; quotaScope?: "day" | "minute" | "unknown" };
@@ -331,7 +350,7 @@ function Room({ conversationId }: { conversationId: string }) {
           answer = OFFLINE_NOTICE + (reason ? ` (${reason})` : "");
         } else {
           // Pure demo mode (no backend): the pocket brain IS the brain.
-          answer = localRoomAsk(q, view, data.memory, partner);
+          answer = "I cannot answer from message details in demo mode. Try a specific keyword to search the loaded messages.";
         }
       }
 
@@ -339,7 +358,7 @@ function Room({ conversationId }: { conversationId: string }) {
       setPendingQuestion(null);
       persistTurn(q, answer);
     },
-    [data, thinking, myHandle, view, persistTurn]
+    [data, thinking, myHandle, persistTurn, turns]
   );
 
   if (!data) {
@@ -351,35 +370,37 @@ function Room({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <main className="relative flex h-dvh flex-col overflow-hidden bg-[#09090B]">
+    <main className="relative isolate flex h-dvh flex-col overflow-hidden bg-[#09090B]" data-vivid-wallpaper={isVividChatTheme(theme) ? "true" : undefined} style={chatThemeStyle(theme)}>
+      <ChatWallpaper theme={theme} reduceMotion={prefs.reduceMotion} />
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
       {/* header */}
-      <header className="sticky top-0 z-30 border-b border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-1 px-2">
+      <header className="sticky top-0 z-30 shrink-0 bg-black/40 backdrop-blur-xl">
+        <div className="mx-auto flex h-[60px] w-full max-w-2xl items-center gap-1 px-2">
           <button
             type="button"
             onClick={() => router.push("/app")}
             aria-label="Back to chats"
-            className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+            className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center text-white transition-colors hover:text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           >
-            <ChevronLeft className="h-5 w-5" strokeWidth={1.8} />
+            <ArrowLeft className="h-6 w-6" strokeWidth={1.8} />
           </button>
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5"><DoremonFace size={30} /></span>
+            <DoremonFace size={32} className="rounded-full" />
             <div className="min-w-0 leading-tight">
-              <h1 className="truncate text-[16px] font-medium text-white">
+              <h1 className="truncate text-[15px] font-semibold text-white">
                 Doremon
               </h1>
-              <p className="truncate text-[12px] text-zinc-500">Your private AI companion</p>
+              <p className="truncate text-[12px] text-zinc-400">Your private AI companion</p>
             </div>
           </div>
-          <button type="button" onClick={music.toggle} aria-label={music.wantsPlayback ? "Stop room music" : "Play room music"} title={music.wantsPlayback ? "Stop room music" : "Play room music"} className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-white">{music.wantsPlayback ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}</button>
-          <button ref={menuTrigger} type="button" onClick={() => setMenuOpen(true)} aria-label="Doremon menu" aria-expanded={menuOpen} className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-white"><MoreHorizontal className="h-5 w-5" /></button>
+          <button ref={menuTrigger} type="button" onClick={() => setMenuOpen(true)} aria-label="Doremon menu" aria-expanded={menuOpen} className="flex h-10 w-10 shrink-0 items-center justify-center text-zinc-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"><MoreHorizontal className="h-5 w-5" /></button>
         </div>
       </header>
 
+      <AnimatePresence>
       {menuOpen && <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label="Doremon menu">
-        <button type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-black/70" />
-        <div ref={menuRef} className="relative w-full max-w-md rounded-t-[28px] bg-[#1C1C1E] p-5 pb-[max(24px,env(safe-area-inset-bottom))] sm:rounded-[28px]">
+        <motion.button type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70" />
+        <motion.div ref={menuRef} initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} transition={{ type: "spring", stiffness: 400, damping: 34 }} className="relative w-full max-w-md rounded-t-[28px] bg-[#1C1C1E] p-5 pb-[max(24px,env(safe-area-inset-bottom))] sm:rounded-[28px]">
           <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-medium text-white">Doremon</h2><button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu" className="rounded-full p-2 text-zinc-400"><X className="h-4 w-4" /></button></div>
           <div className="flex flex-col text-sm text-zinc-200 [&>button]:flex [&>button]:items-center [&>button]:gap-3 [&>button]:rounded-xl [&>button]:px-3 [&>button]:py-3 [&>button:hover]:bg-white/5 [&>button:disabled]:opacity-40">
             <button type="button" disabled={!data.alive || memoryBusy} onClick={() => { setSummaryDraft(data.memory.summary); setEditingSummary(true); setMenuOpen(false); }}><Pencil className="h-4 w-4" /> Edit summary</button>
@@ -392,11 +413,12 @@ function Room({ conversationId }: { conversationId: string }) {
             <button type="button" disabled={memoryBusy} onClick={() => {
               if (!window.confirm("Delete your Doremon memory and this device’s Doremon chat for this conversation? Automatic analysis on any device can create a new memory. This cannot be undone.")) return;
               setMenuOpen(false); setMemoryBusy(true);
-              void deleteDoremonMemory(conversationId, REMOTE).then(() => { toast.success("Memory deleted"); router.push("/app"); }).catch(() => { toast.error("Could not delete memory. Try again."); setMemoryBusy(false); });
+              void deleteDoremonMemory(conversationId, REMOTE, account?.id).then(() => { deleteRoomHistory(account?.id ?? null, conversationId); toast.success("Memory deleted"); router.push("/app"); }).catch(() => { toast.error("Could not delete memory. Try again."); setMemoryBusy(false); });
             }} className="text-rose-300"><Trash2 className="h-4 w-4" /> Delete memory</button>
           </div>
-        </div>
+        </motion.div>
       </div>}
+      </AnimatePresence>
       {editingSummary && <div className="mx-auto w-full max-w-2xl px-4 pt-3">
         <label htmlFor="memory-summary" className="text-xs text-zinc-400">Edit your summary (other memory fields are unchanged)</label>
         <textarea id="memory-summary" value={summaryDraft} maxLength={2000} onChange={(e) => setSummaryDraft(e.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-zinc-100" />
@@ -416,7 +438,7 @@ function Room({ conversationId }: { conversationId: string }) {
       <div ref={music.containerRef} aria-hidden className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0" />
 
       {/* body */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(ellipse_at_15%_30%,rgba(99,102,241,0.08),transparent_55%)]">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(ellipse_at_15%_30%,rgba(99,102,241,0.08),transparent_55%)]">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-3 py-4">
           {!data.alive && (
             <div className="rounded-[18px] border border-amber/25 bg-amber/10 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-amber-200">
@@ -424,7 +446,7 @@ function Room({ conversationId }: { conversationId: string }) {
             </div>
           )}
 
-          <details className="rounded-xl bg-white/5 p-3 text-sm text-zinc-300">
+          <details className="rounded-xl bg-black/60 p-3 text-sm text-zinc-200 backdrop-blur-md">
             <summary className="cursor-pointer text-zinc-400">About this conversation</summary>
             <ul className="mt-3 space-y-1.5 text-[13px] leading-relaxed text-zinc-400">
               {dossier.length ? dossier.map((line, i) => <li key={i}>{line}</li>) : <li>There isn’t a record yet. It will grow as you chat.</li>}
@@ -446,6 +468,7 @@ function Room({ conversationId }: { conversationId: string }) {
         </div>
       </div>
 
+      <div className="shrink-0 bg-black/40 backdrop-blur-xl">
       {/* These prompts fill the draft only; they never send anything automatically. */}
       <div aria-label="Doremon prompt ideas" className="mx-auto flex w-full max-w-2xl gap-2 overflow-x-auto px-3 pt-2 pb-1">
         {[
@@ -457,8 +480,8 @@ function Room({ conversationId }: { conversationId: string }) {
         ))}
       </div>
       {/* input */}
-      <p className="mx-auto w-full max-w-2xl px-4 pt-2 text-center text-[10px] leading-relaxed text-zinc-500">Questions and daily briefs can share the latest loaded messages and memory with Google Gemini. Ask the other person first; AI can be wrong.</p>
-      <div className="border-t border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
+      <p className="mx-auto w-full max-w-2xl px-4 pt-2 text-center text-[10px] leading-relaxed text-zinc-500">Only generic labels and partial message counts are sent to an external AI service; message text, questions and history stay on this device. Answers cannot use those details and may be wrong. New history: last five exchanges stored on this device when storage is available, without encryption. Older history may remain in your account.</p>
+      <div>
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2"
           onSubmit={(e) => {
@@ -494,6 +517,8 @@ function Room({ conversationId }: { conversationId: string }) {
           </button>
         </form>
       </div>
+      </div>
+      </div>
     </main>
   );
 }
@@ -503,5 +528,5 @@ function UserBubble({ text, at }: { text: string; at: number }) {
 }
 
 function DoremonBubble({ text, at }: { text: string; at: number }) {
-  return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="mt-3 flex w-full items-end gap-2"><DoremonFace size={20} /><div className="max-w-[85%] rounded-[20px] rounded-tl-sm bg-[#1C1C1E] px-4 py-2.5"><p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-zinc-200">{text}</p><p className="mt-1 text-right text-[10px] text-zinc-500">{clockTime(at)}</p></div></motion.div>;
+  return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="mt-3 flex w-full items-end gap-2"><DoremonFace size={20} /><div className="max-w-[85%] rounded-[20px] rounded-tl-sm bg-[#1C1C1E] px-4 py-2.5"><p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-zinc-200">{displayDoremonText(text)}</p><p className="mt-1 text-right text-[10px] text-zinc-500">{clockTime(at)}</p></div></motion.div>;
 }

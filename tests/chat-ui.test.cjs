@@ -62,7 +62,7 @@ test('chat proportions remain compact and input stays at a legible mobile font s
   const { ChatHeader } = require('../components/chat/ChatHeader.tsx');
   const { ChatInput } = require('../components/chat/ChatInput.tsx');
   const header = renderToStaticMarkup(React.createElement(ChatHeader, { name:'Sam', avatarId:null, online:true, status:'online', typing:false, onMenu(){}, onCall(){} }));
-  assert.match(header, /h-\[52px\]/); assert.match(header, /Voice call/); assert.match(header, /Video call/);
+  assert.match(header, /h-\[60px\]/); assert.match(header, /bg-black\/40 backdrop-blur-xl/); assert.doesNotMatch(header.match(/^<header[^>]*>/)[0], /(?:^|\s)border-b(?:\s|["/])/); assert.match(header, /Voice call/); assert.match(header, /Video call/);
   const input = renderToStaticMarkup(React.createElement(ChatInput, { onSend(){}, onSticker(){}, onPulse(){}, onAttach(){}, onVoice(){} }));
   assert.match(input, /text-\[16px\]/); assert.match(input, /aria-label="Message"/);
   const bubble = renderToStaticMarkup(React.createElement(MessageBubble, { grouped:false, tail:true, partnerName:'Sam', onLongPress(){}, onDoubleTap(){}, onRemoveMyReaction(){}, onRetry(){}, animateIn:false, message:{id:'1',author:'them',kind:'text',text:'Hello',at:0} }));
@@ -80,4 +80,23 @@ test('call controls keep touch-sized circles in a flexible row for narrow screen
   const html = renderToStaticMarkup(React.createElement(LiveCallOverlay));
   assert.match(html, /max-w-\[420px\]/); assert.match(html, /h-11 w-11/);
   assert.match(html, /Mute/); assert.match(html, /Camera/); assert.match(html, /End call/);
+});
+
+test('redesigned header preserves call and menu actions and hides presence when requested', async () => {
+  const { ChatHeader } = require('../components/chat/ChatHeader.tsx');
+  const { act, create } = require('react-test-renderer');
+  const calls=[];let tree;
+  const props={name:'@an-extremely-long-display-name',avatarId:null,online:true,status:'online',typing:false,onMenu(){calls.push('menu')},onCall(type){calls.push(type)}};
+  const html=renderToStaticMarkup(React.createElement(ChatHeader,props));
+  assert.match(html,/width:32px;height:32px/);assert.match(html,/bg-green-500/);
+  assert.match(html,/truncate text-\[15px\] font-semibold text-white/);
+  assert.match(html,/truncate text-\[12px\] text-zinc-400/);
+  assert.doesNotMatch(renderToStaticMarkup(React.createElement(ChatHeader,{...props,hidden:true})),/aria-label="Online"/);
+  const oldSelf=global.self;global.self={setTimeout,clearTimeout};
+  try {
+    await act(async()=>{tree=create(React.createElement(ChatHeader,props));});
+    for(const label of ['Voice call','Video call','Chat options']) await act(async()=>tree.root.findByProps({'aria-label':label}).props.onClick());
+    assert.deepEqual(calls,['voice','video','menu']);
+    await act(async()=>tree.unmount());
+  } finally {global.self=oldSelf;}
 });

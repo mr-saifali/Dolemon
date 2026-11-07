@@ -25,6 +25,7 @@ import {
   type DbMessage,
 } from "@/lib/db";
 import type { ReactionType } from "@/lib/reactions";
+import { isKnownOffline, OFFLINE_SEND_NOTICE, OFFLINE_RETRY_NOTICE, OFFLINE_CHANGE_NOTICE } from "@/lib/offline/connectivity";
 import { toast } from "sonner";
 import { previewFor, type ChatMessage, type QuotedMessage } from "@/lib/thread";
 
@@ -170,6 +171,7 @@ export function useRemoteThread(
   const activeConversation = useRef(conversationId);
   activeConversation.current = conversationId;
   const messagesRef = useRef<ChatMessage[]>([]);
+  const reactionInFlight = useRef(new Set<string>());
   const replyToRef = useRef<QuotedMessage | null>(null);
 
   useEffect(() => {
@@ -461,6 +463,7 @@ export function useRemoteThread(
 
   const send = useCallback(
     (text: string, options: RemoteSendOptions = {}) => {
+      if (isKnownOffline()) { toast.error(OFFLINE_SEND_NOTICE); return false; }
       const kind: RemoteSendOptions["kind"] =
         options.kind === "sticker" || options.kind === "image" || options.kind === "audio" || options.kind === "file"
           ? options.kind
@@ -515,6 +518,7 @@ export function useRemoteThread(
 
   const retry = useCallback(
     (messageId: string) => {
+      if (isKnownOffline()) { toast.error(OFFLINE_RETRY_NOTICE); return; }
       const queued = pending.current.get(messageId);
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, status: "sending" } : m)));
       if (queued) {
@@ -541,38 +545,28 @@ export function useRemoteThread(
     [deliver, messages]
   );
 
-  const react = useCallback(
-    (messageId: string, type: ReactionType) => {
-      let removing = false;
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId) return m;
-          const mine = (m.reactions ?? []).find((r) => r.by === "me");
-          removing = mine?.type === type;
-          const next = (m.reactions ?? []).filter((r) => r.by !== "me");
-          return { ...m, reactions: removing ? next : [...next, { type, by: "me" as const }] };
-        })
-      );
-      void (removing ? removeMyReaction(messageId) : setMyReaction(messageId, type))
-        .catch(() => undefined)
-        .finally(() => void refreshReactions());
-    },
-    [refreshReactions]
-  );
+  // Do not render an unconfirmed reaction as saved. A lost response is
+  // ambiguous; reconnect/reload rather than claiming success or queueing it.
+  const applyReaction = useCallback((messageId: string, reaction: ReactionType | null) => {
+    if (isKnownOffline()) { toast.error(OFFLINE_CHANGE_NOTICE); return; }
+    if (reactionInFlight.current.has(messageId)) { toast("Reaction is still being confirmed."); return; }
+    const original = messagesRef.current.find((m) => m.id === messageId);
+    if (!original || messageId.startsWith("tmp_")) { toast.error("Wait until the message is sent."); return; }
+    const next = reaction !== null && original.reactions?.some((r) => r.by === "me" && r.type === reaction) ? null : reaction;
+    reactionInFlight.current.add(messageId);
+    void (next === null ? removeMyReaction(messageId) : setMyReaction(messageId, next))
+      .then(() => {
+        if (activeConversation.current !== conversationId) return;
+        setMessages((prev) => prev.map((m) => m.id === messageId ? {
+          ...m, reactions: [...(m.reactions ?? []).filter((r) => r.by !== "me"), ...(next === null ? [] : [{ type: next, by: "me" as const }])],
+        } : m));
+      })
+      .catch(() => toast.error("Reaction could not be confirmed. Reconnect and refresh before retrying."))
+      .finally(() => { reactionInFlight.current.delete(messageId); if (activeConversation.current === conversationId) void refreshReactions(); });
+  }, [conversationId, refreshReactions]);
 
-  const clearMyReaction = useCallback(
-    (messageId: string) => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId ? { ...m, reactions: (m.reactions ?? []).filter((r) => r.by !== "me") } : m
-        )
-      );
-      void removeMyReaction(messageId)
-        .catch(() => undefined)
-        .finally(() => void refreshReactions());
-    },
-    [refreshReactions]
-  );
+  const react = useCallback((messageId: string, type: ReactionType) => applyReaction(messageId, type), [applyReaction]);
+  const clearMyReaction = useCallback((messageId: string) => applyReaction(messageId, null), [applyReaction]);
 
   const remove = useCallback(async (messageId: string) => {
     const message = messagesRef.current.find((m) => m.id === messageId);
@@ -581,6 +575,7 @@ export function useRemoteThread(
       if (message.status === "sending") throw new Error("Wait for sending to finish before deleting.");
       pending.current.delete(messageId);
     } else {
+      if (isKnownOffline()) throw new Error(OFFLINE_CHANGE_NOTICE);
       await deleteMessage(messageId);
     }
     if (activeConversation.current === conversationId) setMessages((prev) => prev.filter((m) => m.id !== messageId));
@@ -590,6 +585,7 @@ export function useRemoteThread(
   const edit = useCallback(async (messageId: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    if (isKnownOffline()) throw new Error(OFFLINE_CHANGE_NOTICE);
     if (messageId.startsWith("tmp_")) throw new Error("Wait until the message is sent before editing.");
     const previous = messagesRef.current.find((m) => m.id === messageId);
     const before = previous?.text ?? "";

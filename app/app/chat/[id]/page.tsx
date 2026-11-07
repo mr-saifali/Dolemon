@@ -24,6 +24,7 @@ import { AppGuard } from "@/components/app-guard";
 
 
 import { ChatInput } from "@/components/chat/ChatInput";
+import { AttachmentSheet, type AttachmentSheetHandle } from "@/components/chat/attachment-sheet";
 
 
 import { ChatWallpaper, chatThemeStyle } from "@/components/chat/ChatWallpaper";
@@ -50,13 +51,13 @@ import { useSession } from "@/lib/session";
 import { useAppPresence } from "@/lib/app-presence";
 import { useDoremon } from "@/lib/doremon/use-doremon";
 import { confirmDoremonSharing } from "@/lib/doremon/consent";
+import { isKnownOffline, OFFLINE_SEND_NOTICE } from "@/lib/offline/connectivity";
 import { clearConversationVideos, prepareVideo, removeVideoFromDevice } from "@/lib/video-storage";
 import { parseVideoReference } from "@/lib/video-reference";
 import { useViewportHeight } from "@/lib/use-viewport-height";
 
 // These panels are only downloaded when opened, not on every chat visit.
 const ConsistencySheet = dynamic(() => import("@/components/chat/consistency-sheet").then((m) => m.ConsistencySheet));
-const AttachmentSheet = dynamic(() => import("@/components/chat/attachment-sheet").then((m) => m.AttachmentSheet));
 const MessageSearchSheet = dynamic(() => import("@/components/chat/MessageSearchSheet").then((m) => m.MessageSearchSheet));
 const ChatThemeSheet = dynamic(() => import("@/components/chat/ChatThemePicker").then((m) => m.ChatThemeSheet));
 
@@ -118,7 +119,8 @@ function ThreadScreen() {
   const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [attachIntent, setAttachIntent] = useState<"camera" | "photo" | "voice">("photo");
+  const [attachIntent, setAttachIntent] = useState<"camera" | "voice">("voice");
+  const attachment = useRef<AttachmentSheetHandle | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [dividerId, setDividerId] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -269,8 +271,7 @@ function ThreadScreen() {
   // one call site, two backends — remote uploads the media before inserting the row
   const sendNow = (text: string, options?: Parameters<typeof local.send>[1]) => {
     if (REMOTE) {
-      remote.send(text, toRemoteSendOptions(options));
-      return;
+      return remote.send(text, toRemoteSendOptions(options));
     }
     local.send(text, options);
   };
@@ -299,8 +300,8 @@ function ThreadScreen() {
       else await local.edit(id, text);
       toast.success("Message updated");
       setEditing(null);
-    } catch {
-      toast.error("Couldn't edit that message");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't edit that message");
     }
   };
 
@@ -309,18 +310,18 @@ function ThreadScreen() {
     // /doremon <anything> — a word to Doremon, not a message to them
     if (/^\/doremon\b/i.test(trimmed)) {
       const question = trimmed.replace(/^\/doremon\s*/i, "").trim();
+      if (REMOTE && isKnownOffline()) { toast.error("Doremon needs internet for this request."); return false; }
       if (!question || !confirmDoremonSharing(REMOTE)) return false;
       setReplyTo(null);
       void doremon.ask(question);
       return;
     }
-    sendNow(text, replyTo ? { replyTo } : {});
+    if (sendNow(text, replyTo ? { replyTo } : {}) === false) return false;
     setReplyTo(null);
   };
 
   const handleSticker = (type: ReactionType) => {
-    sendNow("", { kind: "sticker", sticker: type, replyTo: replyTo ?? undefined });
-    setReplyTo(null);
+    if (sendNow("", { kind: "sticker", sticker: type, replyTo: replyTo ?? undefined }) !== false) setReplyTo(null);
   };
 
   const runAction = (action: MessageAction, message: ChatMessage) => {
@@ -385,6 +386,7 @@ function ThreadScreen() {
   };
 
   const menuActions: ChatMenuAction[] = [
+    { key: "doremon", label: "Doremon", hint: "AI companion", icon: <Sparkles className="h-[18px] w-[18px]" />, onSelect: () => router.push(`/app/doremon/${conversationId}`) },
     { key: "search", label: "Search messages", icon: <Search className="h-[18px] w-[18px]" />, onSelect: () => setSearchOpen(true) },
     { key: "compare", label: "Compare statements", hint: "not a lie detector", icon: <Scale className="h-[18px] w-[18px]" />, onSelect: () => setCompareOpen(true) },
     {
@@ -500,10 +502,7 @@ function ThreadScreen() {
         typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
         hidden={!REMOTE && !prefs.showPresence}
         onMenu={() => setMenuOpen(true)}
-        onCall={REMOTE ? (type) => void live.start(conversationId, type) : undefined}
-        doremonStatus={doremon.status}
-        doremonMemory={doremon.memory}
-        onDoremon={() => router.push(`/app/doremon/${conversationId}`)}
+        onCall={(type) => REMOTE ? void live.start(conversationId, type) : router.push(`/app/call/${conversationId}?kind=${type}&direction=outgoing`)}
       />
 
       {REMOTE && remote.loadError && (
@@ -553,9 +552,12 @@ function ThreadScreen() {
         onSend={handleSend}
         onSticker={handleSticker}
         onPulse={handlePulse}
-        onAttach={() => { setAttachIntent("photo"); setAttachOpen(true); }}
-        onCamera={() => { setAttachIntent("camera"); setAttachOpen(true); }}
-        onVoice={() => { setAttachIntent("voice"); setAttachOpen(true); }}
+        onAttach={() => attachment.current?.openPhoto()}
+        onCamera={() => { setAttachIntent("camera"); setAttachOpen(true); attachment.current?.openCamera(); }}
+        onFile={() => attachment.current?.openFile()}
+        onVideo={() => attachment.current?.openVideo()}
+        onVoice={() => { setAttachIntent("voice"); setAttachOpen(true); attachment.current?.startVoice(); }}
+        publicMedia={REMOTE}
         onTyping={() => { if (REMOTE && prefs.typingIndicator) remote.notifyTyping(); }}
         showPulse={!REMOTE}
         pulseCoolingUntil={pulses.coolingUntil}
@@ -614,7 +616,8 @@ function ThreadScreen() {
 
       {compareOpen && <ConsistencySheet messages={messages} onClose={closeCompare} hasOlder={REMOTE && remote.hasOlder} loadingOlder={remote.loadingOlder} onLoadOlder={REMOTE ? remote.loadOlder : undefined} />}
 
-      {attachOpen && <AttachmentSheet
+      <AttachmentSheet
+        ref={attachment}
         publicMedia={REMOTE}
         preferred={attachIntent}
         open={attachOpen}
@@ -636,6 +639,7 @@ function ThreadScreen() {
           setReplyTo(null);
         }}
         onVideo={async (file) => {
+          if (REMOTE && isKnownOffline()) throw new Error(OFFLINE_SEND_NOTICE);
           if (!account?.id) throw new Error("Sign in before sending a video.");
           const reference = await prepareVideo(account.id, conversationId, file, REMOTE);
           sendNow(file.name.slice(0, 180) || "Video", { replyTo: replyTo ?? undefined, kind: "file", media: { url: reference, name: file.name.slice(0, 180) || "Video", sizeBytes: file.size } });
@@ -649,7 +653,7 @@ function ThreadScreen() {
           });
           setReplyTo(null);
         }}
-      />}
+      />
 
       <AnimatePresence>
         {viewerUrl && (

@@ -72,7 +72,7 @@ export default function DownloadPage() {
         >
           <div className="h-[88px] w-[88px] overflow-hidden rounded-[22px] border border-white/10 shadow-[0_18px_50px_-18px_rgba(255,92,122,0.45)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/icon-512.png" alt="Dolemon" className="h-full w-full object-cover" />
+            <img src="/icons/icon-512.png?v=2" alt="Dolemon" className="h-full w-full object-cover" />
           </div>
 
           <h1 className="mt-6 text-[26px] font-medium leading-tight tracking-[-0.02em] text-zinc-100">

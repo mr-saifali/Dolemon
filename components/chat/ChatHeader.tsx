@@ -2,14 +2,12 @@
 
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, MoreHorizontal, Phone, Video } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Phone, Video } from "lucide-react";
 import { ChatAvatar } from "@/components/home/chat-row";
-import { DoremonPresence } from "./doremon";
-import type { DoremonMemory } from "@/lib/doremon/types";
 
 /**
  * A compact, blurred header: the name and one honest line about where the other person is.
- * Doremon keeps an eye on the room from the corner. Everything else lives behind the "…".
+ * The wallpaper stays visible through the glass; secondary actions live behind the menu.
  */
 export function ChatHeader({
   name,
@@ -21,9 +19,6 @@ export function ChatHeader({
   hidden,
   onMenu,
   onCall,
-  doremonStatus,
-  doremonMemory,
-  onDoremon,
 }: {
   name: string;
   avatarId: string | null;
@@ -37,45 +32,45 @@ export function ChatHeader({
   onMenu: () => void;
   /** live calls only — hidden in the local demo */
   onCall?: (type: "voice" | "video") => void;
-  doremonStatus?: "idle" | "watching" | "thinking";
-  doremonMemory?: DoremonMemory | null;
-  onDoremon?: () => void;
 }) {
   const line = typing ? "typing…" : hidden ? "presence off" : status;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-[52px] w-full max-w-2xl items-center gap-1 px-2">
+    <header className="sticky top-0 z-30 shrink-0 bg-black/40 backdrop-blur-xl">
+      <div className="mx-auto flex h-[60px] w-full max-w-2xl items-center gap-1 px-2">
         <Link
           href="/app"
           aria-label="Back to chats"
-          className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+          className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center text-white transition-colors hover:text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
         >
-          <ChevronLeft className="h-5 w-5" strokeWidth={1.8} />
+          <ArrowLeft className="h-6 w-6" strokeWidth={1.8} />
         </Link>
 
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <ChatAvatar avatarId={avatarId} avatarUrl={avatarUrl} name={name} size={36} online={online} />
+          <div className="relative h-8 w-8 shrink-0">
+            <ChatAvatar avatarId={avatarId} avatarUrl={avatarUrl} name={name} size={32} />
+            {online && !hidden && <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-black bg-green-500" aria-label="Online" />}
+          </div>
           <div className="min-w-0 leading-tight">
-            <h1 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-zinc-100">{name}</h1>
+            <h1 className="truncate text-[15px] font-semibold text-white">{name}</h1>
             <p
               aria-live="polite"
-              className={typing ? "truncate text-[12px] text-rose/90" : "truncate text-[12px] text-zinc-500"}
+              className="truncate text-[12px] text-zinc-400"
             >
               {line}
             </p>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-4">
           {onCall && (
             <button
               type="button"
               onClick={() => onCall("voice")}
               aria-label="Voice call"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
             >
-              <Phone className="h-[22px] w-[22px]" strokeWidth={1.8} />
+              <Phone className="h-5 w-5" strokeWidth={1.8} />
             </button>
           )}
           {onCall && (
@@ -83,19 +78,16 @@ export function ChatHeader({
               type="button"
               onClick={() => onCall("video")}
               aria-label="Video call"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
             >
-              <Video className="h-[22px] w-[22px]" strokeWidth={1.8} />
+              <Video className="h-5 w-5" strokeWidth={1.8} />
             </button>
-          )}
-          {onDoremon && (
-            <DoremonPresence status={doremonStatus ?? "idle"} memory={doremonMemory ?? null} onTap={onDoremon} />
           )}
           <button
             type="button"
             onClick={onMenu}
             aria-label="Chat options"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           >
             <MoreHorizontal className="h-5 w-5" strokeWidth={1.8} />
           </button>

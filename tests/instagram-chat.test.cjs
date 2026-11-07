@@ -60,30 +60,33 @@ test('received avatars appear at the end of each consecutive sender group and sp
   assert.match(renderBubble(msg('them','last'),{tail:true,partnerAvatarUrl:'https://example.com/avatar.png'}), /src="https:\/\/example.com\/avatar.png"/);
 });
 
-test('composer exposes a floating pill and functional entry points for camera, photos, stickers and voice', () => {
+test('composer keeps its attachment choices behind one plus button', () => {
   const html = renderToStaticMarkup(React.createElement(ChatInput, { onSend(){}, onSticker(){}, onPulse(){}, onAttach(){}, onVoice(){} }));
-  for (const token of ['mx-3 mb-4', 'rounded-full', 'bg-black/40', 'backdrop-blur-md', 'Camera and attachments', 'Photos and attachments', 'Stickers and reactions', 'Record a voice note', 'text-[16px]']) assert.ok(html.includes(token), token);
-  // Preserve room for typing on very narrow phones while keeping every action available.
-  assert.equal((html.match(/max-\[360px\]:w-9/g) || []).length, 4);
+  for (const token of ['mx-3 mb-4', 'rounded-full', 'bg-black/40', 'backdrop-blur-md', 'Attachment options', 'text-[16px]']) assert.ok(html.includes(token), token);
+  assert.doesNotMatch(html, />Photo<|>Camera<|>Voice note</);
   const sheet = renderToStaticMarkup(React.createElement(AttachmentSheet, { open:true, onClose(){}, onPhoto(){}, onVoice(){} }));
   assert.match(sheet, /Take a photo/); assert.match(sheet, /capture="environment"/); assert.match(sheet, /From your phone/); assert.match(sheet, /Voice note/);
 });
 
-test('composer actions invoke the intended controls and sticker selection sends once', async () => {
+test('plus menu invokes photo, camera, voice, file, video and stickers', async () => {
   const { act, create } = require('react-test-renderer');
-  let camera = 0, photo = 0, voice = 0, sticker;
-  let tree;
-  await act(async () => { tree = create(React.createElement(ChatInput, { onSend(){}, onSticker:(value) => { sticker = value; }, onPulse(){}, onAttach:() => photo++, onCamera:() => camera++, onVoice:() => voice++ })); });
-  for (const label of ['Camera and attachments', 'Photos and attachments', 'Record a voice note']) await act(async () => tree.root.findByProps({ 'aria-label': label }).props.onClick());
-  assert.deepEqual([camera, photo, voice], [1, 1, 1]);
-  await act(async () => tree.root.findByProps({ 'aria-label':'Stickers and reactions' }).props.onClick());
-  const button = tree.root.findAll((node) => typeof node.props['aria-label'] === 'string' && node.props['aria-label'].startsWith('Send ') && node.props['aria-label'] !== 'Send message')[0];
-  assert.ok(button); await act(async () => button.props.onClick());
-  assert.ok(sticker); assert.equal(tree.root.findByProps({ 'aria-label':'Stickers and reactions' }).props['aria-expanded'], false);
+  const calls=[]; let sticker, tree;
+  await act(async () => { tree = create(React.createElement(ChatInput, { onSend(){}, onSticker:(value) => { sticker = value; }, onPulse(){}, onAttach:() => calls.push('photo'), onCamera:() => calls.push('camera'), onVoice:() => calls.push('voice'), onFile:() => calls.push('file'), onVideo:() => calls.push('video') })); });
+  for (const label of ['Photo','Camera','Voice note','File','Video']) {
+    await act(async () => tree.root.findByProps({'aria-label':'Attachment options'}).props.onClick());
+    const button=tree.root.findAllByType('button').find((node)=>node.children.includes(label));
+    assert.ok(button,label); await act(async()=>button.props.onClick());
+  }
+  assert.deepEqual(calls,['photo','camera','voice','file','video']);
+  await act(async () => tree.root.findByProps({'aria-label':'Attachment options'}).props.onClick());
+  await act(async () => tree.root.findAllByType('button').find((node)=>node.children.includes('Stickers')).props.onClick());
+  const stickerButton = tree.root.findAll((node) => typeof node.props['aria-label'] === 'string' && node.props['aria-label'].startsWith('Send ') && node.props['aria-label'] !== 'Send message')[0];
+  assert.ok(stickerButton); await act(async () => stickerButton.props.onClick());
+  assert.ok(sticker); assert.equal(tree.root.findByProps({ 'aria-label':'Attachment options' }).props['aria-expanded'], false);
   await act(async () => tree.unmount());
 });
 
-test('attachment sheet highlights the selected action and opens the camera input on tap', async () => {
+test('attachment sheet highlights the camera and offers a device picker when preview is unavailable', async () => {
   const { act, create } = require('react-test-renderer');
   let cameraClicks = 0, tree;
   await act(async () => { tree = create(React.createElement(AttachmentSheet, { open:true, preferred:'camera', onClose(){}, onPhoto(){}, onVoice(){} }), {
@@ -91,21 +94,27 @@ test('attachment sheet highlights the selected action and opens the camera input
   }); });
   const camera = tree.root.findAllByType('button').find((button) => button.findAllByType('span').some((span) => span.children.includes('Camera')));
   assert.ok(camera); assert.match(camera.props.className, /border-rose\/50/);
-  await act(async () => camera.props.onClick()); assert.equal(cameraClicks, 1);
+  await act(async () => camera.props.onClick());
+  const fallback=tree.root.findAllByType('button').find(button => button.children.includes('Open device camera'));
+  assert.ok(fallback);await act(async () => fallback.props.onClick());assert.equal(cameraClicks,1);
   await act(async () => tree.unmount());
 });
 
-test('mic stays visible while composing and the send action preserves message text', async () => {
+test('typing hides attachment controls, expands the draft and preserves the send action', async () => {
   const { act, create } = require('react-test-renderer');
   let sent, tree;
   const textareaNode = { style:{}, scrollHeight:24, focus() {} };
   global.document = { activeElement: textareaNode };
   try {
     await act(async () => { tree = create(React.createElement(ChatInput, { onSend:(v) => { sent = v; }, onSticker(){}, onPulse(){}, onAttach(){}, onCamera(){}, onVoice(){} }), { createNodeMock: (node) => node.type === 'textarea' ? textareaNode : null }); });
+    await act(async () => tree.root.findByProps({'aria-label':'Attachment options'}).props.onClick());
     await act(async () => tree.root.findByType('textarea').props.onChange({ target:{ value:'Hi there' } }));
-    assert.ok(tree.root.findByProps({ 'aria-label':'Record a voice note' }));
+    assert.equal(tree.root.findAllByProps({ 'aria-label':'Attachment options' }).length,0);
+    assert.equal(tree.root.findAllByProps({ 'aria-label':'Add to your message' }).length,0);
+    assert.deepEqual(tree.root.findAllByType('button').map(button=>button.props['aria-label']), ['Send message']);
     await act(async () => tree.root.findByProps({ 'aria-label':'Send message' }).props.onClick());
     assert.equal(sent, 'Hi there');
+    assert.ok(tree.root.findByProps({ 'aria-label':'Attachment options' }));
     await act(async () => tree.unmount());
   } finally { delete global.document; }
 });

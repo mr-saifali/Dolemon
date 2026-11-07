@@ -348,39 +348,30 @@ Notes:
 
 ## 9. Doremon — the private observer
 
-Doremon quietly observes every chat like a relationship reviewer who was paid
-to watch it: who talks more, how much per day, at which hours, who starts,
-when they go quiet, moods, fight/deep-talk patterns. He **never speaks in the
-chat on his own** — he has his own **room** (`/app/doremon/<conversationId>`),
-reached from his face in the chat header (left of the ⋮) or from the
-"Doremon's memory" section on the home screen. In his room a user can ask
-anything: memories, summaries, timing, willingness, avoidance, and a
-prediction of what the next conversation will be like.
+Doremon is accessed from the chat header or its room. Automatic local analysis
+is opt-in; it can save account memory and may be inaccurate. Saved memories can
+survive conversation deletion and should not be treated as a complete record.
+Do not infer emotions, intentions or future behavior from message counts.
 
-When a conversation ends (the user leaves the chat), Doremon writes a closing
-summary + a warm note into his record. **When a chat is deleted, the record
-survives** — the room keeps working from his pocket, and deleted chats still
-appear under "Doremon's memory" with a `deleted` badge.
+**Setup and current behavior**
 
-**Setup**
-
-1. Env (Vercel → project → Environment Variables, or `.env.local` locally):
-   - `GEMINI_API_KEY` — from https://aistudio.google.com/apikey (server-side only)
-   - Doremon uses the hardcoded `gemini-3.1-flash-lite` model; generation access and quota depend on the Google project
-2. Run `docs/migrations/008_doremon_memory.sql` then
-   `docs/migrations/010_doremon_room.sql` in the SQL editor. 008 creates the
-   `doremon_memory` table; 010 makes it **per-user + private** (each member's
-   Doremon keeps their own copy, the other person never sees it), makes it
-   **survive chat deletion**, and adds the two read-only functions
-   `doremon_stats()` and `doremon_records()`.
-
-**Behaviour**
-
-- No key / table not run: Doremon still works — his local brain (heuristics
-  over the same census + persona templates) keeps him alive; the record just
-  lives in the browser until the tables exist.
-- The Gemini key never reaches the browser — every call goes through
-  `POST /api/doremon` (`roomAsk` for the room, `finalize` for closing
-  summaries; `analyze`/`ask` remain for the in-chat watcher and `/doremon`).
-- The room's Q&A is stored in the private record itself — only the user who
-  asked can see it (row-level security on `user_id = auth.uid()`).
+- `GEMINI_API_KEY` is server-side only. The fixed model and project quota need
+  live verification; there is no paid-model fallback.
+- Existing `docs/migrations/008_doremon_memory.sql`, `010_doremon_room.sql`
+  and `011_privacy_and_memory.sql` were historically applied manually. Check
+  the actual database history before applying anything; these files are not an
+  automatic migration pipeline and must not be blindly replayed.
+- An authenticated `POST /api/doremon` accepts only `ask`, `roomAsk` or
+  `daily`. The browser creates a closed-schema packet of generic intent and
+  language labels, at most five history intent labels, and bounded per-day
+  counts from the currently loaded window. The server independently strips
+  other fields, including for legacy clients. No raw message, question, memory,
+  participant name or code-to-original mapping is sent to the external AI.
+  The counts are incomplete and can themselves still carry contextual risk.
+- Local keyword search only covers loaded messages; it is not a full-history
+  index. Detailed AI summaries and contextual reasoning over message contents
+  are unavailable under the selected privacy design.
+- New room Q&A is kept in unencrypted browser storage (five exchanges per
+  account and conversation), not uploaded as new account history. Existing
+  server-saved history and other memories may remain until explicitly deleted.
+  This is not a substitute for device security or a formal privacy audit.

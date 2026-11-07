@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Camera, FileText, ImagePlus, Mic, Square, Video, X } from "lucide-react";
 import { toast } from "sonner";
@@ -15,16 +15,15 @@ type PhotoPayload = { dataUrl: string; width: number; height: number };
 type VoicePayload = { dataUrl: string; durationMs: number; ext: string };
 type FilePayload = { dataUrl: string; name: string; sizeBytes: number; ext: string };
 
-export function AttachmentSheet({
-  open,
-  onClose,
-  onPhoto,
-  onVoice,
-  onFile,
-  onVideo,
-  publicMedia = false,
-  preferred,
-}: {
+export type AttachmentSheetHandle = {
+  openCamera: () => void;
+  openPhoto: () => void;
+  openFile: () => void;
+  openVideo: () => void;
+  startVoice: () => void;
+};
+
+export const AttachmentSheet = forwardRef<AttachmentSheetHandle, {
   open: boolean;
   onClose: () => void;
   onPhoto: (image: PhotoPayload) => void;
@@ -33,20 +32,28 @@ export function AttachmentSheet({
   onVideo?: (file: File) => Promise<void>;
   publicMedia?: boolean;
   preferred?: "camera" | "photo" | "voice";
-}) {
+}>(function AttachmentSheet({ open, onClose, onPhoto, onVoice, onFile, onVideo, publicMedia = false, preferred }, ref) {
+  const dialog = useRef<HTMLDivElement | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const cameraInput = useRef<HTMLInputElement | null>(null);
   const docInput = useRef<HTMLInputElement | null>(null);
   const videoInput = useRef<HTMLInputElement | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
+  const cameraStream = useRef<MediaStream | null>(null);
+  const cameraView = useRef<HTMLVideoElement | null>(null);
+  const cameraRequest = useRef(0);
   const chunks = useRef<Blob[]>([]);
   const startedAt = useRef(0);
+  const voiceRequest = useRef(0);
+  const mounted = useRef(true);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [readingDoc, setReadingDoc] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [voicePending, setVoicePending] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [cameraState, setCameraState] = useState<"idle" | "requesting" | "active" | "unavailable">("idle");
 
   const stopTimer = () => {
     if (timer.current) clearInterval(timer.current);
@@ -54,8 +61,18 @@ export function AttachmentSheet({
   };
 
   useEffect(() => {
+    const requests = voiceRequest;
+    const cameraRequests = cameraRequest;
+    const camera = cameraStream;
+    mounted.current = true;
     return () => {
+      mounted.current = false;
+      requests.current++;
+      cameraRequests.current++;
+      camera.current?.getTracks().forEach((track) => track.stop());
+      camera.current = null;
       stopTimer();
+      if (recorder.current) recorder.current.onstop = null;
       recorder.current?.stream.getTracks().forEach((t) => t.stop());
     };
   }, []);
@@ -65,8 +82,7 @@ export function AttachmentSheet({
     setBusy(true);
     try {
       const image = await compressImage(file);
-      onPhoto(image);
-      onClose();
+      if (mounted.current) { onPhoto(image); onClose(); }
     } catch {
       toast.error("Couldn't read that photo");
     } finally {
@@ -79,7 +95,7 @@ export function AttachmentSheet({
   const handleVideo = async (file: File | undefined) => {
     if (!file || !onVideo) return;
     setBusy(true);
-    try { await onVideo(file); onClose(); }
+    try { await onVideo(file); if (mounted.current) onClose(); }
     catch (error) { toast.error(error instanceof Error ? error.message : "Couldn’t send that video."); }
     finally { setBusy(false); if (videoInput.current) videoInput.current.value = ""; }
   };
@@ -89,14 +105,14 @@ export function AttachmentSheet({
     if (file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(file.name)) { await handleVideo(file); if (docInput.current) docInput.current.value = ""; return; }
     if (file.size > MAX_FILE_BYTES) {
       toast.error("Files up to 20 MB");
+      if (docInput.current) docInput.current.value = "";
       return;
     }
     setReadingDoc(true);
     try {
       const dataUrl = await blobToDataUrl(file);
       const ext = (file.name.split(".").pop() || "file").toLowerCase().slice(0, 8);
-      onFile?.({ dataUrl, name: file.name, sizeBytes: file.size, ext });
-      onClose();
+      if (mounted.current) { onFile?.({ dataUrl, name: file.name, sizeBytes: file.size, ext }); onClose(); }
     } catch {
       toast.error("Couldn't read that file");
     } finally {
@@ -105,13 +121,76 @@ export function AttachmentSheet({
     }
   };
 
+  const stopCamera = () => {
+    cameraRequest.current++;
+    cameraStream.current?.getTracks().forEach((track) => track.stop());
+    cameraStream.current = null;
+    setCameraState("idle");
+  };
+
+  const startCamera = async () => {
+    cancelRecording();
+    stopCamera();
+    const request = ++cameraRequest.current;
+    setCameraState("requesting");
+    if (!navigator.mediaDevices?.getUserMedia) { setCameraState("unavailable"); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      if (!mounted.current || request !== cameraRequest.current) { stream.getTracks().forEach((track) => track.stop()); return; }
+      cameraStream.current = stream;
+      setCameraState("active");
+    } catch {
+      if (mounted.current && request === cameraRequest.current) setCameraState("unavailable");
+    }
+  };
+
+  useEffect(() => {
+    if (cameraState !== "active" || !cameraView.current || !cameraStream.current) return;
+    const video = cameraView.current;
+    video.srcObject = cameraStream.current;
+    void video.play().catch(() => {
+      if (mounted.current && cameraStream.current === video.srcObject) {
+        cameraStream.current?.getTracks().forEach((track) => track.stop());
+        cameraStream.current = null;
+        setCameraState("unavailable");
+      }
+    });
+    return () => { video.srcObject = null; };
+  }, [cameraState]);
+
+  const capturePhoto = () => {
+    const video = cameraView.current;
+    if (!video?.videoWidth || !video.videoHeight) { toast.error("Camera is still starting. Try again in a moment."); return; }
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 2048 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) { toast.error("Couldn't capture this photo."); return; }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const request = cameraRequest.current;
+    setBusy(true);
+    canvas.toBlob((blob) => {
+      if (!mounted.current || request !== cameraRequest.current) return;
+      if (!blob) { setBusy(false); toast.error("Couldn't capture this photo."); return; }
+      stopCamera();
+      void handleFile(new File([blob], "camera.jpg", { type: "image/jpeg" }));
+    }, "image/jpeg", 0.9);
+  };
+
   const startRecording = async () => {
+    if (recorder.current?.state === "recording") return;
+    const request = ++voiceRequest.current;
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices) {
       toast.error("Voice notes need a microphone this browser can reach");
       return;
     }
+    setVoicePending(true);
+    let acquired: MediaStream | null = null;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      acquired = stream;
+      if (!mounted.current || request !== voiceRequest.current) { stream.getTracks().forEach((track) => track.stop()); return; }
       const mimeType = pickAudioMime() || undefined;
       const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       const ext = (rec.mimeType.split("/")[1] || "webm").split(";")[0];
@@ -127,9 +206,12 @@ export function AttachmentSheet({
           return;
         }
         const blob = new Blob(chunks.current, { type: rec.mimeType || "audio/webm" });
-        const dataUrl = await blobToDataUrl(blob);
-        onVoice({ dataUrl, durationMs, ext });
-        onClose();
+        try {
+          const dataUrl = await blobToDataUrl(blob);
+          if (mounted.current && request === voiceRequest.current) { onVoice({ dataUrl, durationMs, ext }); onClose(); }
+        } catch {
+          if (mounted.current && request === voiceRequest.current) toast.error("Couldn't prepare that voice note.");
+        }
       };
       recorder.current = rec;
       startedAt.current = Date.now();
@@ -146,7 +228,10 @@ export function AttachmentSheet({
         }
       }, 200);
     } catch {
-      toast.error("Microphone permission was blocked");
+      acquired?.getTracks().forEach((track) => track.stop());
+      if (mounted.current && request === voiceRequest.current) toast.error("Microphone permission was blocked");
+    } finally {
+      if (mounted.current && request === voiceRequest.current) setVoicePending(false);
     }
   };
 
@@ -157,6 +242,8 @@ export function AttachmentSheet({
   };
 
   const cancelRecording = () => {
+    voiceRequest.current++;
+    setVoicePending(false);
     stopTimer();
     if (recorder.current && recorder.current.state !== "inactive") {
       recorder.current.onstop = null;
@@ -167,7 +254,43 @@ export function AttachmentSheet({
     setElapsed(0);
   };
 
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const cancelRef = useRef(cancelRecording);
+  cancelRef.current = () => { cancelRecording(); stopCamera(); };
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = dialog.current;
+    const controls = () => Array.from(panel?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+    controls()[0]?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busyRef.current) { event.preventDefault(); cancelRef.current(); closeRef.current(); return; }
+      if (event.key !== "Tab") return;
+      const buttons = controls(); if (!buttons.length) return;
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.shiftKey && index <= 0) { event.preventDefault(); buttons[buttons.length - 1].focus(); }
+      else if (!event.shiftKey && (index < 0 || index === buttons.length - 1)) { event.preventDefault(); buttons[0].focus(); }
+    };
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("keydown", key);
+      if (previous?.isConnected && (document.activeElement === document.body || panel?.contains(document.activeElement))) previous.focus({ preventScroll: true });
+    };
+  }, [open]);
+
+  useImperativeHandle(ref, () => ({
+    openCamera: () => { if (!busy && !readingDoc) void startCamera(); },
+    openPhoto: () => { if (!busy && !readingDoc) fileInput.current?.click(); },
+    openFile: () => { if (!busy && !readingDoc) docInput.current?.click(); },
+    openVideo: () => { if (!busy && !readingDoc) videoInput.current?.click(); },
+    startVoice: () => { if (!busy && !readingDoc) void startRecording(); },
+  }));
+
   return (
+    <>
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -179,13 +302,15 @@ export function AttachmentSheet({
             exit={{ opacity: 0 }}
             onClick={() => {
               if (busy) return;
-              if (recording) cancelRecording();
+              cancelRecording();
+              stopCamera();
               onClose();
             }}
             className="absolute inset-0 bg-black/65"
           />
 
           <motion.div
+            ref={dialog}
             role="dialog"
             aria-modal="true"
             aria-label="Attach"
@@ -204,7 +329,8 @@ export function AttachmentSheet({
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  if (recording) cancelRecording();
+                  cancelRecording();
+                  stopCamera();
                   onClose();
                 }}
                 aria-label="Close"
@@ -216,7 +342,21 @@ export function AttachmentSheet({
 
             {publicMedia && <p role="note" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-100">Photos, voice notes and files use public links. Videos use a private, temporary handoff and a device-local copy.</p>}
 
-            {recording ? (
+            {cameraState !== "idle" ? (
+              <div className="space-y-3">
+                {cameraState === "requesting" && <p role="status" className="py-8 text-center text-sm text-zinc-400">Opening camera…</p>}
+                {cameraState === "active" && <>
+                  <video ref={cameraView} autoPlay playsInline muted aria-label="Camera preview" className="aspect-[4/3] w-full rounded-2xl bg-black object-contain" />
+                  <button type="button" disabled={busy} onClick={capturePhoto} className="min-h-11 w-full rounded-full bg-rose px-4 py-3 text-sm font-medium text-white disabled:opacity-50">Take photo</button>
+                </>}
+                {cameraState === "unavailable" && <div role="status" className="space-y-3 text-center text-sm text-zinc-300">
+                  <p>Couldn’t open the camera here. Check permission or use your device’s camera picker.</p>
+                  <button type="button" onClick={() => { stopCamera(); cameraInput.current?.click(); }} className="min-h-11 rounded-full bg-white/10 px-5 py-2 text-white">Open device camera</button>
+                </div>}
+              </div>
+            ) : voicePending ? (
+              <p role="status" className="py-8 text-center text-sm text-zinc-400">Opening microphone…</p>
+            ) : recording ? (
               <div className="rounded-xl2 border border-rose/25 bg-rose/[0.06] p-4">
                 <div className="flex items-center gap-2 text-[12px] text-rose">
                   <motion.span
@@ -267,7 +407,7 @@ export function AttachmentSheet({
                   label="Camera"
                   hint="Take a photo"
                   highlighted={preferred === "camera"}
-                  onClick={() => cameraInput.current?.click()}
+                  onClick={() => void startCamera()}
                   disabled={busy}
                 />
                 <Tile
@@ -303,6 +443,15 @@ export function AttachmentSheet({
               </div>
             )}
 
+            {busy && <p role="status" className="mt-3 text-center text-xs text-zinc-400">Saving and uploading… Keep this chat open.</p>}
+            <p className="mt-4 text-center text-[11px] text-text-muted/60">
+              Voice notes up to 60s · files up to 20 MB · videos up to 50 MB
+            </p>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+    <div className="hidden" aria-hidden="true">
             <input
               ref={cameraInput}
               type="file"
@@ -326,16 +475,11 @@ export function AttachmentSheet({
               onChange={(e) => void handleDoc(e.target.files?.[0])}
             />
 
-            {busy && <p role="status" className="mt-3 text-center text-xs text-zinc-400">Saving and uploading… Keep this chat open.</p>}
-            <p className="mt-4 text-center text-[11px] text-text-muted/60">
-              Voice notes up to 60s · files up to 20 MB · videos up to 50 MB
-            </p>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+    </div>
+    {(busy || readingDoc) && !open && <p role="status" className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900 px-4 py-2 text-xs text-white shadow-xl">Preparing attachment…</p>}
+    </>
   );
-}
+});
 
 function Tile({
   icon,

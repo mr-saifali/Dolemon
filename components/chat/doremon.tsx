@@ -2,53 +2,18 @@
 
 import { motion } from "framer-motion";
 import { clockTime } from "@/lib/thread";
+import { displayDoremonText } from "@/lib/doremon/display";
 import type { DoremonMemory } from "@/lib/doremon/types";
 import { cn } from "@/lib/utils";
 
-/**
- * Doremon — the resident AI. His face, his bubbles, his "thinking" beat.
- * His blue is constant in both themes: it's *him*, not the app's palette.
- */
-
+/** Doremon's identity is shared across the AI room, messages and inbox. */
 const SPRING = { type: "spring", stiffness: 420, damping: 32, mass: 0.7 } as const;
 
-/** A little Doraemon-style face, drawn so it stays readable at 22px. */
 export function DoremonFace({ size = 24, className }: { size?: number; className?: string }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      className={cn("shrink-0", className)}
-      aria-hidden
-    >
-      <circle cx="50" cy="50" r="47" fill="#29ABE2" />
-      <ellipse cx="50" cy="64" rx="37" ry="29" fill="#FFFFFF" />
-      {/* eyes */}
-      <ellipse cx="35" cy="38" rx="8" ry="10" fill="#FFFFFF" stroke="#111" strokeWidth="2" />
-      <ellipse cx="65" cy="38" rx="8" ry="10" fill="#FFFFFF" stroke="#111" strokeWidth="2" />
-      <circle cx="36" cy="41" r="3.4" fill="#111" />
-      <circle cx="64" cy="41" r="3.4" fill="#111" />
-      {/* nose + nose-to-mouth line */}
-      <circle cx="50" cy="55" r="7" fill="#E53935" />
-      <circle cx="47.5" cy="52.5" r="2" fill="#FFFFFF" opacity="0.85" />
-      <line x1="50" y1="62" x2="50" y2="72" stroke="#111" strokeWidth="2.5" />
-      {/* mouth */}
-      <path d="M30 72 Q50 84 70 72" fill="none" stroke="#111" strokeWidth="2.5" strokeLinecap="round" />
-      {/* whiskers */}
-      <g stroke="#111" strokeWidth="2" strokeLinecap="round">
-        <line x1="16" y1="58" x2="30" y2="60" />
-        <line x1="15" y1="68" x2="30" y2="68" />
-        <line x1="16" y1="78" x2="30" y2="76" />
-        <line x1="84" y1="58" x2="70" y2="60" />
-        <line x1="85" y1="68" x2="70" y2="68" />
-        <line x1="84" y1="78" x2="70" y2="76" />
-      </g>
-      {/* collar + bell */}
-      <path d="M22 92 Q50 104 78 92" fill="none" stroke="#E53935" strokeWidth="7" strokeLinecap="round" />
-      <circle cx="50" cy="97" r="8" fill="#F6C445" stroke="#B8860B" strokeWidth="1.5" />
-      <line x1="50" y1="97" x2="50" y2="103" stroke="#B8860B" strokeWidth="1.5" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/images/ai-agent.png?v=1" width={size} height={size} alt="" aria-hidden="true"
+      className={cn("shrink-0 rounded-full object-cover", className)} />
   );
 }
 
@@ -89,7 +54,7 @@ export function DoremonBubble({ message, animateIn = true }: { message: DoremonM
           </span>
         </div>
         <p className="relative mt-1.5 whitespace-pre-wrap break-words text-[14.5px] leading-relaxed text-zinc-100">
-          {message.text}
+          {displayDoremonText(message.text)}
         </p>
       </div>
     </motion.div>
@@ -135,20 +100,13 @@ export function DoremonThinking() {
  */
 export function DoremonPresence({
   status,
-  memory,
   onTap,
 }: {
   status: "idle" | "watching" | "thinking";
   memory: DoremonMemory | null;
   onTap: () => void;
 }) {
-  const hot = memory?.tension != null && memory.tension >= 6;
-  const label =
-    status === "thinking"
-      ? "Doremon: soch raha hai"
-      : hot
-        ? "Doremon: tension padh raha hai — tap karo, poochh lo"
-        : "Doremon: har baat dekh raha hai — tap karo, uski room kholo";
+  const label = status === "thinking" ? "Doremon is thinking" : "Open Doremon room";
   return (
     <button
       type="button"

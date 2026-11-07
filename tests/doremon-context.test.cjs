@@ -7,53 +7,42 @@ const ts = require('typescript');
 const resolve = Module._resolveFilename;
 Module._resolveFilename = function(id, parent, ...rest) { if (id.startsWith('@/')) id = path.join(__dirname, '..', id.slice(2)); return resolve.call(this, id, parent, ...rest); };
 require.extensions['.ts'] = (m, f) => m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText, f);
-const { minimizeQuestionRequest } = require('../lib/doremon/context.ts');
-const memory = { summary: 'A secret about work', notes: ['They promised dinner at home', 'Secret vacation in Paris'], chat: [{q:'old private question',a:'private answer'},{q:'recent private question',a:'recent answer'}], partnerUsername:'private handle' };
-const recent = [{who:'them',text:'dinner at 8'}, {who:'me',text:'secret bank pin 1234'}, {who:'them',text:'dinner at 9'}];
-const stats = { total: 14, firstAt:'2026-01-01',lastAt:'2026-01-02',users:{alice:{total:10,lastAt:'2026-01-02',hours:{9:10}},bob:{total:4,lastAt:'2026-01-01',hours:{20:4}}}, whoStarts:{alice:3,bob:1} };
-const input = {action:'roomAsk', me:'SECRET NAME', partner:'SECRET HANDLE', meId:'alice', partnerId:'bob', memory, recent, stats};
-const packet = (question) => minimizeQuestionRequest({...input, question});
-
-test('greetings and unrelated questions contain no chat, IDs, handles or private history', () => {
-  for (const question of ['Hello', 'how are you?', 'kaise ho', 'What time is it?', 'How many calories in an apple?', 'Explain a relationship']) {
-    assert.deepEqual(packet(question), {action:'roomAsk', question});
-  }
+const { minimizeQuestionRequest, sanitizePacket } = require('../lib/doremon/context.ts');
+const { localLookup } = require('../lib/doremon/local-search.ts');
+const now = Date.now();
+const recent = [{who:'them',text:'dinner PRIVATE SECRET',at:now-1000},{who:'me',text:'secret PIN 1234',at:now-1000}];
+const memory = { summary:'SECRET SUMMARY', chat: Array.from({length:7},(_,i)=>({q:`private question ${i}`,a:`private answer ${i}`})) };
+const input = {action:'roomAsk', question:'Summarize the recent messages', recent, memory, me:'SECRET NAME', partner:'PRIVATE HANDLE'};
+test('only fixed labels and bounded per-day counts leave the browser', () => {
+  const p = minimizeQuestionRequest(input);
+  assert.equal(p.intent,'recap'); assert.equal(p.incomplete,true); assert.deepEqual(p.packs,[{day:0,u1:1,u2:1}]); assert.equal(p.history.length,5);
+  assert.doesNotMatch(JSON.stringify(p),/SECRET|PIN|1234|dinner|private|Summarize/i);
+  assert.deepEqual(sanitizePacket(p),p);
 });
-test('question-specific excerpt filtering removes unrelated messages and is idempotent', () => {
-  const p = packet('What did she say about dinner?');
-  assert.deepEqual(p.context.recent.map(x => x.text), ['dinner at 8','dinner at 9']);
-  assert.doesNotMatch(JSON.stringify(p), /secret|private|alice/i);
-  assert.deepEqual(minimizeQuestionRequest(p), p);
+test('server rejects injected free text and invalid counts even from modified clients', () => {
+  const p = sanitizePacket({...input,intent:'SECRET',language:'SECRET',history:['SECRET','greeting'],packs:[{day:0,u1:1,u2:2,text:'SECRET'},{day:1,u1:10000,u2:0}]});
+  assert.deepEqual(p.packs,[{day:0,u1:1,u2:2}]); assert.deepEqual(p.history,['other','greeting']); assert.doesNotMatch(JSON.stringify(p),/SECRET|PIN|private|dinner/i);
 });
-test('statistics questions send only the requested aggregates, not messages or other dimensions', () => {
-  const p = packet('How many messages did we send?');
-  assert.match(p.context.stats, /you 10, other person 4/);
-  assert.doesNotMatch(JSON.stringify(p), /dinner|secret|private|alice|Peak|starts/);
-  assert.deepEqual(minimizeQuestionRequest(p), p);
-  const hours = packet('What hours do we message?');
-  assert.match(hours.context.stats, /Peak activity/);
-  assert.doesNotMatch(hours.context.stats, /Message counts/);
+test('daily packets do not contain message or memory text and unknown timestamps are not fabricated', () => {
+  const p = minimizeQuestionRequest({...input,action:'daily',yesterday:[...recent,{who:'me',text:'PRIVATE'}]});
+  assert.equal(p.action,'daily'); assert.deepEqual(p.packs,[{day:0,u1:1,u2:1}]); assert.doesNotMatch(JSON.stringify(p),/secret|private|dinner/i);
 });
-test('memory and follow-ups select bounded fields only, never all prior exchanges', () => {
-  const p = packet('Do you remember dinner?');
-  assert.deepEqual(p.context.notes, ['They promised dinner at home']);
-  assert.doesNotMatch(JSON.stringify(p), /secret|private handle|private question/gi);
-  assert.deepEqual(minimizeQuestionRequest(p), p);
-  const f = packet('What was your previous answer?');
-  assert.equal(f.context.history.length, 2);
-  assert.doesNotMatch(JSON.stringify(f), /dinner|Paris|SECRET NAME/);
-  assert.deepEqual(minimizeQuestionRequest(f), f);
+test('local lookup resolves codes only against loaded messages and marks its limited coverage', () => {
+  const out = localLookup('What did she say about dinner?',recent);
+  assert.match(out,/m1 · u2: dinner PRIVATE SECRET/); assert.match(out,/not a complete history/);
+  assert.match(localLookup('What did she say about nonexistent?',recent),/poori history nahi/);
+  assert.equal(localLookup('Hello',recent),null);
 });
-test('browser fetch sends the minimized packet before it reaches the app server', async () => {
-  const oldLoad = Module._load, oldFetch = global.fetch;
-  Module._load = function(id, parent, main) { if (id === '@/lib/supabase') return { getSupabase: () => ({auth:{getSession:async () => ({data:{session:{access_token:'token'}}})}}) }; return oldLoad.call(this, id, parent, main); };
-  const { doremonFetch } = require('../lib/doremon/api.ts'); Module._load = oldLoad;
-  let body; global.fetch = async (_url, opts) => { body = JSON.parse(opts.body); return new Response('{}'); };
+test('browser fetch sends the safe packet for both question and daily actions', async () => {
+  const oldLoad=Module._load, oldFetch=global.fetch;
+  Module._load=function(id,parent,main) { if(id==='@/lib/supabase') return {getSupabase:()=>({auth:{getSession:async()=>({data:{session:{access_token:'token'}}})}})}; return oldLoad.call(this,id,parent,main); };
+  const {doremonFetch}=require('../lib/doremon/api.ts'); Module._load=oldLoad;
+  const sent=[]; global.fetch=async (_url,opts)=>{sent.push(JSON.parse(opts.body));return new Response('{}')};
   try {
-    await doremonFetch({...input, question:'hello'}, new AbortController().signal);
-    assert.deepEqual(body, {action:'roomAsk', question:'hello'});
-    await doremonFetch({...input, action:'daily', day:'2026-01-01', yesterday:recent}, new AbortController().signal);
-    assert.equal(body.action, 'daily'); assert.equal(body.yesterday.length, 3);
-    assert.doesNotMatch(JSON.stringify(body), /private question|SECRET NAME|alice|SECRET HANDLE/);
-  } finally { global.fetch = oldFetch; }
+    await doremonFetch(input,new AbortController().signal);
+    await doremonFetch({...input,action:'daily',yesterday:recent},new AbortController().signal);
+    assert.deepEqual(sent.map(x=>x.action),['roomAsk','daily']);
+    assert.doesNotMatch(JSON.stringify(sent),/secret|private|dinner|PIN|1234/i);
+    await assert.rejects(()=>doremonFetch({...input,action:'analyze'},new AbortController().signal),/UNSUPPORTED/);
+  } finally {global.fetch=oldFetch;}
 });

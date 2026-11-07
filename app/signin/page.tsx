@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { Download, Eye, EyeOff, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenShell, Motif, ScreenTitle, ScreenSubtitle } from "@/components/screen-shell";
 import { Input, Label } from "@/components/ui/input";
@@ -82,7 +82,6 @@ export default function SignInPage() {
               inputMode="email"
               autoComplete="email"
               placeholder="you@example.com"
-              autoFocus
               invalid={Boolean(form.formState.errors.email)}
               {...form.register("email")}
             />
@@ -117,6 +116,18 @@ export default function SignInPage() {
         <Button type="submit" size="lg" className="mt-7 w-full" loading={submitting}>
           Sign in
         </Button>
+
+        <a
+          href="/downloads/dolemon-test-1.0.0.apk"
+          download="Dolemon-test-1.0.0.apk"
+          className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[14px] font-medium text-zinc-100 transition-colors hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          Download Android APK
+        </a>
+        <p className="mt-2 text-center text-xs leading-relaxed text-zinc-400">
+          Test build · Internet required · No offline chats or push notifications yet.
+        </p>
 
         <p className="mt-6 text-center text-[14px] text-text-muted">
           New here?{" "}

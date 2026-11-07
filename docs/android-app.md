@@ -7,3 +7,7 @@ The GitHub Actions workflow builds a **debug-signed test APK**. Android may requ
 ## Build locally
 
 Install JDK 17, Android SDK platform 35 and Gradle 8.10.2. From `android/`, run `gradle assembleDebug`; the output is `app/build/outputs/apk/debug/app-debug.apk`. Or run the **Android test APK** GitHub Actions workflow and download its artifact. Use only the official project repository to obtain builds. Before distributing, test two real Android devices for login/logout, message delivery and receipts, links, file/video selection, voice/video permission prompts, calls, back navigation, app suspension and reinstall/upgrade. Existing backend and push/video setup requirements still apply.
+
+## Published test download
+
+`public/downloads/dolemon-test-1.0.0.apk` is the small debug-signed APK built by [GitHub Actions run 42342672529](https://github.com/mr-saifali/Dolemon/actions/runs/42342672529), from commit `ffa4086754c84c5dd6d1714601a9b254b183f860`. SHA-256: `88a832820f94b1af80f85ca8b39438fd6a681a4a027a90cdd47af0b9db651153`. It is intentionally committed because the site serves it directly; it does not contain the later, unconnected offline-storage groundwork. It has not been verified on physical devices. Use a new versioned path and update the links and hash when intentionally replacing it. CI-generated debug keys change and may require users to uninstall, erasing local data. Do not reuse this process for a production release.

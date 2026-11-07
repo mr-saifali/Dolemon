@@ -4,6 +4,7 @@ import { toRemoteSendOptions } from "@/lib/remote-send-options";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BellOff,
@@ -20,11 +21,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
-import { ConsistencySheet } from "@/components/chat/consistency-sheet";
-import { AttachmentSheet } from "@/components/chat/attachment-sheet";
+
+
 import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageSearchSheet } from "@/components/chat/MessageSearchSheet";
-import { ChatThemeSheet } from "@/components/chat/ChatThemePicker";
+
+
 import { ChatWallpaper, chatThemeStyle } from "@/components/chat/ChatWallpaper";
 import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
@@ -48,9 +49,16 @@ import { useRemoteThread } from "@/lib/use-remote-thread";
 import { useSession } from "@/lib/session";
 import { useAppPresence } from "@/lib/app-presence";
 import { useDoremon } from "@/lib/doremon/use-doremon";
+import { confirmDoremonSharing } from "@/lib/doremon/consent";
 import { clearConversationVideos, prepareVideo, removeVideoFromDevice } from "@/lib/video-storage";
 import { parseVideoReference } from "@/lib/video-reference";
 import { useViewportHeight } from "@/lib/use-viewport-height";
+
+// These panels are only downloaded when opened, not on every chat visit.
+const ConsistencySheet = dynamic(() => import("@/components/chat/consistency-sheet").then((m) => m.ConsistencySheet));
+const AttachmentSheet = dynamic(() => import("@/components/chat/attachment-sheet").then((m) => m.AttachmentSheet));
+const MessageSearchSheet = dynamic(() => import("@/components/chat/MessageSearchSheet").then((m) => m.MessageSearchSheet));
+const ChatThemeSheet = dynamic(() => import("@/components/chat/ChatThemePicker").then((m) => m.ChatThemeSheet));
 
 const REMOTE = authMode === "supabase";
 
@@ -301,6 +309,7 @@ function ThreadScreen() {
     // /doremon <anything> — a word to Doremon, not a message to them
     if (/^\/doremon\b/i.test(trimmed)) {
       const question = trimmed.replace(/^\/doremon\s*/i, "").trim();
+      if (!question || !confirmDoremonSharing(REMOTE)) return false;
       setReplyTo(null);
       void doremon.ask(question);
       return;
@@ -558,15 +567,15 @@ function ThreadScreen() {
         onCancelReply={() => setReplyTo(null)}
       />
 
-      <MessageSearchSheet open={searchOpen} onClose={() => setSearchOpen(false)} conversationId={conversationId} remote={REMOTE} me={remote.me} messages={messages} />
-      <ChatThemeSheet
+      {searchOpen && <MessageSearchSheet open={searchOpen} onClose={() => setSearchOpen(false)} conversationId={conversationId} remote={REMOTE} me={remote.me} messages={messages} />}
+      {themeOpen && <ChatThemeSheet
         open={themeOpen}
         value={theme.id}
         inherited={!isChatThemeId(meta.chatTheme)}
         onChange={(id) => patchMeta(conversationId, { chatTheme: id })}
         onReset={() => patchMeta(conversationId, { chatTheme: undefined })}
         onClose={closeTheme}
-      />
+      />}
 
       <ChatMenuSheet
         open={menuOpen}
@@ -605,7 +614,7 @@ function ThreadScreen() {
 
       {compareOpen && <ConsistencySheet messages={messages} onClose={closeCompare} hasOlder={REMOTE && remote.hasOlder} loadingOlder={remote.loadingOlder} onLoadOlder={REMOTE ? remote.loadOlder : undefined} />}
 
-      <AttachmentSheet
+      {attachOpen && <AttachmentSheet
         publicMedia={REMOTE}
         preferred={attachIntent}
         open={attachOpen}
@@ -640,7 +649,7 @@ function ThreadScreen() {
           });
           setReplyTo(null);
         }}
-      />
+      />}
 
       <AnimatePresence>
         {viewerUrl && (

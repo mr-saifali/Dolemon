@@ -28,7 +28,7 @@ export function ChatInput({
   hint,
   disabled = false,
 }: {
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | boolean;
   onSticker: (type: ReactionType) => void;
   onPulse: () => void;
   onAttach: () => void;
@@ -60,7 +60,7 @@ export function ChatInput({
   const submit = () => {
     const text = value.trim();
     if (!text || disabled) return;
-    onSend(text);
+    if (onSend(text) === false) return;
     setValue("");
     setTrayOpen(false);
     // Keep the keyboard exactly where it is. Re-focusing an already-focused

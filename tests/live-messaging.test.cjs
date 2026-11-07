@@ -39,7 +39,7 @@ test('visible polling catches a missed incoming message without navigating, and 
   const original={id:'a',senderId:'bob',kind:'text',body:'old',at:1,reactions:[]};
   const incoming={id:'b',senderId:'bob',kind:'text',body:'new message',at:2,reactions:[]};
   let rows=[original], loads=0;
-  const mock={INITIAL_THREAD_PAGE_SIZE:80,loadThread:async()=>{loads++;return {me:'alice',messages:rows}},listConversations:async()=>[],conversationReadState:async()=>null,latestMessageId:async()=>rows.at(-1)?.id??null,loadReactions:async()=>new Map(),markThreadRead:async()=>{},watchReactions:()=>()=>{},typingBus:()=>({stop(){},ping(){}}),watchMessages:(_id,h)=>{handlers=h;return()=>{}},postMessage:()=>new Promise(resolve=>{resolveSend=resolve})};
+  const mock={INITIAL_THREAD_PAGE_SIZE:6,OLDER_THREAD_PAGE_SIZE:6,loadThread:async()=>{loads++;return {me:'alice',messages:rows}},listConversations:async()=>[],conversationReadState:async()=>null,latestMessageId:async()=>rows.at(-1)?.id??null,loadReactions:async()=>new Map(),markThreadRead:async()=>{},watchReactions:()=>()=>{},typingBus:()=>({stop(){},ping(){}}),watchMessages:(_id,h)=>{handlers=h;return()=>{}},postMessage:()=>new Promise(resolve=>{resolveSend=resolve})};
   Module._load=function(id,parent,main){if(id==='@/lib/db')return mock;if(id==='sonner')return {toast:{error(){}}};return originalLoad.call(this,id,parent,main)};
   const {useRemoteThread}=require('../lib/use-remote-thread.ts');Module._load=originalLoad;
   function View(){result=useRemoteThread('room');return null;}

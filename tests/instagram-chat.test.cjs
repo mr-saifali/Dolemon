@@ -120,3 +120,23 @@ test('unread separators and system events break an avatar group; compact mode re
   const compact = renderToStaticMarkup(React.createElement(MessageList, { ...base, compact:true }));
   assert.match(compact, /id="message-one" class="mb-2"/);
 });
+
+test('scrolling upward requests older messages once and keeps the visible position stable', async () => {
+  const { act, create } = require('react-test-renderer');
+  const oldRaf = global.requestAnimationFrame;
+  global.requestAnimationFrame = (fn) => { fn(); return 1; };
+  const scroller = { scrollHeight: 1000, scrollTop: 250, clientHeight: 300, scrollTo() {} };
+  let calls = 0, tree;
+  try {
+    await act(async () => { tree = create(React.createElement(MessageList, {
+      messages: [], partnerName:'Sam', typing:false, showReceipts:true, dividerId:null,
+      onLongPress(){}, onDoubleTap(){}, onRemoveMyReaction(){}, onRetry(){},
+      hasOlder:true, onLoadOlder:async () => { calls++; scroller.scrollHeight += 120; },
+    }), { createNodeMock: (node) => node.type === 'div' && node.props.onScroll ? scroller : null }); });
+    const scroll = tree.root.find((node) => node.type === 'div' && node.props.onScroll).props.onScroll;
+    await act(async () => { scroll(); scroller.scrollTop = 40; scroll(); await Promise.resolve(); });
+    assert.equal(calls, 1);
+    assert.equal(scroller.scrollTop, 160);
+    await act(async () => tree.unmount());
+  } finally { global.requestAnimationFrame = oldRaf; }
+});

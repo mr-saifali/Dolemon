@@ -63,6 +63,7 @@ export function MessageList({
   const scroller = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
   const prepending = useRef(false);
+  const previousScrollTop = useRef(0);
   /** whatever was already on screen when the thread opened stays still — no hundred springs */
   const initialIds = useRef<Set<string> | null>(null);
   if (initialIds.current === null && messages.length > 0) initialIds.current = new Set(messages.map((m) => m.id));
@@ -87,15 +88,35 @@ export function MessageList({
     setNewCount(0);
   }, []);
 
+  const requestOlder = useCallback(() => {
+    const el = scroller.current;
+    if (!el || !hasOlder || !onLoadOlder || loadingOlder || prepending.current) return;
+    const height = el.scrollHeight;
+    const top = el.scrollTop;
+    prepending.current = true;
+    void onLoadOlder().finally(() => {
+      requestAnimationFrame(() => {
+        if (scroller.current === el) {
+          el.scrollTop = top + el.scrollHeight - height;
+          previousScrollTop.current = el.scrollTop;
+        }
+        prepending.current = false;
+      });
+    });
+  }, [hasOlder, loadingOlder, onLoadOlder]);
+
   const handleScroll = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
+    const scrollingUp = el.scrollTop < previousScrollTop.current;
+    previousScrollTop.current = el.scrollTop;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = distance < 120;
     setAtBottom(near);
     onBottomChange?.(near);
     if (near) setNewCount(0);
-  }, [onBottomChange]);
+    if (scrollingUp && el.scrollTop <= 80) requestOlder();
+  }, [onBottomChange, requestOlder]);
 
   // Pin to the newest message only when the reader is already near the bottom.
   useEffect(() => {
@@ -135,19 +156,7 @@ export function MessageList({
 
           {hasOlder && onLoadOlder && (
             <div className="mb-3 flex justify-center">
-              <button type="button" disabled={loadingOlder} onClick={() => {
-                const el = scroller.current;
-                if (!el || prepending.current) return;
-                const height = el.scrollHeight;
-                const top = el.scrollTop;
-                prepending.current = true;
-                void onLoadOlder().finally(() => {
-                  requestAnimationFrame(() => {
-                    if (scroller.current === el) el.scrollTop = top + el.scrollHeight - height;
-                    prepending.current = false;
-                  });
-                });
-              }} className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs text-zinc-300 disabled:opacity-50">
+              <button type="button" disabled={loadingOlder} onClick={requestOlder} className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs text-zinc-300 disabled:opacity-50">
                 {loadingOlder ? "Loading…" : "Load older messages"}
               </button>
             </div>

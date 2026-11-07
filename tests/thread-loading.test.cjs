@@ -12,7 +12,7 @@ require.extensions['.ts'] = (mod, filename) => mod._compile(ts.transpileModule(f
 
 let rows = [], fail = false, calls = 0, subscribed;
 const db = {
-  INITIAL_THREAD_PAGE_SIZE: 80,
+  INITIAL_THREAD_PAGE_SIZE: 6, OLDER_THREAD_PAGE_SIZE: 6,
   loadThread: async () => { calls++; if (fail) throw new Error('offline'); return { me: 'alice', messages: rows }; },
   listConversations: async () => [], conversationReadState: async () => null, loadReactions: async () => new Map(),
   markThreadRead: async () => {}, watchReactions: () => () => {}, typingBus: () => ({ stop() {}, ping() {} }),
@@ -26,17 +26,17 @@ const mockWindow = new EventTarget();
 global.window = mockWindow;
 function messages(n) { return Array.from({ length: n }, (_, i) => ({ id: String(i), senderId: 'bob', kind: 'text', body: 'hello', at: i, reactions: [] })); }
 
-test('older-page control appears when the initial 80-message window is full', async () => {
+test('older-page control appears when the initial six-message window is full', async () => {
   let thread, view;
   function Component() { thread = useRemoteThread('room'); return null; }
-  rows = messages(79);
+  rows = messages(5);
   await act(async () => { view = create(React.createElement(Component)); });
-  assert.equal(thread.messages.length, 79);
+  assert.equal(thread.messages.length, 5);
   assert.equal(thread.hasOlder, false);
   await act(async () => view.unmount());
-  rows = messages(80);
+  rows = messages(6);
   await act(async () => { view = create(React.createElement(Component)); });
-  assert.equal(thread.messages.length, 80);
+  assert.equal(thread.messages.length, 6);
   assert.equal(thread.hasOlder, true);
   await act(async () => view.unmount());
 });
@@ -59,10 +59,24 @@ test('a disjoint reconnect window leaves older history reachable instead of hidi
   function Component() { thread = useRemoteThread('room'); return null; }
   rows = messages(10);
   await act(async () => { view = create(React.createElement(Component)); });
-  rows = messages(80).map((m, i) => ({ ...m, id: `new-${i}`, at: i + 100 }));
+  rows = messages(6).map((m, i) => ({ ...m, id: `new-${i}`, at: i + 100 }));
   await act(async () => { subscribed(); await Promise.resolve(); });
-  assert.equal(thread.messages.length, 80);
+  assert.equal(thread.messages.length, 6);
   assert.equal(thread.messages[0].id, 'new-0');
   assert.equal(thread.hasOlder, true);
+  await act(async () => view.unmount());
+});
+
+
+test('a disjoint reconnect at the same millisecond stays pageable', async () => {
+  let thread, view;
+  function Component() { thread = useRemoteThread('room'); return null; }
+  rows = messages(1).map(m => ({...m, id: 'old', at: 100}));
+  await act(async () => { view = create(React.createElement(Component)); });
+  rows = messages(6).map((m, i) => ({...m, id: `new-${i}`, at: 100}));
+  await act(async () => { subscribed(); await Promise.resolve(); });
+  assert.equal(thread.messages.length, 6);
+  assert.equal(thread.hasOlder, true);
+  assert.ok(thread.messages.every(m => m.id.startsWith('new-')));
   await act(async () => view.unmount());
 });

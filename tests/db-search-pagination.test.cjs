@@ -29,6 +29,6 @@ test('older pages use a full-precision timestamp plus id tie-breaker and reject 
   const cursor = { createdAt: '2026-01-01T00:00:00.123456+00:00', id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' };
   await loadOlderMessages('conversation', cursor, 'alice');
   assert.ok(steps.some((s) => s[0] === 'or' && s[1].includes(`created_at.eq.${cursor.createdAt},id.lt.${cursor.id}`)));
-  assert.ok(steps.some((s) => s[0] === 'limit' && s[1] === 100));
+  assert.ok(steps.some((s) => s[0] === 'limit' && s[1] === 6));
   await assert.rejects(loadOlderMessages('conversation', { ...cursor, id: 'bad,filter' }, 'alice'), /Invalid message cursor/);
 });

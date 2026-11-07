@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   conversationReadState,
   INITIAL_THREAD_PAGE_SIZE,
+  OLDER_THREAD_PAGE_SIZE,
   deleteMessage,
   editMessage,
   fetchMessageQuote,
@@ -283,7 +284,7 @@ export function useRemoteThread(
             // disjoint windows hides the intervening messages from pagination.
             // Drop the stale window instead; Load older can then traverse the gap.
             const hasGap = result.messages.length >= INITIAL_THREAD_PAGE_SIZE && oldestSnapshot && newestPrevious &&
-              newestPrevious.at < oldestSnapshot.at && !persisted.some((m) => snapshotIds.has(m.id));
+              newestPrevious.at <= oldestSnapshot.at && !persisted.some((m) => snapshotIds.has(m.id));
             const recentChanges = prev.filter((m) => m.id.startsWith("tmp_") ||
               (events.has(m.id) && (!hasGap || m.at >= oldestSnapshot.at)) ||
               (!hasGap && first && !snapshotIds.has(m.id) && m.at < first.at));
@@ -395,7 +396,7 @@ export function useRemoteThread(
     try {
       const rows = await loadOlderMessages(conversationId, { createdAt: first.createdAt, id: first.id }, me);
       if (activeConversation.current !== conversationId) return;
-      setHasOlder(rows.length >= 100);
+      setHasOlder(rows.length >= OLDER_THREAD_PAGE_SIZE);
       setMessages((prev) => {
         const existing = new Set(prev.map((message) => message.id));
         return [...rows.filter((row) => !existing.has(row.id)).map((row) => toChatMessage(row, me)), ...prev];

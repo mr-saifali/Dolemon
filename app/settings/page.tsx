@@ -40,6 +40,7 @@ import { AVATAR_PRESETS, avatarById } from "@/lib/avatars";
 import { uploadAvatarImage } from "@/lib/db";
 import { compressImage } from "@/lib/media";
 import { passwordStrength } from "@/lib/password";
+import { confirmDoremonAnalysis } from "@/lib/doremon/consent";
 import { useSession } from "@/lib/session";
 import { setPref, usePrefs } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
@@ -555,9 +556,9 @@ function SettingsContent() {
             <Switch
               icon={<Tile tone="sky"><Sparkles className="h-[15px] w-[15px]" /></Tile>}
               label="Automatic chat analysis"
-              description="Optional: analyze recent chat text on this device and save a personal memory. Turn off to stop future analysis; existing memories remain. Consider the other person's consent."
+              description="Optional: analyze recent chat text on this device and save a personal memory, including to your account when available. Turn off to stop future analysis; existing memories remain. Ask the other person first."
               checked={prefs.doremonAnalysis}
-              onChange={(v) => setPref("doremonAnalysis", v)}
+              onChange={(v) => { if (!v || confirmDoremonAnalysis()) setPref("doremonAnalysis", v); }}
             />
             <p className="mt-2 pl-12 text-xs leading-relaxed text-zinc-500">When you ask Doremon or request a daily briefing, chat excerpts and memory can be sent to Google Gemini. AI interpretations may be wrong.</p>
           </div>

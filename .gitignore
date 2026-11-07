@@ -8,3 +8,8 @@ dist
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+android/.gradle
+android/local.properties
+*.apk
+# This small, explicitly published test build backs the website download button.
+!public/downloads/dolemon-test-1.0.0.apk

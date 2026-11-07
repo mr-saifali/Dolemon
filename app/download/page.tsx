@@ -12,6 +12,11 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 const STEPS = [
   {
     icon: Smartphone,
+    title: "Android · Test APK",
+    steps: ["Download the APK from this page", "Open the downloaded file; if prompted, allow installs from your browser", "Install and open Dolemon — internet is required"],
+  },
+  {
+    icon: Smartphone,
     title: "iPhone · Safari",
     steps: ["Tap the Share icon in the toolbar", "Choose “Add to Home Screen”", "Tap Add — it opens full screen"],
   },
@@ -65,33 +70,45 @@ export default function DownloadPage() {
             Get Dolemon
           </h1>
           <p className="mt-2 max-w-[17rem] text-[13.5px] leading-relaxed text-zinc-500">
-            Install it once and it lives on your home screen — full screen, no address bar, no app store.
+            Download the Android test app, or install the browser version on your home screen.
           </p>
 
           <div className="mt-4 flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-400">
             <span className="h-1.5 w-1.5 rounded-full bg-rose" />
-            v{APP_VERSION} · {APP_RELEASE_NAME}
+            Browser app v{APP_VERSION} · {APP_RELEASE_NAME}
           </div>
+
+          <a
+            href="/downloads/dolemon-test-1.0.0.apk"
+            download="Dolemon-test-1.0.0.apk"
+            className="mt-7 flex min-h-12 w-full items-center justify-center gap-2 rounded-full py-3.5 text-[14.5px] font-medium text-white shadow-[0_12px_34px_-10px_var(--glow-send)] transition-transform active:scale-[0.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+            style={{ background: "var(--brand-grad)" }}
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Download Android APK
+          </a>
+          <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+            Test build for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. Later test builds may require reinstalling and erase local app data.
+          </p>
 
           {canInstall ? (
             <button
               type="button"
               onClick={() => void run()}
-              className="mt-7 flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-[14.5px] font-medium text-white shadow-[0_12px_34px_-10px_var(--glow-send)] transition-transform active:scale-[0.99]"
-              style={{ background: "var(--brand-grad)" }}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-white/[0.15] py-3.5 text-[14.5px] font-medium text-zinc-100 transition-transform active:scale-[0.99]"
             >
               <Download className="h-4 w-4" />
-              Install now
+              Install browser app
             </button>
           ) : installed ? (
-            <div className="mt-7 flex w-full items-center justify-center gap-2 rounded-full border border-rose/25 bg-rose/[0.08] py-3.5 text-[14px] font-medium text-rose">
+            <div className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-rose/25 bg-rose/[0.08] py-3.5 text-[14px] font-medium text-rose">
               <Check className="h-4 w-4" />
               Installed on this device
             </div>
           ) : (
             <Link
               href="/app"
-              className="mt-7 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 text-[14.5px] font-medium text-[#09090B] transition-transform active:scale-[0.99]"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 text-[14.5px] font-medium text-[#09090B] transition-transform active:scale-[0.99]"
             >
               Open in browser
             </Link>
@@ -142,8 +159,7 @@ export default function DownloadPage() {
         </div>
 
         <p className="mt-8 text-center text-[11.5px] leading-relaxed text-zinc-600">
-          Dolemon runs in your browser and on your home screen from the same code —
-          nothing to update, nothing to download from a store.
+          The Android test app and browser app connect to the same hosted Dolemon service. The APK is not a Play Store release.
         </p>
       </div>
     </main>

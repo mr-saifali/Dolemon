@@ -118,7 +118,7 @@ export const MessageBubble = memo(function MessageBubble({
       className={cn(
         "flex w-full select-none",
         mine ? "justify-end" : "justify-start",
-        grouped ? "mt-0.5" : compact ? "mt-1.5" : "mt-2.5"
+        grouped ? "mt-0.5" : compact ? "mt-1" : "mt-1.5"
       )}
     >
       <div
@@ -187,7 +187,7 @@ export const MessageBubble = memo(function MessageBubble({
               emojiOnly
                 ? "px-1 py-1 text-white"
                 : cn(
-                  message.kind === "image" || message.kind === "audio" ? "p-1" : "px-3 py-2",
+                  message.kind === "image" || message.kind === "audio" ? "p-1" : "px-3 py-1.5",
                   "border text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
                   mine ? "rounded-[20px] rounded-br-[6px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[20px] rounded-bl-[6px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-[color:var(--message-incoming,rgba(0,0,0,0.2))] backdrop-blur-md"
                 )

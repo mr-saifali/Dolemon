@@ -8,7 +8,7 @@ import { DoremonPresence } from "./doremon";
 import type { DoremonMemory } from "@/lib/doremon/types";
 
 /**
- * 56px, blurred, and quiet: the name and one honest line about where the other person is.
+ * A compact, blurred header: the name and one honest line about where the other person is.
  * Doremon keeps an eye on the room from the corner. Everything else lives behind the "…".
  */
 export function ChatHeader({
@@ -45,7 +45,7 @@ export function ChatHeader({
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-1 px-2">
+      <div className="mx-auto flex h-[52px] w-full max-w-2xl items-center gap-1 px-2">
         <Link
           href="/app"
           aria-label="Back to chats"
@@ -54,8 +54,8 @@ export function ChatHeader({
           <ChevronLeft className="h-5 w-5" strokeWidth={1.8} />
         </Link>
 
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <ChatAvatar avatarId={avatarId} avatarUrl={avatarUrl} name={name} size={40} online={online} />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ChatAvatar avatarId={avatarId} avatarUrl={avatarUrl} name={name} size={36} online={online} />
           <div className="min-w-0 leading-tight">
             <h1 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-zinc-100">{name}</h1>
             <p

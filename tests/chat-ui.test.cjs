@@ -63,7 +63,7 @@ test('chat proportions remain compact and input stays at a legible mobile font s
   const { ChatHeader } = require('../components/chat/ChatHeader.tsx');
   const { ChatInput } = require('../components/chat/ChatInput.tsx');
   const header = renderToStaticMarkup(React.createElement(ChatHeader, { name:'Sam', avatarId:null, online:true, status:'online', typing:false, onMenu(){}, onCall(){} }));
-  assert.match(header, /h-14/); assert.match(header, /Voice call/); assert.match(header, /Video call/);
+  assert.match(header, /h-\[52px\]/); assert.match(header, /Voice call/); assert.match(header, /Video call/);
   const input = renderToStaticMarkup(React.createElement(ChatInput, { onSend(){}, onSticker(){}, onPulse(){}, onAttach(){}, onVoice(){} }));
   assert.match(input, /text-\[16px\]/); assert.match(input, /aria-label="Message"/);
   const bubble = renderToStaticMarkup(React.createElement(MessageBubble, { grouped:false, tail:true, partnerName:'Sam', onLongPress(){}, onDoubleTap(){}, onRemoveMyReaction(){}, onRetry(){}, animateIn:false, message:{id:'1',author:'them',kind:'text',text:'Hello',at:0} }));

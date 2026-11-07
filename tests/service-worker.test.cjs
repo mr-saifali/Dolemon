@@ -54,7 +54,7 @@ test('install handles individual missing assets and only deletes Dolemon caches'
   const w = worker();
   await w.caches.open('dolemon-v0.4.0'); await w.caches.open('other-app');
   w.failIcon(); await w.lifecycle('install'); await w.lifecycle('activate');
-  assert.ok(await (await w.caches.open('dolemon-shell-v2')).match('/offline.html'));
+  assert.ok(await (await w.caches.open('dolemon-shell-v3')).match('/offline.html'));
   assert.equal(w.stores.has('dolemon-v0.4.0'), false);
   assert.equal(w.stores.has('other-app'), true);
 });
@@ -66,7 +66,7 @@ test('navigation stays network-first and uses a standalone offline page, never p
   w.setOnline(false);
   const offline = await w.request('/app/chat/private-room', { mode: 'navigate' });
   assert.equal(await offline.text(), 'offline page');
-  assert.equal((await (await w.caches.open('dolemon-shell-v2')).match('/app/chat/private-room')), undefined);
+  assert.equal((await (await w.caches.open('dolemon-shell-v3')).match('/app/chat/private-room')), undefined);
 });
 
 test('only same-origin Next static assets are cached and cache hits avoid network', async () => {

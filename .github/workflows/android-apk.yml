@@ -4,7 +4,8 @@ on:
     paths: ['android/**', '.github/workflows/android-apk.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
+  statuses: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,3 +27,16 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Export debug APK to GitHub Git data API (temporary)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYCODE'
+          import base64, json, os
+          p = 'android/app/build/outputs/apk/debug/app-debug.apk'
+          with open(os.environ['RUNNER_TEMP'] + '/apk-blob.json', 'w') as f:
+              json.dump({'content': base64.b64encode(open(p, 'rb').read()).decode(), 'encoding': 'base64'}, f)
+          PYCODE
+          blob=$(gh api -X POST "repos/$GITHUB_REPOSITORY/git/blobs" --input "$RUNNER_TEMP/apk-blob.json" --jq .sha)
+          hash=$(sha256sum android/app/build/outputs/apk/debug/app-debug.apk | cut -d' ' -f1)
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context=android-test-apk-export -f description="blob:$blob sha256:$hash" >/dev/null

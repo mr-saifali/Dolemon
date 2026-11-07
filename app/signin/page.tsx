@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Download, Eye, EyeOff, LogIn } from "lucide-react";
+import { usePwa } from "@/components/pwa/pwa-provider";
 import { toast } from "sonner";
 import { ScreenShell, Motif, ScreenTitle, ScreenSubtitle } from "@/components/screen-shell";
 import { Input, Label } from "@/components/ui/input";
@@ -24,6 +25,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function SignInPage() {
+  const { androidApp, environmentReady } = usePwa();
   const router = useRouter();
   const { account, loading, refresh } = useSession();
   const [show, setShow] = useState(false);
@@ -117,17 +119,18 @@ export default function SignInPage() {
           Sign in
         </Button>
 
-        <a
-          href="/downloads/dolemon-test-1.0.0.apk"
-          download="Dolemon-test-1.0.0.apk"
+        {environmentReady && !androidApp && <>
+        <Link
+          href="/download"
           className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[14px] font-medium text-zinc-100 transition-colors hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
         >
           <Download className="h-4 w-4" aria-hidden="true" />
           Download Android APK
-        </a>
+        </Link>
         <p className="mt-2 text-center text-xs leading-relaxed text-zinc-400">
-          Test build · Internet required · No offline chats or push notifications yet.
+          Test build · Internet required · No offline chats or push notifications yet. To install over the 1.0.0 test build, uninstall it first; uninstalling erases its local app data.
         </p>
+        </>}
 
         <p className="mt-6 text-center text-[14px] text-text-muted">
           New here?{" "}

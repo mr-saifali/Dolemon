@@ -13,3 +13,4 @@ android/local.properties
 *.apk
 # This small, explicitly published test build backs the website download button.
 !public/downloads/dolemon-test-1.0.0.apk
+!public/downloads/dolemon-test-1.1.0.apk

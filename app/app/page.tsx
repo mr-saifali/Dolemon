@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Download, Plus } from "lucide-react";
+import { usePwa } from "@/components/pwa/pwa-provider";
 import { AppGuard } from "@/components/app-guard";
 import { DoremonFace } from "@/components/chat/doremon";
 import { ChatAvatar, ChatRow, type ChatRowData } from "@/components/home/chat-row";
@@ -163,6 +164,8 @@ function HomeScreen() {
     }
   };
 
+  const { androidApp, environmentReady } = usePwa();
+
   const openStart = () => {
     setStartError(null);
     setSheetOpen(true);
@@ -181,10 +184,10 @@ function HomeScreen() {
               </motion.h1>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <a href="/downloads/dolemon-test-1.0.0.apk" download="Dolemon-test-1.0.0.apk" className="flex min-h-11 items-center gap-1.5 rounded-full border border-white/10 px-3 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/5" aria-label="Download Android test APK, internet required" title="Android test build · Internet required">
+              {environmentReady && !androidApp && <Link href="/download" className="flex min-h-11 items-center gap-1.5 rounded-full border border-white/10 px-3 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/5" aria-label="Download Android test APK, internet required" title="Android test build · Internet required">
                 <Download className="h-4 w-4" aria-hidden="true" />
                 Test APK
-              </a>
+              </Link>}
               <Link href="/settings" aria-label="Profile and settings" className="shrink-0 rounded-full transition-transform active:scale-95">
                 <ChatAvatar avatarId={account?.avatarId ?? null} avatarUrl={account?.avatarUrl ?? null} name={account?.username ?? "you"} size={40} />
               </Link>

@@ -27,3 +27,16 @@ test('launcher icons are real PNGs with expected dimensions',()=>{
   }
   assert.match(fs.readFileSync('app/manifest.ts','utf8'),/icon-maskable\.png/);
 });
+
+test('offline vault scaffolding binds encrypted entries to their account and requires device authentication',()=>{
+  const vault=fs.readFileSync('android/app/src/main/java/app/dolemon/mobile/OfflineVault.java','utf8');
+  assert.match(vault,/AndroidKeyStore/);
+  assert.match(vault,/setUserAuthenticationRequired\(true\)/);
+  assert.match(vault,/AES\/GCM\/NoPadding/);
+  assert.match(vault,/cipher\.updateAAD\(associatedData\(accountId, itemId\)\)/);
+  assert.match(vault,/getNoBackupFilesDir/);
+  assert.match(vault,/AtomicFile/);
+  assert.match(vault,/MAX_ITEM_BYTES/);
+  // No access path is shipped until the reader and native credential gate exist.
+  assert.doesNotMatch(activity,/new OfflineVault|addJavascriptInterface/);
+});

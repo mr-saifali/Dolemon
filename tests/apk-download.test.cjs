@@ -10,11 +10,11 @@ const { ANDROID_APK_URL, ANDROID_APK_FILENAME, ANDROID_APP_VERSION, isAndroidApp
 
 test('published APK is the exact signed CI test build', () => {
   const apk = fs.readFileSync(`public${ANDROID_APK_URL}`);
-  assert.equal(ANDROID_APP_VERSION, '1.1.0');
+  assert.equal(ANDROID_APP_VERSION, '1.2.0');
   assert.equal(apk.subarray(0, 4).toString('hex'), '504b0304');
   assert.ok(apk.includes(Buffer.from('APK Sig Block 42')));
-  assert.equal(crypto.createHash('sha256').update(apk).digest('hex'), '44b761256629bafd7193d3b44777d93a1fbc03d0497ceebe737890763aebbea4');
-  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.1.0.apk');
+  assert.equal(crypto.createHash('sha256').update(apk).digest('hex'), '278bc8a1f1710ed4e0486792b408f1aa69c4a13bfbfbdacc9c267047eea13d26');
+  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.2.0.apk');
 });
 
 test('website uses the current APK but app installation prompts are gated in the Android shell', () => {
@@ -26,7 +26,7 @@ test('website uses the current APK but app installation prompts are gated in the
   const downloadPage = fs.readFileSync('app/download/page.tsx', 'utf8');
   assert.match(downloadPage, /href=\{ANDROID_APK_URL\}/);
   assert.match(downloadPage, /download=\{ANDROID_APK_FILENAME\}/);
-  assert.match(downloadPage, /uninstall it first; uninstalling erases its local app data/);
+  assert.match(downloadPage, /uninstall the old app first; uninstalling erases its local app data/);
   for (const page of ['app/signin/page.tsx','app/app/page.tsx','app/settings/page.tsx', 'components/pwa/install-sheet.tsx']) {
     assert.match(fs.readFileSync(page, 'utf8'), /environmentReady && !androidApp/, page);
   }

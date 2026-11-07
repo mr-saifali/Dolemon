@@ -97,7 +97,7 @@ export default function DownloadPage() {
             Download Android APK
           </a>
           <p className="mt-3 text-xs leading-relaxed text-zinc-400">
-            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. To install over the 1.0.0 test build, uninstall it first; uninstalling erases its local app data.
+            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. Versions 1.0 and 1.1 cannot upgrade in place: uninstall the old app first; uninstalling erases its local app data. Back up anything important first.
           </p>
 
           {canInstall ? (

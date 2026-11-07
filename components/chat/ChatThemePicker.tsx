@@ -1,57 +1,109 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, X } from "lucide-react";
-import { CHAT_THEMES, type ChatThemeId } from "@/lib/chat-themes";
+import { Check, Plus, X } from "lucide-react";
+import { FEATURED_CHAT_THEMES, LEGACY_CHAT_THEMES, NIGHT_CHAT_THEMES, VIVID_CHAT_THEMES, getChatTheme, type ChatTheme, type ChatThemeId } from "@/lib/chat-themes";
+import { removeCustomWallpaper, saveCustomWallpaper, useCustomWallpaper } from "@/lib/custom-wallpaper";
+import { DEFAULT_CHAT_THEME } from "@/lib/chat-themes";
+import { getPrefs, setPref } from "@/lib/prefs";
+import { clearCustomChatThemes } from "@/lib/conversation-meta";
 import { cn } from "@/lib/utils";
 
 /** A shared, keyboard-accessible picker for the default and individual chats. */
 export function ChatThemePicker({ value, onChange }: { value: ChatThemeId; onChange: (id: ChatThemeId) => void }) {
   const name = useId();
+  const input = useRef<HTMLInputElement | null>(null);
+  const sequence = useRef(0);
+  const custom = useCustomWallpaper();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => () => { sequence.current++; }, []);
+  const select = (id: ChatThemeId) => { sequence.current++; setError(null); onChange(id); };
+  const upload = async (file?: File) => {
+    if (!file || busy) return;
+    const current = ++sequence.current;
+    setBusy(true); setError(null);
+    try {
+      await saveCustomWallpaper(file);
+      if (current === sequence.current) onChange("custom");
+    } catch (err) {
+      if (current === sequence.current) setError(err instanceof Error ? err.message : "Couldn't save that image.");
+    } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (busy) return;
+    const current = ++sequence.current;
+    setBusy(true); setError(null);
+    try {
+      await removeCustomWallpaper();
+      if (getPrefs().chatTheme === "custom") setPref("chatTheme", DEFAULT_CHAT_THEME);
+      clearCustomChatThemes();
+      if (current === sequence.current && value === "custom") onChange(DEFAULT_CHAT_THEME);
+    } catch { if (current === sequence.current) setError("Couldn't remove the saved image."); }
+    finally { setBusy(false); }
+  };
+  const circle = (theme: ChatTheme, image?: string | null) => (
+    <ThemeCircle key={theme.id} theme={theme} name={name} selected={value === theme.id} onSelect={() => select(theme.id)} image={image} disabled={busy && theme.id === "custom"} />
+  );
+
   return (
     <fieldset>
       <legend className="sr-only">Choose a chat background</legend>
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
-        {CHAT_THEMES.map((theme) => {
-          const selected = value === theme.id;
-          return (
-            <label key={theme.id} className="group min-w-0 cursor-pointer">
-              <input
-                type="radio"
-                name={name}
-                value={theme.id}
-                checked={selected}
-                onChange={() => onChange(theme.id)}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "relative block aspect-[3/4] overflow-hidden rounded-2xl bg-[#17151e] bg-cover bg-center transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-white peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#111113]",
-                  selected ? "ring-2 ring-[#FF7892] ring-offset-2 ring-offset-[#111113]" : "ring-1 ring-white/10 group-hover:ring-white/30"
-                )}
-                style={{ backgroundImage: theme.image ? `url(${theme.image})` : "radial-gradient(ellipse at 25% 20%, rgba(124,58,237,.3), transparent 55%), radial-gradient(ellipse at 85% 85%, rgba(255,92,122,.18), transparent 55%)" }}
-              >
-                <span className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                <span className="absolute inset-x-2 bottom-2 flex flex-col gap-1" aria-hidden="true">
-                  <span className="h-2.5 w-3/5 rounded-md border border-white/40 bg-black/20" />
-                  <span className="h-2.5 w-3/5 self-end rounded-md" style={{ backgroundColor: theme.bubble }} />
-                </span>
-                {selected && (
-                  <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF5C7A] text-white shadow-lg">
-                    <Check className="h-3 w-3" strokeWidth={3} />
-                  </span>
-                )}
-              </span>
-              <span className={cn("mt-2 block truncate text-center text-[11px] font-medium sm:text-xs", selected ? "text-zinc-100" : "text-zinc-500")}>
-                {theme.name}
-              </span>
-            </label>
-          );
-        })}
+      <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-3 [scrollbar-width:thin]">
+        {FEATURED_CHAT_THEMES.map((id) => circle(getChatTheme(id)))}
+        {(custom || value === "custom") && circle(getChatTheme("custom"), custom)}
       </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[13px] font-medium text-zinc-100 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose disabled:opacity-50">
+          <Plus className="h-4 w-4 text-rose" aria-hidden="true" />
+          {busy ? "Saving…" : custom ? "Change custom image" : "Upload Custom"}
+        </button>
+        {custom && <button type="button" disabled={busy} onClick={() => void remove()} className="min-h-11 px-1 text-xs text-zinc-400 underline underline-offset-4 hover:text-zinc-100 disabled:opacity-50">Remove image</button>}
+        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void upload(file); }} />
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-zinc-500">JPG, PNG or WebP up to 10 MB. One image is shared across chats on this device and visible to anyone using Dolemon here. It is blurred and darkened; removing it resets custom choices.</p>
+      {value === "custom" && !custom && <p role="status" className="mt-2 text-xs text-zinc-400">Your custom image is loading or unavailable. The default background is shown until it is available.</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}
+      <div className="mt-6">
+        <p className="text-xs font-medium text-zinc-300">Light &amp; vivid</p>
+        <div className="-mx-1 mt-3 flex gap-4 overflow-x-auto px-1 pb-3 [scrollbar-width:thin]">
+          {VIVID_CHAT_THEMES.map((theme) => circle(theme))}
+        </div>
+      </div>
+      <div className="mt-3">
+        <p className="text-xs font-medium text-zinc-300">After dark</p>
+        <div className="-mx-1 mt-3 flex gap-4 overflow-x-auto px-1 pb-3 [scrollbar-width:thin]">
+          {NIGHT_CHAT_THEMES.map((theme) => circle(theme))}
+        </div>
+      </div>
+      <details className="mt-5" open={LEGACY_CHAT_THEMES.some((theme) => theme.id === value) || undefined}>
+        <summary className="cursor-pointer text-xs font-medium text-zinc-400 hover:text-zinc-100">More wallpapers</summary>
+        <div className="-mx-1 mt-3 flex gap-4 overflow-x-auto px-1 pb-3 [scrollbar-width:thin]">
+          {LEGACY_CHAT_THEMES.map((theme) => circle(theme))}
+        </div>
+      </details>
     </fieldset>
+  );
+}
+
+function ThemeCircle({ theme, name, selected, onSelect, image, disabled }: { theme: ChatTheme; name: string; selected: boolean; onSelect: () => void; image?: string | null; disabled?: boolean }) {
+  const background = image ? `url("${image}")` : theme.image ? `url("${theme.image}")` :
+    theme.id === "midnight" ? "radial-gradient(ellipse at 75% 10%, #142650, #050507)" :
+    theme.id === "rosewater" ? "linear-gradient(145deg, #a5797d, #7e6179)" :
+    theme.id === "pattern" ? "radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(#121212, #121212)" :
+    theme.id === "solid" ? "linear-gradient(#000, #000)" :
+    "radial-gradient(ellipse at 80% 20%, rgba(255,92,122,.22), transparent 55%), radial-gradient(ellipse at 20% 80%, rgba(107,76,255,.22), transparent 55%), linear-gradient(#09090b, #09090b)";
+  return (
+    <label className="group flex w-[84px] shrink-0 cursor-pointer flex-col items-center gap-2 text-center">
+      <input type="radio" name={name} value={theme.id} checked={selected} disabled={disabled} onChange={onSelect} className="peer sr-only" />
+      <span aria-hidden="true" className={cn("relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 bg-[#09090B] bg-cover bg-center transition-[border-color,box-shadow] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-white", selected ? "border-[#FF5C7A] shadow-[0_0_0_3px_rgba(255,92,122,.15)]" : "border-white/15 group-hover:border-white/40")} style={{ backgroundImage: background, ...(theme.image ? { backgroundPosition: "center 75%" } : {}), ...(theme.id === "pattern" ? { backgroundSize: "10px 10px, cover" } : {}) }}>
+        {image && <span className="absolute inset-0 bg-black/40" />}
+        {selected && <Check className="relative h-5 w-5 rounded-full bg-black/60 p-0.5 text-white drop-shadow-md" strokeWidth={2.5} />}
+      </span>
+      <span className={cn("w-full text-[11px] leading-tight", selected ? "font-semibold text-zinc-100" : "text-zinc-500")}>{theme.name}</span>
+    </label>
   );
 }
 
@@ -73,7 +125,7 @@ export function ChatThemeSheet({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
       if (event.key !== "Tab" || !dialog.current) return;
-      const controls = Array.from(dialog.current.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)"));
+      const controls = Array.from(dialog.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled):not([type="file"]), summary')).filter((el) => !el.closest("details:not([open])") || el.tagName === "SUMMARY");
       if (!controls.length) return;
       const current = controls.indexOf(document.activeElement as HTMLElement);
       if (event.shiftKey && current <= 0) { event.preventDefault(); controls[controls.length - 1].focus(); }

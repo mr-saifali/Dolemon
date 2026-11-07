@@ -130,3 +130,23 @@
   .dim { color: #8E8E93; }
   .hairline-b { box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06); }
 }
+
+/* Bright artwork stays vivid across the screen. Only the transparent incoming
+   bubble darkens what is behind it, so white text keeps its contrast. */
+[data-vivid-wallpaper="true"] [data-received-message="true"],
+[data-vivid-wallpaper="true"] [data-composer-reply="true"],
+[data-vivid-wallpaper="true"] [data-emoji-reply="true"] {
+  background-color: rgba(0, 0, 0, 0.68);
+}
+[data-vivid-wallpaper="true"] [data-chat-composer="true"] {
+  background-color: rgba(0, 0, 0, 0.72);
+}
+@supports ((-webkit-backdrop-filter: brightness(.4)) or (backdrop-filter: brightness(.4))) {
+  [data-vivid-wallpaper="true"] [data-received-message="true"],
+  [data-vivid-wallpaper="true"] [data-composer-reply="true"],
+  [data-vivid-wallpaper="true"] [data-emoji-reply="true"] {
+    background-color: rgba(255, 255, 255, 0.05);
+    -webkit-backdrop-filter: brightness(.4);
+    backdrop-filter: brightness(.4);
+  }
+}

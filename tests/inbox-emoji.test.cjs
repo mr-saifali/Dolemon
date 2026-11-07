@@ -29,7 +29,7 @@ test('emoji-only messages and old sticker IDs have no message bubble, but remain
     assert.doesNotMatch(html, /--message-incoming|--message-outgoing/);
   }
   const mixed = renderToStaticMarkup(React.createElement(MessageBubble, { ...props, message: { id:'3', author:'them', kind:'text', text:'Hello 👋', at:0 } }));
-  assert.match(mixed, /--message-incoming/);
+  assert.match(mixed, /bg-white\/5/);
 });
 
 test('legacy reaction IDs map to native emoji, not custom SVG', () => {

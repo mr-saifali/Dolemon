@@ -2,8 +2,9 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
+import { CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
+import { ChatAvatar } from "@/components/home/chat-row";
 import { ReactionChip } from "./ReactionChip";
 import { VideoMessage } from "./VideoMessage";
 import { parseVideoReference } from "@/lib/video-reference";
@@ -18,8 +19,10 @@ import { isEmojiOnly } from "@/lib/emoji";
 export const MessageBubble = memo(function MessageBubble({
   message,
   conversationId,
-  grouped,
+  tail,
   partnerName,
+  partnerAvatarId = null,
+  partnerAvatarUrl,
   onLongPress,
   onDoubleTap,
   onRemoveMyReaction,
@@ -27,16 +30,15 @@ export const MessageBubble = memo(function MessageBubble({
   onOpenImage,
   onSwipeReply,
   animateIn = true,
-  compact = false,
 }: {
   message: ChatMessage;
   conversationId?: string;
-  /** same sender, inside the burst window → tighter gap */
-  grouped: boolean;
-  /** Kept for grouping compatibility with the message list. */
+  /** Whether this is the last message in the sender's visual group. */
   tail: boolean;
   showReceipts?: boolean;
   partnerName: string;
+  partnerAvatarId?: string | null;
+  partnerAvatarUrl?: string | null;
   onLongPress: (message: ChatMessage, anchor: BubbleAnchor) => void;
   onDoubleTap: (message: ChatMessage) => void;
   onRemoveMyReaction: (message: ChatMessage) => void;
@@ -46,8 +48,6 @@ export const MessageBubble = memo(function MessageBubble({
   onSwipeReply?: (message: ChatMessage) => void;
   /** false for messages that were already on screen at mount — they must not animate in */
   animateIn?: boolean;
-  /** tighter spacing between bubbles */
-  compact?: boolean;
 }) {
   const mine = message.author === "me";
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -108,7 +108,7 @@ export const MessageBubble = memo(function MessageBubble({
     lastTap.current = now;
   };
 
-  const metaColor = emojiOnly ? "text-white/80 [text-shadow:0_1px_4px_rgba(0,0,0,0.9)]" : mine ? "text-white/75" : "text-white/70";
+  const metaColor = emojiOnly ? "text-zinc-500" : "text-white/50";
 
   return (
     <motion.div
@@ -116,13 +116,17 @@ export const MessageBubble = memo(function MessageBubble({
       animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.7 }}
       className={cn(
-        "flex w-full select-none",
-        mine ? "justify-end" : "justify-start",
-        grouped ? "mt-0.5" : compact ? "mt-1" : "mt-1.5"
+        "flex w-full select-none items-end gap-2",
+        mine ? "justify-end" : "justify-start"
       )}
     >
+      {!mine && (
+        <div className="h-6 w-6 shrink-0" aria-hidden="true">
+          {tail && <ChatAvatar avatarId={partnerAvatarId} avatarUrl={partnerAvatarUrl} name={partnerName} size={24} />}
+        </div>
+      )}
       <div
-        className={cn("relative flex max-w-[80%] flex-col sm:max-w-[72%]", mine ? "items-end" : "items-start")}
+        className={cn("relative flex max-w-[75%] min-w-0 flex-col", mine ? "items-end" : "items-start")}
         style={{ marginBottom: chips.length > 0 ? 10 : 0 }}
       >
         {onSwipeReply && (
@@ -156,10 +160,11 @@ export const MessageBubble = memo(function MessageBubble({
             }
           }}
           style={{ touchAction: "pan-y" }}
-          className="relative"
+          className="relative min-w-0 max-w-full"
         >
           <div
             role="button"
+            data-received-message={!mine && !emojiOnly ? "true" : undefined}
             tabIndex={0}
             aria-label={`${mine ? "You" : partnerName}: ${message.kind === "sticker" && message.sticker ? reactionLabel(message.sticker) : message.text || "attachment"}. Open message options.`}
             onPointerDown={onPointerDown}
@@ -185,39 +190,27 @@ export const MessageBubble = memo(function MessageBubble({
             className={cn(
               "relative cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-violet/50",
               emojiOnly
-                ? "px-1 py-1 text-white"
+                ? "border-0 bg-transparent p-0 text-white"
                 : cn(
-                  message.kind === "image" || message.kind === "audio" ? "p-1" : "px-3 py-1.5",
-                  "border text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
-                  mine ? "rounded-[20px] rounded-br-[6px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[20px] rounded-bl-[6px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-[color:var(--message-incoming,rgba(0,0,0,0.2))] backdrop-blur-md"
+                  "rounded-[22px] px-4 py-2.5 text-[15px] leading-snug text-white",
+                  mine ? "rounded-br-sm bg-[#005C4B]" : "rounded-bl-sm border border-white/20 bg-white/5 [text-shadow:0_1px_3px_rgba(0,0,0,0.7)]"
                 )
             )}
           >
             {message.replyTo && (
-              <div
-                className={cn(
-                  "mb-1.5 flex items-start gap-1.5 rounded-[12px] px-2 py-1.5 text-[11.5px] leading-snug",
-                  mine
-                    ? "bg-black/10 text-white/85"
-                    : "bg-white/[0.06] text-zinc-400"
-                )}
-              >
-                <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 opacity-70" />
-                <span className="line-clamp-2">
-                  <span className="font-medium">{message.replyTo.author === "me" ? "You" : partnerName}:</span>{" "}
-                  {message.replyTo.text || "attachment"}
-                </span>
+              <div data-emoji-reply={emojiOnly ? "true" : undefined} className="mb-1 min-w-0 max-w-full border-l-2 border-white/40 pl-2 text-[13px] leading-snug text-white/70">
+                <p className="truncate"><span className="font-medium">{message.replyTo.author === "me" ? "You" : partnerName}:</span>{" "}{message.replyTo.text || "attachment"}</p>
               </div>
             )}
 
             {message.kind === "sticker" && message.sticker ? (
               <div>
-                <ReactionIcon type={message.sticker} size={44} />
+                <ReactionIcon type={message.sticker} size={48} />
                 <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : emojiOnly ? (
               <div>
-                <span className="block whitespace-pre-wrap break-words text-[36px] leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}>{message.text}</span>
+                <span className="block whitespace-pre-wrap break-words text-5xl leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}>{message.text}</span>
                 <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : message.kind === "image" && message.media ? (
@@ -279,7 +272,7 @@ export const MessageBubble = memo(function MessageBubble({
                 <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : (
-              <div className="flex flex-wrap items-end gap-x-3 gap-y-0.5">
+              <div className="flow-root">
                 <LinkContent text={message.text} />
                 <BubbleMeta message={message} metaColor={metaColor} inline />
               </div>
@@ -380,7 +373,7 @@ function BubbleMeta({
   inline?: boolean;
 }) {
   return (
-    <span className={cn("flex shrink-0 items-center justify-end gap-1 text-[11px] leading-none", inline ? "ml-auto pb-0.5" : "mt-1 pr-1 pb-0.5", metaColor)}>
+    <span className={cn("flex shrink-0 items-center justify-end gap-1 text-[10px] leading-none", inline ? "float-right ml-2 mt-1" : "mt-1", metaColor)}>
       <span className="tabular-nums">{clockTime(message.at)}</span>
       {message.editedAt ? <span className="italic">edited</span> : null}
     </span>
@@ -406,7 +399,7 @@ function AudioBubble({ url, durationMs, mine }: { url: string; durationMs: numbe
   };
 
   return (
-    <div className="flex min-w-[190px] items-center gap-2.5 py-1">
+    <div className="flex w-[190px] max-w-full min-w-0 items-center gap-2.5 py-1">
       <audio
         ref={audio}
         src={url}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Mic, Plus, Smile, X } from "lucide-react";
+import { ArrowUp, Camera, ImagePlus, Mic, Smile, X } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { PulseButton } from "./pulse-button";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
@@ -16,6 +16,7 @@ export function ChatInput({
   onSticker,
   onPulse,
   onAttach,
+  onCamera,
   onVoice,
   onTyping,
   showPulse = true,
@@ -31,6 +32,7 @@ export function ChatInput({
   onSticker: (type: ReactionType) => void;
   onPulse: () => void;
   onAttach: () => void;
+  onCamera: () => void;
   onVoice: () => void;
   /** fired while the user types — drives the partner's "typing…" */
   onTyping?: () => void;
@@ -70,9 +72,9 @@ export function ChatInput({
 
   return (
     <div className="relative z-20">
-      <div className="mx-auto w-full max-w-2xl px-3 pb-[max(env(safe-area-inset-bottom),8px)] pt-1.5">
-        {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
-        {/^\/doremon\b/i.test(value.trim()) && <p className="mb-2 px-1 text-xs leading-relaxed text-sky-200">Asking can send recent chat excerpts and memory to Google Gemini. Consider the other person’s consent; AI interpretations can be wrong.</p>}
+      <div className="mx-auto flow-root w-full max-w-2xl pb-[env(safe-area-inset-bottom)] pt-1.5">
+        {hint && <div className="mx-3 mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
+        {/^\/doremon\b/i.test(value.trim()) && <p className="mx-3 mb-2 px-1 text-xs leading-relaxed text-sky-200">Asking can send recent chat excerpts and memory to Google Gemini. Consider the other person’s consent; AI interpretations can be wrong.</p>}
 
         <AnimatePresence>
           {replyTo && (
@@ -80,14 +82,12 @@ export function ChatInput({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="mb-2 flex items-center gap-2 rounded-2xl bg-[#1C1C1E] px-3 py-2"
+              data-composer-reply="true"
+              className="mx-4 mb-1 flex items-center gap-2 border-l-2 border-white/40 py-1 pl-2"
             >
-              <span className="h-6 w-0.5 rounded-full bg-rose" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[10.5px] uppercase tracking-[0.12em] text-rose/80">
-                  Replying to {replyTo.author}
-                </p>
-                <p className="truncate text-[12px] text-zinc-500">{replyTo.text || "attachment"}</p>
+              <div className="min-w-0 flex-1 text-[13px] text-white/70">
+                <p className="truncate font-medium">Replying to {replyTo.author}</p>
+                <p className="truncate">{replyTo.text || "attachment"}</p>
               </div>
               <button
                 type="button"
@@ -108,7 +108,7 @@ export function ChatInput({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               transition={SPRING}
-              className="mb-2 rounded-[22px] border border-white/[0.06] bg-[#1C1C1E] p-2"
+              className="mx-3 mb-2 rounded-[22px] border border-white/[0.06] bg-[#1C1C1E] p-2"
             >
               <p className="px-1.5 pb-1.5 text-[10.5px] uppercase tracking-[0.14em] text-zinc-600">
                 Bina shabdon ke
@@ -141,16 +141,16 @@ export function ChatInput({
           )}
         </AnimatePresence>
 
-        <div className="flex items-end gap-0.5 rounded-[28px] bg-[#1C1C1E] px-1.5 py-1 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65)]">
+        <div data-chat-composer="true" className="mx-3 mb-4 flex items-end gap-0.5 rounded-full border border-white/10 bg-black/40 px-1 py-1 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65)] backdrop-blur-md">
           <motion.button
             type="button"
-            onClick={onAttach}
+            onClick={onCamera}
             disabled={disabled}
-            aria-label="Add attachment"
+            aria-label="Camera and attachments"
             whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+            className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           >
-            <Plus className="h-6 w-6" strokeWidth={1.8} />
+            <Camera className="h-5 w-5" strokeWidth={1.8} />
           </motion.button>
 
           <div className="flex min-w-0 flex-1 items-end px-1 py-2">
@@ -176,59 +176,61 @@ export function ChatInput({
 
           <motion.button
             type="button"
+            onClick={onAttach}
+            disabled={disabled}
+            aria-label="Photos and attachments"
+            whileTap={{ scale: 0.9 }}
+            className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          >
+            <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
+          </motion.button>
+
+          <motion.button
+            type="button"
             onClick={() => !disabled && setTrayOpen((o) => !o)}
             disabled={disabled}
-            aria-label="Reactions"
+            aria-label="Stickers and reactions"
             aria-expanded={trayOpen}
             whileTap={{ scale: 0.9 }}
             className={cn(
-              "mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:text-white",
+              "mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
               trayOpen ? "text-rose" : "text-zinc-400"
             )}
           >
             <Smile className="h-6 w-6" strokeWidth={1.8} />
           </motion.button>
 
-          <div className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center">
-            <AnimatePresence mode="wait" initial={false}>
-              {hasText ? (
-                <motion.button
-                  key="send"
-                  type="button"
-                  onClick={submit}
-                  disabled={disabled}
-                  aria-label="Send message"
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.6, opacity: 0 }}
-                  transition={SPRING}
-                  whileTap={{ scale: 0.9 }}
-                  // The tap must not steal focus from the field — that's what
-                  // made the keyboard dip away and come back on send.
-                  onPointerDown={(e) => e.preventDefault()}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[#FF5C7A] transition-colors hover:text-[#ff8198]"
-                >
-                  <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
-                </motion.button>
-              ) : (
-                <motion.button
-                  key="mic"
-                  type="button"
-                  onClick={onVoice}
-                  disabled={disabled}
-                  aria-label="Record a voice note"
-                  initial={{ scale: 0.85, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.85, opacity: 0 }}
-                  transition={SPRING}
-                  whileTap={{ scale: 0.9 }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
-                >
-                  <Mic className="h-6 w-6" strokeWidth={1.8} />
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
+          <motion.button
+            type="button"
+            onClick={onVoice}
+            disabled={disabled}
+            aria-label="Record a voice note"
+            whileTap={{ scale: 0.9 }}
+            className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          >
+            <Mic className="h-5 w-5" strokeWidth={1.8} />
+          </motion.button>
+          <AnimatePresence initial={false}>
+            {hasText && (
+              <motion.button
+                key="send"
+                type="button"
+                onClick={submit}
+                disabled={disabled}
+                aria-label="Send message"
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.6, opacity: 0 }}
+                transition={SPRING}
+                whileTap={{ scale: 0.9 }}
+                // Keep focus in the field so the keyboard doesn't dip on send.
+                onPointerDown={(e) => e.preventDefault()}
+                className="mb-0.5 flex h-11 w-11 max-[360px]:w-9 shrink-0 items-center justify-center rounded-full text-[#FF5C7A] transition-colors hover:text-[#ff8198] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              >
+                <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.6} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

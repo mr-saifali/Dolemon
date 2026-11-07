@@ -593,10 +593,10 @@ function SettingsContent() {
           </div>
         </Section>
 
-        <Section title="Chat backgrounds">
+        <Section title="Chat Theme">
           <div className="py-4">
-            <p className="text-[14.5px] font-medium text-zinc-200">Find your kind of free</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-500">A default for your chats. You can also choose a different one inside each chat. Saved only on this device.</p>
+            <p className="text-[14.5px] font-medium text-zinc-200">Make the room yours</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-500">Choose a default for your chats, or pick a different background inside each chat. Your choice stays on this device.</p>
             <div className="mt-4">
               <ChatThemePicker value={getChatTheme(prefs.chatTheme).id} onChange={(id) => setPref("chatTheme", id)} />
             </div>

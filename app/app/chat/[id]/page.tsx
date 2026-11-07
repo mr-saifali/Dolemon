@@ -33,7 +33,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { PulseOverlay } from "@/components/chat/pulse-overlay";
 import { ReactionPicker, type BubbleAnchor, type MessageAction } from "@/components/chat/ReactionPicker";
 import { authMode } from "@/lib/auth";
-import { isChatThemeId, resolveChatTheme } from "@/lib/chat-themes";
+import { isChatThemeId, isVividChatTheme, resolveChatTheme } from "@/lib/chat-themes";
 import { demoConversations } from "@/lib/chat";
 import { markRead, patchMeta, useChatMetaFor } from "@/lib/conversation-meta";
 import { formatAgo, usePresence } from "@/lib/presence";
@@ -110,6 +110,7 @@ function ThreadScreen() {
   const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [attachIntent, setAttachIntent] = useState<"camera" | "photo" | "voice">("photo");
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [dividerId, setDividerId] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -462,14 +463,10 @@ function ThreadScreen() {
   return (
     <main
       className="relative isolate flex flex-col overflow-hidden bg-[#09090B]"
+      data-vivid-wallpaper={isVividChatTheme(theme) ? "true" : undefined}
       style={{ height: "var(--app-vh, 100dvh)", ...chatThemeStyle(theme) }}
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(124,58,237,0.08),transparent_45%),radial-gradient(ellipse_at_85%_65%,rgba(59,130,246,0.07),transparent_48%),radial-gradient(ellipse_at_40%_100%,rgba(255,92,122,0.06),transparent_45%)]"
-      />
-
-      <ChatWallpaper theme={theme} />
+      <ChatWallpaper theme={theme} reduceMotion={prefs.reduceMotion} />
 
       {edgePull > 0 && (
         <div
@@ -514,6 +511,8 @@ function ThreadScreen() {
         onBottomChange={setAtBottom}
         messages={messages}
         partnerName={partnerName}
+        partnerAvatarId={partnerAvatar}
+        partnerAvatarUrl={REMOTE ? remote.partnerAvatarUrl : null}
         typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
         showReceipts={prefs.readReceipts}
         compact={prefs.compactChat}
@@ -545,8 +544,9 @@ function ThreadScreen() {
         onSend={handleSend}
         onSticker={handleSticker}
         onPulse={handlePulse}
-        onAttach={() => setAttachOpen(true)}
-        onVoice={() => setAttachOpen(true)}
+        onAttach={() => { setAttachIntent("photo"); setAttachOpen(true); }}
+        onCamera={() => { setAttachIntent("camera"); setAttachOpen(true); }}
+        onVoice={() => { setAttachIntent("voice"); setAttachOpen(true); }}
         onTyping={() => { if (REMOTE && prefs.typingIndicator) remote.notifyTyping(); }}
         showPulse={!REMOTE}
         pulseCoolingUntil={pulses.coolingUntil}
@@ -607,6 +607,7 @@ function ThreadScreen() {
 
       <AttachmentSheet
         publicMedia={REMOTE}
+        preferred={attachIntent}
         open={attachOpen}
         onClose={() => setAttachOpen(false)}
         onPhoto={(image) => {

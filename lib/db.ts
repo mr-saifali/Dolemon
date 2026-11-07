@@ -217,7 +217,8 @@ export async function uploadAvatarImage(dataUrl: string): Promise<string> {
 }
 
 /** Latest messages rendered on first open; older messages are loaded on demand. */
-export const INITIAL_THREAD_PAGE_SIZE = 80;
+export const INITIAL_THREAD_PAGE_SIZE = 6;
+export const OLDER_THREAD_PAGE_SIZE = 6;
 
 export async function loadThread(
   conversationId: string
@@ -226,10 +227,15 @@ export async function loadThread(
   // Fetch the most recent window and the local session concurrently; RLS still
   // validates the token on every database request. The old ascending limit
   // showed the oldest 400 and hid newer messages in long conversations.
-  const [session, result] = await Promise.all([
-    sb.auth.getSession(),
+  const sessionRequest = sb.auth.getSession();
+  // Start reactions as soon as the local session is known, in parallel with
+  // the message query rather than adding an extra network round trip.
+  const reactionRequest = sessionRequest.then(({ data }) => loadReactions(conversationId, data.session?.user.id ?? null));
+  const [session, result, reactions] = await Promise.all([
+    sessionRequest,
     sb.from("messages").select("*").eq("conversation_id", conversationId)
       .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(INITIAL_THREAD_PAGE_SIZE),
+    reactionRequest,
   ]);
   const me = session.data.session?.user.id ?? null;
   if (result.error) throw new Error(result.error.message);
@@ -237,7 +243,7 @@ export async function loadThread(
     ...mapRow(row),
     reactions: [] as MessageReaction[],
   }));
-  const [reactions] = await Promise.all([loadReactions(conversationId, me), resolveQuotes(messages, me)]);
+  await resolveQuotes(messages, me);
   const withReactions = messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] }));
   return { messages: withReactions, me };
 }
@@ -275,7 +281,7 @@ export async function loadOlderMessages(conversationId: string, cursor: { create
   const { data, error } = await client().from("messages").select("*")
     .eq("conversation_id", conversationId)
     .or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`)
-    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(100);
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(OLDER_THREAD_PAGE_SIZE);
   if (error) throw new Error(error.message);
   const messages = ((data ?? []) as MessageRow[]).reverse().map(mapRow);
   const [reactions] = await Promise.all([loadReactions(conversationId, me), resolveQuotes(messages, me)]);

@@ -9,7 +9,7 @@ import { TypingIndicator } from "./TypingIndicator";
 import { PresenceMoment } from "./presence-moment";
 import { DoremonBubble, DoremonThinking, type DoremonMessageView } from "./doremon";
 import type { BubbleAnchor } from "./ReactionPicker";
-import { groupByDay, isGrouped, clockTime, type ChatMessage } from "@/lib/thread";
+import { groupByDay, clockTime, type ChatMessage } from "@/lib/thread";
 import { cn } from "@/lib/utils";
 import { messageStatusLabel } from "@/lib/message-status";
 
@@ -17,6 +17,8 @@ export function MessageList({
   messages,
   conversationId,
   partnerName,
+  partnerAvatarId = null,
+  partnerAvatarUrl,
   typing,
   showReceipts,
   dividerId,
@@ -37,10 +39,12 @@ export function MessageList({
   messages: ChatMessage[];
   conversationId?: string;
   partnerName: string;
+  partnerAvatarId?: string | null;
+  partnerAvatarUrl?: string | null;
   typing: boolean;
   showReceipts: boolean;
   dividerId: string | null;
-  /** tighter bubbles — set from Settings → Feel */
+  /** Keep the optional compact setting meaningful while the default uses the requested spacing. */
   compact?: boolean;
   /** Doremon's ephemeral lines — rendered after the thread, in his own skin */
   doremon?: DoremonMessageView[];
@@ -59,6 +63,7 @@ export function MessageList({
   const scroller = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
   const prepending = useRef(false);
+  const previousScrollTop = useRef(0);
   /** whatever was already on screen when the thread opened stays still — no hundred springs */
   const initialIds = useRef<Set<string> | null>(null);
   if (initialIds.current === null && messages.length > 0) initialIds.current = new Set(messages.map((m) => m.id));
@@ -83,15 +88,35 @@ export function MessageList({
     setNewCount(0);
   }, []);
 
+  const requestOlder = useCallback(() => {
+    const el = scroller.current;
+    if (!el || !hasOlder || !onLoadOlder || loadingOlder || prepending.current) return;
+    const height = el.scrollHeight;
+    const top = el.scrollTop;
+    prepending.current = true;
+    void onLoadOlder().finally(() => {
+      requestAnimationFrame(() => {
+        if (scroller.current === el) {
+          el.scrollTop = top + el.scrollHeight - height;
+          previousScrollTop.current = el.scrollTop;
+        }
+        prepending.current = false;
+      });
+    });
+  }, [hasOlder, loadingOlder, onLoadOlder]);
+
   const handleScroll = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
+    const scrollingUp = el.scrollTop < previousScrollTop.current;
+    previousScrollTop.current = el.scrollTop;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = distance < 120;
     setAtBottom(near);
     onBottomChange?.(near);
     if (near) setNewCount(0);
-  }, [onBottomChange]);
+    if (scrollingUp && el.scrollTop <= 80) requestOlder();
+  }, [onBottomChange, requestOlder]);
 
   // Pin to the newest message only when the reader is already near the bottom.
   useEffect(() => {
@@ -131,19 +156,7 @@ export function MessageList({
 
           {hasOlder && onLoadOlder && (
             <div className="mb-3 flex justify-center">
-              <button type="button" disabled={loadingOlder} onClick={() => {
-                const el = scroller.current;
-                if (!el || prepending.current) return;
-                const height = el.scrollHeight;
-                const top = el.scrollTop;
-                prepending.current = true;
-                void onLoadOlder().finally(() => {
-                  requestAnimationFrame(() => {
-                    if (scroller.current === el) el.scrollTop = top + el.scrollHeight - height;
-                    prepending.current = false;
-                  });
-                });
-              }} className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs text-zinc-300 disabled:opacity-50">
+              <button type="button" disabled={loadingOlder} onClick={requestOlder} className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs text-zinc-300 disabled:opacity-50">
                 {loadingOlder ? "Loading…" : "Load older messages"}
               </button>
             </div>
@@ -153,8 +166,8 @@ export function MessageList({
             <section key={group.key}>
               <SystemPill>{group.label}</SystemPill>
               {group.items.map((message, i) => {
-                const prev = group.items[i - 1];
                 const next = group.items[i + 1];
+                const sameSenderNext = Boolean(next && next.kind !== "presence" && next.kind !== "call" && next.author === message.author && dividerId !== next.id);
                 const showDivider = dividerId === message.id;
 
                 if (message.kind === "presence") {
@@ -176,15 +189,16 @@ export function MessageList({
                 }
 
                 return (
-                  <div key={message.id} id={`message-${message.id}`}>
+                  <div key={message.id} id={`message-${message.id}`} className={sameSenderNext ? "mb-1" : compact ? "mb-2" : "mb-4"}>
                     {showDivider && <UnreadDivider />}
                     <MessageBubble
                       message={message}
                       conversationId={conversationId}
-                      grouped={Boolean(prev && prev.kind !== "presence" && prev.kind !== "call" && isGrouped(prev, message))}
-                      tail={!next || !isGrouped(message, next)}
+                      tail={!sameSenderNext}
                       showReceipts={showReceipts}
                       partnerName={partnerName}
+                      partnerAvatarId={partnerAvatarId}
+                      partnerAvatarUrl={partnerAvatarUrl}
                       onLongPress={onLongPress}
                       onDoubleTap={onDoubleTap}
                       onRemoveMyReaction={onRemoveMyReaction}
@@ -192,7 +206,6 @@ export function MessageList({
                       onOpenImage={onOpenImage}
                       onSwipeReply={onSwipeReply}
                       animateIn={!initialIds.current?.has(message.id)}
-                      compact={compact}
                     />
                     {message.id === latestOwnId && <div className="mt-1 flex justify-end"><p aria-live="polite" className="rounded-full bg-[color:var(--chat-label-bg,rgba(255,255,255,.08))] px-2 py-0.5 text-[12px] text-[color:var(--chat-label-text,#d4d4d8)]">{messageStatusLabel(message, showReceipts, now)}</p></div>}
                   </div>

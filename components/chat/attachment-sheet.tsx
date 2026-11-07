@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileText, ImagePlus, Mic, Square, Video, X } from "lucide-react";
+import { Camera, FileText, ImagePlus, Mic, Square, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import { blobToDataUrl, compressImage, pickAudioMime } from "@/lib/media";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ export function AttachmentSheet({
   onFile,
   onVideo,
   publicMedia = false,
+  preferred,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,8 +32,10 @@ export function AttachmentSheet({
   onFile?: (file: FilePayload) => void;
   onVideo?: (file: File) => Promise<void>;
   publicMedia?: boolean;
+  preferred?: "camera" | "photo" | "voice";
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const cameraInput = useRef<HTMLInputElement | null>(null);
   const docInput = useRef<HTMLInputElement | null>(null);
   const videoInput = useRef<HTMLInputElement | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -69,6 +72,7 @@ export function AttachmentSheet({
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
+      if (cameraInput.current) cameraInput.current.value = "";
     }
   };
 
@@ -195,7 +199,7 @@ export function AttachmentSheet({
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
 
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[18px] font-semibold">Send something</h2>
+              <h2 className="text-[18px] font-semibold">{preferred === "camera" ? "Take a photo" : preferred === "photo" ? "Choose an attachment" : preferred === "voice" ? "Send a voice note" : "Send something"}</h2>
               <button
                 type="button"
                 disabled={busy}
@@ -259,9 +263,18 @@ export function AttachmentSheet({
             ) : (
               <div className="grid grid-cols-2 gap-2.5">
                 <Tile
+                  icon={<Camera className="h-5 w-5" />}
+                  label="Camera"
+                  hint="Take a photo"
+                  highlighted={preferred === "camera"}
+                  onClick={() => cameraInput.current?.click()}
+                  disabled={busy}
+                />
+                <Tile
                   icon={<ImagePlus className="h-5 w-5" />}
                   label="Photo"
                   hint="From your phone"
+                  highlighted={preferred === "photo"}
                   onClick={() => fileInput.current?.click()}
                   disabled={busy}
                 />
@@ -275,7 +288,8 @@ export function AttachmentSheet({
                 <Tile
                   icon={<Mic className="h-5 w-5" />}
                   label="Voice note"
-                  hint="Hold up to 60s"
+                  hint="Up to 60s"
+                  highlighted={preferred === "voice"}
                   onClick={startRecording}
                   disabled={busy}
                 />
@@ -289,6 +303,14 @@ export function AttachmentSheet({
               </div>
             )}
 
+            <input
+              ref={cameraInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => void handleFile(e.target.files?.[0])}
+            />
             <input
               ref={fileInput}
               type="file"
@@ -321,12 +343,14 @@ function Tile({
   hint,
   onClick,
   disabled,
+  highlighted = false,
 }: {
   icon: React.ReactNode;
   label: string;
   hint: string;
   onClick: () => void;
   disabled?: boolean;
+  highlighted?: boolean;
 }) {
   return (
     <button
@@ -335,7 +359,8 @@ function Tile({
       disabled={disabled}
       className={cn(
         "flex flex-col items-center gap-2 rounded-xl2 border border-ink-line bg-ink-surface/70 px-2 py-4 transition-colors",
-        disabled ? "opacity-45" : "hover:border-rose/30 hover:bg-white/[0.04] active:scale-[0.98]"
+        disabled ? "opacity-45" : "hover:border-rose/30 hover:bg-white/[0.04] active:scale-[0.98]",
+        highlighted && "border-rose/50 bg-rose/[0.08]"
       )}
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-full bg-rose/12 text-rose">{icon}</span>

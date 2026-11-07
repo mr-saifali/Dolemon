@@ -50,10 +50,10 @@ function cacheAccount(account: Account | null) {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [account, setAccount] = useState<Account | null>(() => readCachedAccount());
-  // With a cached account we render *immediately* and verify in the
-  // background; only a cold start (no cache) waits for the first check.
-  const [loading, setLoading] = useState<boolean>(() => readCachedAccount() === null);
+  // The server and the first client render must agree. Restore the cached
+  // account immediately after hydration while verifying it in the background.
+  const [account, setAccount] = useState<Account | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
@@ -72,6 +72,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const cached = readCachedAccount();
+    if (cached) {
+      setAccount(cached);
+      setLoading(false);
+    }
     void refresh();
   }, [refresh]);
 

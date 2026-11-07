@@ -2,6 +2,7 @@
 
 import { useRoomMusic } from "@/lib/use-room-music";
 import { doremonFetch } from "@/lib/doremon/api";
+import { confirmDoremonSharing } from "@/lib/doremon/consent";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
@@ -195,7 +196,7 @@ function Room({ conversationId }: { conversationId: string }) {
   const runDaily = useCallback(async () => {
     if (!data || dailyBusy) return;
     const today = localDay();
-    if (data.memory.dailyDay === today) return;
+    if (data.memory.dailyDay === today || !confirmDoremonSharing(REMOTE)) return;
     setDailyBusy(true);
     const dayAgo = Date.now() - 24 * 3600 * 1000;
     const yesterday = data.recent
@@ -445,14 +446,24 @@ function Room({ conversationId }: { conversationId: string }) {
         </div>
       </div>
 
+      {/* These prompts fill the draft only; they never send anything automatically. */}
+      <div aria-label="Doremon prompt ideas" className="mx-auto flex w-full max-w-2xl gap-2 overflow-x-auto px-3 pt-2 pb-1">
+        {[
+          ["Recent recap", "Summarize the recent messages, without guessing how anyone feels."],
+          ["Kind reply", "Suggest a kind reply to the recent conversation."],
+          ["Conversation idea", "Suggest a thoughtful topic we could talk about next."],
+        ].map(([label, question]) => (
+          <button key={label} type="button" onClick={() => setDraft(question)} className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10">{label}</button>
+        ))}
+      </div>
       {/* input */}
-      <p className="mx-auto w-full max-w-2xl px-4 pt-2 text-center text-[10px] leading-relaxed text-zinc-500">Requests can share chat excerpts and memory with Google Gemini. Consider the other person’s consent. AI can be wrong.</p>
+      <p className="mx-auto w-full max-w-2xl px-4 pt-2 text-center text-[10px] leading-relaxed text-zinc-500">Questions and daily briefs can share the latest loaded messages and memory with Google Gemini. Ask the other person first; AI can be wrong.</p>
       <div className="border-t border-white/5 bg-[#09090B]/80 backdrop-blur-xl">
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!draft.trim() || thinking) return;
+            if (!draft.trim() || thinking || !confirmDoremonSharing(REMOTE)) return;
             void ask(draft);
             setDraft("");
           }}
@@ -463,7 +474,7 @@ function Room({ conversationId }: { conversationId: string }) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!draft.trim() || thinking) return;
+                if (!draft.trim() || thinking || !confirmDoremonSharing(REMOTE)) return;
                 void ask(draft);
                 setDraft("");
               }

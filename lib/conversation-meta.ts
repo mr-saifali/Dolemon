@@ -68,6 +68,21 @@ export function patchMeta(id: string, patch: Partial<ChatMeta>) {
   commit({ ...current, [id]: { ...current[id], ...patch } });
 }
 
+/** Drop only custom wallpaper overrides after the shared local image is removed. */
+export function clearCustomChatThemes() {
+  const current = snapshot();
+  let changed = false;
+  const next: MetaMap = {};
+  for (const [id, meta] of Object.entries(current)) {
+    if (meta.chatTheme === "custom") {
+      const { chatTheme: _removed, ...rest } = meta;
+      next[id] = rest;
+      changed = true;
+    } else next[id] = meta;
+  }
+  if (changed) commit(next);
+}
+
 export function markRead(id: string) {
   patchMeta(id, { unread: 0, lastReadAt: Date.now() });
 }

@@ -15,6 +15,7 @@ import { getSupabase } from "./supabase";
 import { listConversations, postMessage } from "./db";
 import { formatCallDuration } from "./thread";
 import { useSession } from "./session";
+import { waitForCallSubscription } from "./call-subscription";
 
 /**
  * Live calls.
@@ -130,23 +131,24 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
   const sendOn = useCallback(async (targetId: string, payload: Signal) => {
     const sb = getSupabase();
-    if (!sb || !targetId) return;
+    if (!sb || !targetId) return false;
 
     let channel = outChannels.current.get(targetId);
     if (!channel) {
       channel = sb.channel(`user:${targetId}`, { config: { broadcast: { self: false } } });
       outChannels.current.set(targetId, channel);
-      await new Promise<void>((resolve) => {
-        channel?.subscribe((status) => {
-          if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
-        });
-      });
+      if (!(await waitForCallSubscription(channel))) {
+        if (outChannels.current.get(targetId) === channel) outChannels.current.delete(targetId);
+        void sb.removeChannel(channel);
+        return false;
+      }
     }
     try {
-      await channel.send({ type: "broadcast", event: "signal", payload });
-    } catch {
-      /* the other side may have closed the tab — the call UI handles the timeout */
-    }
+      if ((await channel.send({ type: "broadcast", event: "signal", payload })) === "ok") return true;
+    } catch { /* remove the failed channel so a later attempt can reconnect */ }
+    if (outChannels.current.get(targetId) === channel) outChannels.current.delete(targetId);
+    void sb.removeChannel(channel);
+    return false;
   }, []);
 
   const offerChannelReady = useRef(false);
@@ -298,10 +300,12 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
   /* ------------------------------------------------------------- media + pc */
 
-  const joinCallChannel = useCallback(async (conversationId: string) => {
+  const joinCallChannel = useCallback(async (conversationId: string): Promise<boolean> => {
     const sb = getSupabase();
-    if (!sb || !meRef.current) return;
+    const joiningCall = callRef.current;
+    if (!sb || !meRef.current || !joiningCall) return false;
     if (callChannel.current) void sb.removeChannel(callChannel.current);
+    offerChannelReady.current = false;
 
     const channel = sb.channel(`call:${conversationId}`, {
       config: { broadcast: { self: false } },
@@ -309,13 +313,14 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     channel.on("broadcast", { event: "signal" }, ({ payload }) => {
       callHandler.current(payload as Signal);
     });
-    await new Promise<void>((resolve) => {
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
-      });
-    });
+    const subscribed = await waitForCallSubscription(channel);
+    if (!subscribed || callRef.current !== joiningCall) {
+      void sb.removeChannel(channel);
+      return false;
+    }
     callChannel.current = channel;
     offerChannelReady.current = true;
+    return true;
   }, []);
 
   const getMedia = useCallback(async (type: CallType) => {
@@ -404,7 +409,9 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     const current = callRef.current;
     if (!current) return;
     try {
-      setCall((prev) => (prev ? { ...prev, phase: "connecting" } : prev));
+      const connecting: ActiveCall = { ...current, phase: "connecting" };
+      callRef.current = connecting;
+      setCall(connecting);
       // the peer was usually built when the call started (media is ready by now);
       // this is the fallback for any path that skipped it
       if (!pcRef.current) {
@@ -636,14 +643,22 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       // offer can't be half-formed when they do.
       try {
         const stream = await getMedia(type);
+        if (callRef.current !== outgoing) {
+          stream.getTracks().forEach((track) => track.stop());
+          if (localRef.current === stream) { localRef.current = null; setLocalStream(null); }
+          return;
+        }
         buildPeer(stream);
       } catch {
         finish("Allow microphone and camera to call");
         return;
       }
 
-      await joinCallChannel(conversationId);
-      await sendOn(conversation.partnerId, {
+      if (!(await joinCallChannel(conversationId))) {
+        if (callRef.current === outgoing) finish("Couldn't connect to call signaling. Check your connection and try again.");
+        return;
+      }
+      const invited = await sendOn(conversation.partnerId, {
         kind: "invite",
         conversationId,
         type,
@@ -651,6 +666,10 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
         name: account?.username ?? undefined,
         avatar: account?.avatarUrl ?? undefined,
       });
+      if (!invited) {
+        if (callRef.current?.conversationId === conversationId) finish("Couldn't send the call invitation. Check your connection and try again.");
+        return;
+      }
 
       later(() => {
         if (callRef.current?.phase === "inviting") finish("No one picked up");
@@ -667,18 +686,32 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     setCall((prev) => (prev ? { ...prev, phase: "connecting" } : prev));
     callRef.current = { ...current, phase: "connecting" };
 
-    await joinCallChannel(current.conversationId);
-    await sendOn(current.partnerId, {
+    const accepting = callRef.current;
+    if (!(await joinCallChannel(current.conversationId))) {
+      if (callRef.current === accepting) finish("Couldn't connect to call signaling. Check your connection and try again.");
+      return;
+    }
+    const accepted = await sendOn(current.partnerId, {
       kind: "accept",
       conversationId: current.conversationId,
       from: meRef.current ?? undefined,
     });
+    if (!accepted) {
+      if (callRef.current === accepting) finish("Couldn't answer the call. Check your connection and try again.");
+      return;
+    }
+    if (callRef.current !== accepting) return;
 
     try {
       const stream = await getMedia(current.type);
+      if (callRef.current !== accepting) {
+        stream.getTracks().forEach((track) => track.stop());
+        if (localRef.current === stream) { localRef.current = null; setLocalStream(null); }
+        return;
+      }
       buildPeer(stream);
     } catch {
-      finish("Allow microphone and camera to call");
+      if (callRef.current === accepting) finish("Allow microphone and camera to call");
       return;
     }
 

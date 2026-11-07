@@ -20,11 +20,11 @@ const { CHAT_THEMES, DEFAULT_CHAT_THEME, getChatTheme, resolveChatTheme, isLight
 const { ChatThemePicker } = require('../components/chat/ChatThemePicker.tsx');
 
 test('twelve image themes and a safe classic fallback are available', () => {
-  assert.equal(CHAT_THEMES.length, 13);
+  assert.equal(CHAT_THEMES.length, 29);
   assert.equal(getChatTheme(undefined).id, DEFAULT_CHAT_THEME);
   assert.equal(getChatTheme('unknown-theme').id, DEFAULT_CHAT_THEME);
   assert.equal(resolveChatTheme('unknown-theme', 'open-sky').id, 'open-sky');
-  for (const theme of CHAT_THEMES.slice(1)) {
+  for (const theme of CHAT_THEMES.filter(theme => theme.image)) {
     assert.equal(getChatTheme(theme.id).id, theme.id);
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', theme.image)));
   }
@@ -33,7 +33,9 @@ test('twelve image themes and a safe classic fallback are available', () => {
 test('theme picker exposes a labeled single-choice control with current value', () => {
   const html = renderToStaticMarkup(React.createElement(ChatThemePicker, { value: 'wild-coast', onChange() {} }));
   assert.match(html, /Choose a chat background/);
-  assert.equal((html.match(/type="radio"/g) || []).length, 13);
+  assert.equal((html.match(/type="radio"/g) || []).length, 28);
+  for (const name of ['Default', 'Midnight', 'Rosewater', 'Pattern', 'Solid']) assert.ok(html.includes(name));
+  assert.match(html, /Upload Custom/); assert.match(html, /overflow-x-auto/); assert.match(html, /rounded-full/);
   assert.match(html, /checked="" value="wild-coast"/);
   assert.match(html, /Open sky/);
   assert.match(html, /Golden road/);
@@ -60,21 +62,34 @@ test('default and per-chat selections persist independently and reset safely', (
   assert.equal(meta['chat-a'].chatTheme, undefined);
   assert.equal(meta['chat-a'].muted, true);
   assert.equal(meta['chat-b'].chatTheme, 'golden-road');
+  patchMeta('chat-a', { chatTheme: 'custom' });
+  const { clearCustomChatThemes } = require('../lib/conversation-meta.ts');
+  clearCustomChatThemes();
+  meta = JSON.parse(values.get('dolemon:chat-meta'));
+  assert.equal(meta['chat-a'].chatTheme, undefined);
+  assert.equal(meta['chat-a'].muted, true);
+  assert.equal(meta['chat-b'].chatTheme, 'golden-road');
   delete global.window;
 });
 
-test('luminous themes keep bright backgrounds while using readable message and label surfaces', () => {
+test('luminous themes retain their artwork and use readable label surfaces', () => {
   const { ChatWallpaper, chatThemeStyle } = require('../components/chat/ChatWallpaper.tsx');
   for (const id of ['glow-peach', 'glow-aqua', 'glow-lilac']) {
     const theme = getChatTheme(id);
     assert.equal(isLightChatTheme(theme), true);
     const html = renderToStaticMarkup(React.createElement(ChatWallpaper, { theme }));
     assert.ok(html.includes(theme.image));
-    assert.doesNotMatch(html, /bg-\[#09090B\]\/55/);
-    assert.equal(chatThemeStyle(theme)['--message-incoming'], '#35313e');
-    assert.equal(chatThemeStyle(theme)['--chat-label-text'], '#34303d');
+    assert.match(html, /bg-black\/60/);
+    assert.equal(chatThemeStyle(theme)['--message-incoming'], 'rgba(0,0,0,.2)');
+    assert.equal(chatThemeStyle(theme)['--chat-label-text'], '#f4f4f5');
   }
   const dark = getChatTheme('open-sky');
   assert.equal(isLightChatTheme(dark), false);
-  assert.match(renderToStaticMarkup(React.createElement(ChatWallpaper, { theme: dark })), /bg-\[#09090B\]\/55/);
+  assert.match(renderToStaticMarkup(React.createElement(ChatWallpaper, { theme: dark })), /bg-black\/60/);
+});
+
+test('missing custom wallpaper remains selectable and explains the fallback', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatThemePicker, { value:'custom', onChange(){} }));
+  assert.match(html, /checked="" value="custom"/);
+  assert.match(html, /custom image is loading or unavailable/);
 });

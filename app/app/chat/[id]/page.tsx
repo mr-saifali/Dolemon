@@ -4,6 +4,7 @@ import { toRemoteSendOptions } from "@/lib/remote-send-options";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BellOff,
@@ -20,11 +21,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppGuard } from "@/components/app-guard";
-import { ConsistencySheet } from "@/components/chat/consistency-sheet";
-import { AttachmentSheet } from "@/components/chat/attachment-sheet";
+
+
 import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageSearchSheet } from "@/components/chat/MessageSearchSheet";
-import { ChatThemeSheet } from "@/components/chat/ChatThemePicker";
+
+
 import { ChatWallpaper, chatThemeStyle } from "@/components/chat/ChatWallpaper";
 import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
@@ -33,7 +34,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { PulseOverlay } from "@/components/chat/pulse-overlay";
 import { ReactionPicker, type BubbleAnchor, type MessageAction } from "@/components/chat/ReactionPicker";
 import { authMode } from "@/lib/auth";
-import { isChatThemeId, resolveChatTheme } from "@/lib/chat-themes";
+import { isChatThemeId, isVividChatTheme, resolveChatTheme } from "@/lib/chat-themes";
 import { demoConversations } from "@/lib/chat";
 import { markRead, patchMeta, useChatMetaFor } from "@/lib/conversation-meta";
 import { formatAgo, usePresence } from "@/lib/presence";
@@ -48,9 +49,16 @@ import { useRemoteThread } from "@/lib/use-remote-thread";
 import { useSession } from "@/lib/session";
 import { useAppPresence } from "@/lib/app-presence";
 import { useDoremon } from "@/lib/doremon/use-doremon";
+import { confirmDoremonSharing } from "@/lib/doremon/consent";
 import { clearConversationVideos, prepareVideo, removeVideoFromDevice } from "@/lib/video-storage";
 import { parseVideoReference } from "@/lib/video-reference";
 import { useViewportHeight } from "@/lib/use-viewport-height";
+
+// These panels are only downloaded when opened, not on every chat visit.
+const ConsistencySheet = dynamic(() => import("@/components/chat/consistency-sheet").then((m) => m.ConsistencySheet));
+const AttachmentSheet = dynamic(() => import("@/components/chat/attachment-sheet").then((m) => m.AttachmentSheet));
+const MessageSearchSheet = dynamic(() => import("@/components/chat/MessageSearchSheet").then((m) => m.MessageSearchSheet));
+const ChatThemeSheet = dynamic(() => import("@/components/chat/ChatThemePicker").then((m) => m.ChatThemeSheet));
 
 const REMOTE = authMode === "supabase";
 
@@ -110,6 +118,7 @@ function ThreadScreen() {
   const [replyTo, setReplyTo] = useState<QuotedMessage | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [attachIntent, setAttachIntent] = useState<"camera" | "photo" | "voice">("photo");
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [dividerId, setDividerId] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -300,6 +309,7 @@ function ThreadScreen() {
     // /doremon <anything> — a word to Doremon, not a message to them
     if (/^\/doremon\b/i.test(trimmed)) {
       const question = trimmed.replace(/^\/doremon\s*/i, "").trim();
+      if (!question || !confirmDoremonSharing(REMOTE)) return false;
       setReplyTo(null);
       void doremon.ask(question);
       return;
@@ -462,14 +472,10 @@ function ThreadScreen() {
   return (
     <main
       className="relative isolate flex flex-col overflow-hidden bg-[#09090B]"
+      data-vivid-wallpaper={isVividChatTheme(theme) ? "true" : undefined}
       style={{ height: "var(--app-vh, 100dvh)", ...chatThemeStyle(theme) }}
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(124,58,237,0.08),transparent_45%),radial-gradient(ellipse_at_85%_65%,rgba(59,130,246,0.07),transparent_48%),radial-gradient(ellipse_at_40%_100%,rgba(255,92,122,0.06),transparent_45%)]"
-      />
-
-      <ChatWallpaper theme={theme} />
+      <ChatWallpaper theme={theme} reduceMotion={prefs.reduceMotion} />
 
       {edgePull > 0 && (
         <div
@@ -514,6 +520,8 @@ function ThreadScreen() {
         onBottomChange={setAtBottom}
         messages={messages}
         partnerName={partnerName}
+        partnerAvatarId={partnerAvatar}
+        partnerAvatarUrl={REMOTE ? remote.partnerAvatarUrl : null}
         typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
         showReceipts={prefs.readReceipts}
         compact={prefs.compactChat}
@@ -545,8 +553,9 @@ function ThreadScreen() {
         onSend={handleSend}
         onSticker={handleSticker}
         onPulse={handlePulse}
-        onAttach={() => setAttachOpen(true)}
-        onVoice={() => setAttachOpen(true)}
+        onAttach={() => { setAttachIntent("photo"); setAttachOpen(true); }}
+        onCamera={() => { setAttachIntent("camera"); setAttachOpen(true); }}
+        onVoice={() => { setAttachIntent("voice"); setAttachOpen(true); }}
         onTyping={() => { if (REMOTE && prefs.typingIndicator) remote.notifyTyping(); }}
         showPulse={!REMOTE}
         pulseCoolingUntil={pulses.coolingUntil}
@@ -558,15 +567,15 @@ function ThreadScreen() {
         onCancelReply={() => setReplyTo(null)}
       />
 
-      <MessageSearchSheet open={searchOpen} onClose={() => setSearchOpen(false)} conversationId={conversationId} remote={REMOTE} me={remote.me} messages={messages} />
-      <ChatThemeSheet
+      {searchOpen && <MessageSearchSheet open={searchOpen} onClose={() => setSearchOpen(false)} conversationId={conversationId} remote={REMOTE} me={remote.me} messages={messages} />}
+      {themeOpen && <ChatThemeSheet
         open={themeOpen}
         value={theme.id}
         inherited={!isChatThemeId(meta.chatTheme)}
         onChange={(id) => patchMeta(conversationId, { chatTheme: id })}
         onReset={() => patchMeta(conversationId, { chatTheme: undefined })}
         onClose={closeTheme}
-      />
+      />}
 
       <ChatMenuSheet
         open={menuOpen}
@@ -605,8 +614,9 @@ function ThreadScreen() {
 
       {compareOpen && <ConsistencySheet messages={messages} onClose={closeCompare} hasOlder={REMOTE && remote.hasOlder} loadingOlder={remote.loadingOlder} onLoadOlder={REMOTE ? remote.loadOlder : undefined} />}
 
-      <AttachmentSheet
+      {attachOpen && <AttachmentSheet
         publicMedia={REMOTE}
+        preferred={attachIntent}
         open={attachOpen}
         onClose={() => setAttachOpen(false)}
         onPhoto={(image) => {
@@ -639,7 +649,7 @@ function ThreadScreen() {
           });
           setReplyTo(null);
         }}
-      />
+      />}
 
       <AnimatePresence>
         {viewerUrl && (

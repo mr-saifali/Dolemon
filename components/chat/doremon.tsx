@@ -155,7 +155,7 @@ export function DoremonPresence({
       onClick={onTap}
       aria-label={label}
       title={label}
-      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95"
+      className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95"
     >
       <span
         aria-hidden

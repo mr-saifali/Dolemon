@@ -36,11 +36,11 @@ function CallControl({
       onClick={onClick}
       whileTap={{ scale: 0.9 }}
       transition={{ type: "spring", stiffness: 620, damping: 26 }}
-      className="flex w-[68px] flex-col items-center gap-2"
+      className="flex min-w-0 max-w-[68px] flex-1 flex-col items-center gap-1.5"
     >
       <span
         className={cn(
-          "flex h-[58px] w-[58px] items-center justify-center rounded-full border transition-colors duration-200",
+          "flex h-11 w-11 items-center sm:h-[52px] sm:w-[52px] justify-center rounded-full border transition-colors duration-200",
           active
             ? "border-white/25 bg-white text-[#0B0B0E]"
             : "border-white/[0.12] bg-white/[0.12] text-white"
@@ -397,7 +397,7 @@ export function LiveCallOverlay() {
               <p className="pb-2 text-center text-[12px] text-white/35">Closing…</p>
             ) : (
               <>
-                <div className="flex items-start justify-center gap-4">
+                <div className="mx-auto flex w-full max-w-[420px] items-start justify-center gap-1 sm:gap-4">
                   <CallControl
                     onClick={toggleMute}
                     label={muted ? "Unmute" : "Mute"}

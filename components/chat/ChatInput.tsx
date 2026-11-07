@@ -141,14 +141,14 @@ export function ChatInput({
           )}
         </AnimatePresence>
 
-        <div className="flex items-end gap-0.5 rounded-[28px] bg-[#1C1C1E] px-2 py-1.5 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65)]">
+        <div className="flex items-end gap-0.5 rounded-[28px] bg-[#1C1C1E] px-1.5 py-1 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65)]">
           <motion.button
             type="button"
             onClick={onAttach}
             disabled={disabled}
             aria-label="Add attachment"
             whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
           >
             <Plus className="h-6 w-6" strokeWidth={1.8} />
           </motion.button>
@@ -170,7 +170,7 @@ export function ChatInput({
                   submit();
                 }
               }}
-              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-[1.4] text-white outline-none placeholder:text-zinc-500"
+              className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[16px] leading-[1.4] text-white outline-none placeholder:text-zinc-500"
             />
           </div>
 
@@ -180,7 +180,7 @@ export function ChatInput({
             disabled={disabled}
             aria-label="Add a photo or file"
             whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
           >
             <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
           </motion.button>
@@ -193,7 +193,7 @@ export function ChatInput({
             aria-expanded={trayOpen}
             whileTap={{ scale: 0.9 }}
             className={cn(
-              "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:text-white",
+              "mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:text-white",
               trayOpen ? "text-rose" : "text-zinc-400"
             )}
           >

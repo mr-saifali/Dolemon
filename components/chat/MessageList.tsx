@@ -124,7 +124,7 @@ export function MessageList({
       >
         <div className="mx-auto w-full max-w-2xl px-4 pb-4 pt-4">
           <div className="mb-1 flex justify-center">
-            <span className="rounded-full bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
+            <span className="rounded-full bg-[color:var(--chat-label-bg,rgba(255,255,255,.08))] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--chat-label-text,#d4d4d8)]">
               Sirf tum dono ke liye
             </span>
           </div>
@@ -194,7 +194,7 @@ export function MessageList({
                       animateIn={!initialIds.current?.has(message.id)}
                       compact={compact}
                     />
-                    {message.id === latestOwnId && <p aria-live="polite" className="mt-1 px-1 text-right text-[11px] text-zinc-500">{messageStatusLabel(message, showReceipts, now)}</p>}
+                    {message.id === latestOwnId && <div className="mt-1 flex justify-end"><p aria-live="polite" className="rounded-full bg-[color:var(--chat-label-bg,rgba(255,255,255,.08))] px-2 py-0.5 text-[12px] text-[color:var(--chat-label-text,#d4d4d8)]">{messageStatusLabel(message, showReceipts, now)}</p></div>}
                   </div>
                 );
               })}
@@ -236,7 +236,7 @@ function UnreadDivider() {
   return (
     <div className="my-4 flex items-center gap-3" role="separator" aria-label="New messages">
       <span className="h-px flex-1 bg-rose/20" />
-      <span className="rounded-full bg-rose/[0.12] px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-rose">
+      <span className="rounded-full bg-[color:var(--chat-label-bg,rgba(255,255,255,.08))] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--chat-label-text,#d4d4d8)]">
         New
       </span>
       <span className="h-px flex-1 bg-rose/20" />

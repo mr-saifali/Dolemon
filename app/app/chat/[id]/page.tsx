@@ -25,6 +25,7 @@ import { AttachmentSheet } from "@/components/chat/attachment-sheet";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageSearchSheet } from "@/components/chat/MessageSearchSheet";
 import { ChatThemeSheet } from "@/components/chat/ChatThemePicker";
+import { ChatWallpaper, chatThemeStyle } from "@/components/chat/ChatWallpaper";
 import { EditBar } from "@/components/chat/edit-bar";
 import { ChatHeader, ChatMenuSheet, type ChatMenuAction } from "@/components/chat/ChatHeader";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -461,19 +462,14 @@ function ThreadScreen() {
   return (
     <main
       className="relative isolate flex flex-col overflow-hidden bg-[#09090B]"
-      style={{ height: "var(--app-vh, 100dvh)", "--message-outgoing": theme.bubble, "--message-outline": theme.outline } as React.CSSProperties}
+      style={{ height: "var(--app-vh, 100dvh)", ...chatThemeStyle(theme) }}
     >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(124,58,237,0.08),transparent_45%),radial-gradient(ellipse_at_85%_65%,rgba(59,130,246,0.07),transparent_48%),radial-gradient(ellipse_at_40%_100%,rgba(255,92,122,0.06),transparent_45%)]"
       />
 
-      {theme.image && (
-        <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: `url(${theme.image})` }}>
-          <div className="absolute inset-0 bg-[#09090B]/55" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#09090B]/45 via-transparent to-[#09090B]/55" />
-        </div>
-      )}
+      <ChatWallpaper theme={theme} />
 
       {edgePull > 0 && (
         <div

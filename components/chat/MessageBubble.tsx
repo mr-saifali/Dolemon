@@ -122,7 +122,7 @@ export const MessageBubble = memo(function MessageBubble({
       )}
     >
       <div
-        className={cn("relative flex max-w-[85%] flex-col sm:max-w-[72%]", mine ? "items-end" : "items-start")}
+        className={cn("relative flex max-w-[80%] flex-col sm:max-w-[72%]", mine ? "items-end" : "items-start")}
         style={{ marginBottom: chips.length > 0 ? 10 : 0 }}
       >
         {onSwipeReply && (
@@ -187,9 +187,9 @@ export const MessageBubble = memo(function MessageBubble({
               emojiOnly
                 ? "px-1 py-1 text-white"
                 : cn(
-                  message.kind === "image" || message.kind === "audio" ? "p-1" : message.kind === "file" ? "px-2.5 py-2" : "px-3 py-1.5",
+                  message.kind === "image" || message.kind === "audio" ? "p-1" : "px-3 py-2",
                   "border text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
-                  mine ? "rounded-[16px] rounded-br-[5px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[16px] rounded-bl-[5px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-black/20 backdrop-blur-md"
+                  mine ? "rounded-[20px] rounded-br-[6px] border-white/[0.08] bg-[color:var(--message-outgoing,#673344)]" : "rounded-[20px] rounded-bl-[6px] border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-[color:var(--message-incoming,rgba(0,0,0,0.2))] backdrop-blur-md"
                 )
             )}
           >
@@ -380,7 +380,7 @@ function BubbleMeta({
   inline?: boolean;
 }) {
   return (
-    <span className={cn("flex shrink-0 items-center justify-end gap-1 text-[10px] leading-none", inline ? "ml-auto pb-0.5" : "mt-1 pr-1 pb-0.5", metaColor)}>
+    <span className={cn("flex shrink-0 items-center justify-end gap-1 text-[11px] leading-none", inline ? "ml-auto pb-0.5" : "mt-1 pr-1 pb-0.5", metaColor)}>
       <span className="tabular-nums">{clockTime(message.at)}</span>
       {message.editedAt ? <span className="italic">edited</span> : null}
     </span>

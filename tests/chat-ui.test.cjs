@@ -25,6 +25,10 @@ test('each wallpaper supplies a distinct readable outgoing bubble and a transluc
     assert.ok(1.05 / (luminance(theme.bubble) + .05) >= 4.5, `${theme.name} needs contrast`);
     assert.match(theme.outline, /^rgba\(/);
   }
+  // Light wallpapers stay bright; opaque incoming bubbles and pale label
+  // backplates provide contrast instead of darkening the entire image.
+  assert.ok(1.05 / (luminance('#35313e') + .05) >= 4.5);
+  assert.ok((luminance('#e0e0e0') + .05) / (luminance('#34303d') + .05) >= 4.5);
   assert.equal(resolveChatTheme('wild-coast', 'open-sky').bubble, CHAT_THEMES.find(t => t.id === 'wild-coast').bubble);
 });
 test('message menu remains inside narrow and short viewports at either edge', () => {
@@ -44,13 +48,37 @@ test('message menu shows appropriate actions and no unavailable forward action',
   assert.doesNotMatch(own, />Forward</); assert.doesNotMatch(theirs, />Edit</); assert.doesNotMatch(theirs, />Delete</);
   assert.equal((own.match(/aria-pressed="false"/g) || []).length, 5);
 });
-test('text and stickers both expose message options and incoming bubbles use the transparent outline', () => {
+test('text and stickers expose message options and incoming bubbles use theme-aware surfaces', () => {
   const props = { grouped: false, tail: true, partnerName: 'Sam', onLongPress() {}, onDoubleTap() {}, onRemoveMyReaction() {}, onRetry() {}, animateIn: false };
   for (const message of [{id:'1', author:'them', kind:'text', text:'A message', at:0}, {id:'2', author:'them', kind:'sticker', text:'', sticker:'dil', at:0}]) {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, { ...props, message }));
     assert.match(html, /Open message options/);
-    if (message.kind === 'text') { assert.match(html, /bg-black\/20/); assert.match(html, /--message-outline/); }
-    else { assert.doesNotMatch(html, /bg-black\/20/); assert.match(html, /❤️/); }
+    if (message.kind === 'text') { assert.match(html, /--message-incoming/); assert.match(html, /--message-outline/); }
+    else { assert.doesNotMatch(html, /--message-incoming/); assert.match(html, /❤️/); }
   }
 });
 
+
+test('chat proportions remain compact and input stays at a legible mobile font size', () => {
+  const { ChatHeader } = require('../components/chat/ChatHeader.tsx');
+  const { ChatInput } = require('../components/chat/ChatInput.tsx');
+  const header = renderToStaticMarkup(React.createElement(ChatHeader, { name:'Sam', avatarId:null, online:true, status:'online', typing:false, onMenu(){}, onCall(){} }));
+  assert.match(header, /h-14/); assert.match(header, /Voice call/); assert.match(header, /Video call/);
+  const input = renderToStaticMarkup(React.createElement(ChatInput, { onSend(){}, onSticker(){}, onPulse(){}, onAttach(){}, onVoice(){} }));
+  assert.match(input, /text-\[16px\]/); assert.match(input, /aria-label="Message"/);
+  const bubble = renderToStaticMarkup(React.createElement(MessageBubble, { grouped:false, tail:true, partnerName:'Sam', onLongPress(){}, onDoubleTap(){}, onRemoveMyReaction(){}, onRetry(){}, animateIn:false, message:{id:'1',author:'them',kind:'text',text:'Hello',at:0} }));
+  assert.match(bubble, /text-\[15px\]/); assert.match(bubble, /leading-\[20px\]/); assert.match(bubble, /max-w-\[80%\]/);
+});
+
+test('call controls keep touch-sized circles in a flexible row for narrow screens', () => {
+  const previous = Module._load;
+  Module._load = function(id, parent, main) {
+    if (id === '@/lib/live-call') return { useLiveCall: () => ({call:{type:'video',phase:'connected',direction:'outgoing',peerName:'Sam'},elapsed:0,muted:false,cameraOn:true,speaker:true,minimized:false}) };
+    return previous.call(this,id,parent,main);
+  };
+  let LiveCallOverlay;
+  try { ({ LiveCallOverlay } = require('../components/call/live-call-overlay.tsx')); } finally { Module._load = previous; }
+  const html = renderToStaticMarkup(React.createElement(LiveCallOverlay));
+  assert.match(html, /max-w-\[420px\]/); assert.match(html, /h-11 w-11/);
+  assert.match(html, /Mute/); assert.match(html, /Camera/); assert.match(html, /End call/);
+});

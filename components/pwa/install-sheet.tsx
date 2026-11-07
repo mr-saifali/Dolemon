@@ -9,7 +9,7 @@ import { APP_VERSION } from "@/lib/version";
 
 /** Bottom sheet that either fires the native install prompt or explains how to add it by hand. */
 export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { canInstall, ios, installed, install } = usePwa();
+  const { canInstall, ios, installed, install, androidApp, environmentReady } = usePwa();
 
   const run = async () => {
     const result = await install();
@@ -23,7 +23,7 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <AnimatePresence>
-      {open && (
+      {open && environmentReady && !androidApp && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
           <motion.button
             type="button"

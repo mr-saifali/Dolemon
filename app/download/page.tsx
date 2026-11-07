@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Check, Download, Laptop, Share, Smartphone } from "lucide-react";
 import { usePwa } from "@/components/pwa/pwa-provider";
 import { APP_RELEASE_NAME, APP_VERSION } from "@/lib/version";
+import { ANDROID_APK_URL, ANDROID_APK_FILENAME, ANDROID_APP_VERSION } from "@/lib/android-app";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -33,13 +34,21 @@ const STEPS = [
 ];
 
 export default function DownloadPage() {
-  const { canInstall, installed, install } = usePwa();
+  const { canInstall, installed, install, androidApp, environmentReady } = usePwa();
 
   const run = async () => {
     const result = await install();
     if (result === "accepted") toast.success("Installing Dolemon");
     else if (result === "unavailable") toast("Use the steps below to add it by hand.");
   };
+
+  if (!environmentReady) return <main aria-busy="true" className="min-h-dvh bg-[#09090B]" />;
+  if (androidApp) return (
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[#09090B] px-6 text-center">
+      <p className="text-zinc-200">You’re already using the Android app.</p>
+      <Link href="/app" className="rounded-full bg-white/10 px-5 py-3 text-sm text-white">Back to Dolemon</Link>
+    </main>
+  );
 
   return (
     <main className="relative isolate flex min-h-dvh flex-col bg-[#09090B]">
@@ -79,8 +88,8 @@ export default function DownloadPage() {
           </div>
 
           <a
-            href="/downloads/dolemon-test-1.0.0.apk"
-            download="Dolemon-test-1.0.0.apk"
+            href={ANDROID_APK_URL}
+            download={ANDROID_APK_FILENAME}
             className="mt-7 flex min-h-12 w-full items-center justify-center gap-2 rounded-full py-3.5 text-[14.5px] font-medium text-white shadow-[0_12px_34px_-10px_var(--glow-send)] transition-transform active:scale-[0.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
             style={{ background: "var(--brand-grad)" }}
           >
@@ -88,7 +97,7 @@ export default function DownloadPage() {
             Download Android APK
           </a>
           <p className="mt-3 text-xs leading-relaxed text-zinc-400">
-            Test build for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. Later test builds may require reinstalling and erase local app data.
+            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. To install over the 1.0.0 test build, uninstall it first; uninstalling erases its local app data.
           </p>
 
           {canInstall ? (

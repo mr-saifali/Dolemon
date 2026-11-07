@@ -20,6 +20,8 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle --no-daemon assembleDebug
+      - name: Verify published test APK signature
+        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs public/downloads/dolemon-test-1.1.0.apk'
       - uses: actions/upload-artifact@v4
         with:
           name: Dolemon-android-debug

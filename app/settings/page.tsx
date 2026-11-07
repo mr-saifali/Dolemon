@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { PushSettings } from "@/components/pwa/push-settings";
+import { usePwa } from "@/components/pwa/pwa-provider";
 import { AppGuard } from "@/components/app-guard";
 import { ChatThemePicker } from "@/components/chat/ChatThemePicker";
 import { getChatTheme } from "@/lib/chat-themes";
@@ -87,6 +88,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function SettingsContent() {
   const router = useRouter();
+  const { androidApp, environmentReady } = usePwa();
   const { account, refresh, signOut } = useSession();
   const [lockOpen, setLockOpen] = useState(false);
   const [lockPassword, setLockPassword] = useState("");
@@ -734,7 +736,7 @@ function SettingsContent() {
           Sign out
         </button>
 
-        <Link
+        {environmentReady && !androidApp && <Link
           href="/download"
           className="press hairline mt-6 flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3.5 active:bg-white/[0.06]"
         >
@@ -746,7 +748,7 @@ function SettingsContent() {
             v{APP_VERSION}
             <ChevronLeft className="h-3.5 w-3.5 rotate-180" />
           </span>
-        </Link>
+        </Link>}
 
         <p className="mt-3 text-center text-[10.5px] text-zinc-600">
           v{APP_VERSION} · {APP_RELEASE_NAME}

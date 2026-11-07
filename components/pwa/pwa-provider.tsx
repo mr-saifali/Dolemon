@@ -9,10 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { isAndroidAppWebView } from "@/lib/android-app";
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice?: Promise<{ outcome: string }> };
 
 type PwaValue = {
+  /** Native/embedded Android shells should not offer to install the app again. */
+  androidApp: boolean;
+  environmentReady: boolean;
   /** the browser offered a native install prompt we can fire on a tap */
   canInstall: boolean;
   /** already running from the home screen */
@@ -25,6 +29,8 @@ type PwaValue = {
 const PwaContext = createContext<PwaValue | null>(null);
 
 export function PwaProvider({ children }: { children: ReactNode }) {
+  const [androidApp, setAndroidApp] = useState(false);
+  const [environmentReady, setEnvironmentReady] = useState(false);
   const [prompt, setPrompt] = useState<InstallEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [ios, setIos] = useState(false);
@@ -36,6 +42,8 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     setInstalled(Boolean(standalone));
 
     const ua = window.navigator.userAgent.toLowerCase();
+    setAndroidApp(isAndroidAppWebView(ua));
+    setEnvironmentReady(true);
     setIos(/iphone|ipad|ipod/.test(ua) && !/crios|fxios/.test(ua));
 
     const onPrompt = (event: Event) => {
@@ -75,8 +83,8 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   }, [prompt]);
 
   const value = useMemo<PwaValue>(
-    () => ({ canInstall: Boolean(prompt), installed, ios, install }),
-    [prompt, installed, ios, install]
+    () => ({ androidApp, environmentReady, canInstall: Boolean(prompt), installed, ios, install }),
+    [androidApp, environmentReady, prompt, installed, ios, install]
   );
 
   return <PwaContext.Provider value={value}>{children}</PwaContext.Provider>;

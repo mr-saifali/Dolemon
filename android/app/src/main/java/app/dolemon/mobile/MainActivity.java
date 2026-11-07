@@ -46,6 +46,8 @@ public final class MainActivity extends Activity {
         webView = new WebView(this);
         setContentView(webView);
         WebSettings settings = webView.getSettings();
+        // Identify this shell so the hosted site does not offer to install it again.
+        settings.setUserAgentString(settings.getUserAgentString() + " DolemonAndroid/1.1.0");
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);

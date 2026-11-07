@@ -6,10 +6,10 @@ const nextConfig = {
   },
   async headers() {
     return [{
-      source: "/downloads/dolemon-test-1.0.0.apk",
+      source: "/downloads/dolemon-test-1.1.0.apk",
       headers: [
         { key: "Content-Type", value: "application/vnd.android.package-archive" },
-        { key: "Content-Disposition", value: 'attachment; filename="Dolemon-test-1.0.0.apk"' },
+        { key: "Content-Disposition", value: 'attachment; filename="Dolemon-test-1.1.0.apk"' },
         { key: "X-Content-Type-Options", value: "nosniff" },
       ],
     }];

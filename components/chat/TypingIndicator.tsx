@@ -31,7 +31,7 @@ export function TypingIndicator({ active }: { active: boolean }) {
           aria-live="polite"
           aria-label="Typing"
         >
-          <div className="flex h-[34px] items-center gap-[3px] rounded-[16px] rounded-bl-[5px] border border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-black/20 px-3 backdrop-blur-md">
+          <div className="flex h-9 items-center gap-1 rounded-[20px] rounded-bl-[6px] border border-[color:var(--message-outline,rgba(255,255,255,0.3))] bg-[color:var(--message-incoming,rgba(0,0,0,0.2))] px-3.5 backdrop-blur-md">
             {[0, 150, 300].map((delay) => (
               <motion.span
                 key={delay}

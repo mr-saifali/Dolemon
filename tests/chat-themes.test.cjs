@@ -16,11 +16,11 @@ for (const ext of ['.ts', '.tsx']) {
     module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, filename);
   };
 }
-const { CHAT_THEMES, DEFAULT_CHAT_THEME, getChatTheme, resolveChatTheme } = require('../lib/chat-themes.ts');
+const { CHAT_THEMES, DEFAULT_CHAT_THEME, getChatTheme, resolveChatTheme, isLightChatTheme } = require('../lib/chat-themes.ts');
 const { ChatThemePicker } = require('../components/chat/ChatThemePicker.tsx');
 
-test('nine image themes and a safe classic fallback are available', () => {
-  assert.equal(CHAT_THEMES.length, 10);
+test('twelve image themes and a safe classic fallback are available', () => {
+  assert.equal(CHAT_THEMES.length, 13);
   assert.equal(getChatTheme(undefined).id, DEFAULT_CHAT_THEME);
   assert.equal(getChatTheme('unknown-theme').id, DEFAULT_CHAT_THEME);
   assert.equal(resolveChatTheme('unknown-theme', 'open-sky').id, 'open-sky');
@@ -33,13 +33,14 @@ test('nine image themes and a safe classic fallback are available', () => {
 test('theme picker exposes a labeled single-choice control with current value', () => {
   const html = renderToStaticMarkup(React.createElement(ChatThemePicker, { value: 'wild-coast', onChange() {} }));
   assert.match(html, /Choose a chat background/);
-  assert.equal((html.match(/type="radio"/g) || []).length, 10);
+  assert.equal((html.match(/type="radio"/g) || []).length, 13);
   assert.match(html, /checked="" value="wild-coast"/);
   assert.match(html, /Open sky/);
   assert.match(html, /Golden road/);
   assert.match(html, /Sky garden/);
   assert.match(html, /Aurora dream/);
   assert.match(html, /Endless horizon/);
+  for (const name of ['Peach glow', 'Aqua glow', 'Lilac glow']) assert.ok(html.includes(name));
 });
 
 test('default and per-chat selections persist independently and reset safely', () => {
@@ -60,4 +61,20 @@ test('default and per-chat selections persist independently and reset safely', (
   assert.equal(meta['chat-a'].muted, true);
   assert.equal(meta['chat-b'].chatTheme, 'golden-road');
   delete global.window;
+});
+
+test('luminous themes keep bright backgrounds while using readable message and label surfaces', () => {
+  const { ChatWallpaper, chatThemeStyle } = require('../components/chat/ChatWallpaper.tsx');
+  for (const id of ['glow-peach', 'glow-aqua', 'glow-lilac']) {
+    const theme = getChatTheme(id);
+    assert.equal(isLightChatTheme(theme), true);
+    const html = renderToStaticMarkup(React.createElement(ChatWallpaper, { theme }));
+    assert.ok(html.includes(theme.image));
+    assert.doesNotMatch(html, /bg-\[#09090B\]\/55/);
+    assert.equal(chatThemeStyle(theme)['--message-incoming'], '#35313e');
+    assert.equal(chatThemeStyle(theme)['--chat-label-text'], '#34303d');
+  }
+  const dark = getChatTheme('open-sky');
+  assert.equal(isLightChatTheme(dark), false);
+  assert.match(renderToStaticMarkup(React.createElement(ChatWallpaper, { theme: dark })), /bg-\[#09090B\]\/55/);
 });

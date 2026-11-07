@@ -49,7 +49,7 @@ export function ChatHeader({
         <Link
           href="/app"
           aria-label="Back to chats"
-          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+          className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
         >
           <ChevronLeft className="h-5 w-5" strokeWidth={1.8} />
         </Link>
@@ -57,7 +57,7 @@ export function ChatHeader({
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <ChatAvatar avatarId={avatarId} avatarUrl={avatarUrl} name={name} size={40} online={online} />
           <div className="min-w-0 leading-tight">
-            <h1 className="truncate text-[15px] font-medium tracking-[-0.01em] text-zinc-100">{name}</h1>
+            <h1 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-zinc-100">{name}</h1>
             <p
               aria-live="polite"
               className={typing ? "truncate text-[12px] text-rose/90" : "truncate text-[12px] text-zinc-500"}
@@ -73,9 +73,9 @@ export function ChatHeader({
               type="button"
               onClick={() => onCall("voice")}
               aria-label="Voice call"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
             >
-              <Phone className="h-5 w-5" strokeWidth={1.8} />
+              <Phone className="h-[22px] w-[22px]" strokeWidth={1.8} />
             </button>
           )}
           {onCall && (
@@ -83,9 +83,9 @@ export function ChatHeader({
               type="button"
               onClick={() => onCall("video")}
               aria-label="Video call"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
             >
-              <Video className="h-5 w-5" strokeWidth={1.8} />
+              <Video className="h-[22px] w-[22px]" strokeWidth={1.8} />
             </button>
           )}
           {onDoremon && (
@@ -95,7 +95,7 @@ export function ChatHeader({
             type="button"
             onClick={onMenu}
             aria-label="Chat options"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
           >
             <MoreHorizontal className="h-5 w-5" strokeWidth={1.8} />
           </button>

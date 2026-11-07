@@ -22,7 +22,7 @@ export function SystemPill({
       transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1], delay }}
       className="flex justify-center py-2"
     >
-      <span className="inline-flex max-w-[92%] items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-[11px] font-normal uppercase leading-none tracking-wider text-zinc-500">
+      <span className="inline-flex max-w-[92%] items-center gap-1.5 rounded-full bg-[color:var(--chat-label-bg,rgba(255,255,255,.08))] px-3 py-1.5 text-[11px] font-medium uppercase leading-none tracking-wider text-[color:var(--chat-label-text,#d4d4d8)]">
         {icon}
         <span className="truncate">{children}</span>
       </span>

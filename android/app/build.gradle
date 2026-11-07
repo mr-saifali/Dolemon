@@ -1,0 +1,13 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'app.dolemon.mobile'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.dolemon.mobile'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+}

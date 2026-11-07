@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, ImagePlus, Mic, Plus, Smile, X } from "lucide-react";
+import { ArrowUp, Mic, Plus, Smile, X } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { PulseButton } from "./pulse-button";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
@@ -70,7 +70,7 @@ export function ChatInput({
 
   return (
     <div className="relative z-20">
-      <div className="mx-auto w-full max-w-2xl px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-2">
+      <div className="mx-auto w-full max-w-2xl px-3 pb-[max(env(safe-area-inset-bottom),8px)] pt-1.5">
         {hint && <div className="mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
         {/^\/doremon\b/i.test(value.trim()) && <p className="mb-2 px-1 text-xs leading-relaxed text-sky-200">Asking can send recent chat excerpts and memory to Google Gemini. Consider the other person’s consent; AI interpretations can be wrong.</p>}
 
@@ -173,17 +173,6 @@ export function ChatInput({
               className="max-h-[92px] min-h-[24px] w-full resize-none bg-transparent text-[16px] leading-[1.4] text-white outline-none placeholder:text-zinc-500"
             />
           </div>
-
-          <motion.button
-            type="button"
-            onClick={onAttach}
-            disabled={disabled}
-            aria-label="Add a photo or file"
-            whileTap={{ scale: 0.9 }}
-            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-white"
-          >
-            <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
-          </motion.button>
 
           <motion.button
             type="button"

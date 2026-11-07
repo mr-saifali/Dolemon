@@ -1,10 +1,10 @@
 /* Only public, versioned assets and the standalone offline page are cached.
  * Conversation data, navigations and RSC requests always go to the network. */
-const SHELL_CACHE = "dolemon-shell-v2";
+const SHELL_CACHE = "dolemon-shell-v3";
 const STATIC_CACHE = "dolemon-static-v1";
 const MAX_STATIC_ENTRIES = 500;
 const OFFLINE_PAGE = "/offline.html";
-const PUBLIC_ASSETS = [OFFLINE_PAGE, "/icons/icon-192.png", "/icons/icon-512.png"];
+const PUBLIC_ASSETS = [OFFLINE_PAGE, "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {

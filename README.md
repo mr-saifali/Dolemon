@@ -226,3 +226,7 @@ Chat links open their original address in a new tab. Cards display the domain an
 ### Videos
 
 Videos up to 50 MB use a separate private, temporary Supabase handoff and device-local IndexedDB copies. Recipient download is manual, and the app attempts to remove the temporary copy after saving. Availability, expiry, scheduled cleanup and deployment requirements are described in [temporary video setup](docs/temporary-video.md). This is not end-to-end encryption; the existing public photo/voice/file storage behavior is unchanged.
+
+### Android test app
+
+The Android shell and debug APK build workflow are documented in [Android test app](docs/android-app.md). The APK loads the hosted website and does not include web push support. It is a test build, not a signed production release.

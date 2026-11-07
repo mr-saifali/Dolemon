@@ -8,3 +8,6 @@ dist
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+android/.gradle
+android/local.properties
+*.apk

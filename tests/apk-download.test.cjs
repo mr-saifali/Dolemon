@@ -49,6 +49,7 @@ test('the shipped binary really is the 1.4.1 shell with the notification hand-of
       marker: blob.includes('DolemonAndroid/'),
       bridge: blob.includes('openInBrowser'),
       notify: blob.includes('notifyMessage'),
+      inbox: blob.includes('inboxReady'),
     }));
   `], { encoding: 'utf8' });
   const found = JSON.parse(out);
@@ -56,6 +57,7 @@ test('the shipped binary really is the 1.4.1 shell with the notification hand-of
   assert.equal(found.marker, true);
   assert.equal(found.bridge, true);
   assert.equal(found.notify, true);
+  assert.equal(found.inbox, true);
 });
 
 test('website uses the current APK but app installation prompts are gated in the Android shell', () => {
@@ -85,7 +87,7 @@ test('Android app marker and legacy Android WebView are recognized without hidin
   assert.equal(isAndroidAppWebView('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'), false);
   assert.equal(isAndroidAppWebView('Mozilla/5.0'), false);
   const activity = fs.readFileSync('android/app/src/main/java/app/dolemon/mobile/MainActivity.java','utf8');
-  assert.match(activity, /private static final String APP_VERSION = "1\.4\.0"/);
+  assert.match(activity, /private static final String APP_VERSION = "1\.4\.1"/);
   assert.match(activity, /setUserAgentString\(settings\.getUserAgentString\(\) \+ " DolemonAndroid\/" \+ APP_VERSION\)/);
 });
 

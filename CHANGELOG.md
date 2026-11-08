@@ -9,13 +9,13 @@
 
 **50 messages, then 50 more**
 - A thread opens with the latest **50** messages (was 6) and each "Load older messages" tap
-  fetches another 50 — a full screen and a half of history per tap instead of one bubble.
+  fetches up to another 50 (or the remaining history).
 
 **The chat keeps up with fast typing**
 - Message objects are reused when nothing about them changed (`lib/thread-identity.ts`), so
   polling every five seconds, an incoming message, or a reaction no longer re-renders every
   bubble. Typing pings are throttled to one every 1.5 s instead of one per keystroke. The
-  lag when typing at the same moment a message arrived is gone.
+  simultaneous typing/incoming-message workload is reduced; physical-device stress testing is still required.
 
 **No more web-page tells**
 - The spinning loader behind every private screen is replaced by a still launch screen, and
@@ -45,7 +45,7 @@
 
 **Android 1.4.1**
 - versionCode 6 / versionName 1.4.1, published as `public/downloads/dolemon-test-1.4.1.apk`
-  by the workflow. 1.3.0 and older now see the in-app update notice.
+  by the workflow. 1.4.0 and older now see the in-app update notice.
 - The workflow reads `versionCode`/`versionName` from `build.gradle`, so a version bump is
   the only edit a release needs.
 

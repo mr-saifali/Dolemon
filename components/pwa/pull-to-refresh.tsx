@@ -28,6 +28,7 @@ export function PullToRefresh() {
   const [refreshing, setRefreshing] = useState(false);
   const armed = useRef(false);
   const startY = useRef(0);
+  const startX = useRef(0);
   const offsetRef = useRef(0);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,20 +60,27 @@ export function PullToRefresh() {
     const onStart = (event: TouchEvent) => {
       armed.current = false;
       if (refreshing || event.touches.length !== 1) return;
+      // Sheets, form controls and horizontal gestures own their own touches.
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, button, [contenteditable="true"], [role="dialog"], [data-swipe-back="ignore"]')) return;
       const box = scrollBox(event.target);
       const metrics = box ? { scrollTop: box.scrollTop, scrollHeight: box.scrollHeight, clientHeight: box.clientHeight } : null;
       if (!isAtTop(metrics)) return;
       armed.current = true;
       startY.current = event.touches[0].clientY;
+      startX.current = event.touches[0].clientX;
     };
 
     const onMove = (event: TouchEvent) => {
       if (!armed.current || event.touches.length !== 1) return;
       const distance = event.touches[0].clientY - startY.current;
-      if (distance <= 0) {
-        if (offsetRef.current !== 0) apply(0);
+      const horizontal = Math.abs(event.touches[0].clientX - startX.current);
+      if (distance < -8 || (horizontal > 8 && horizontal > Math.abs(distance))) {
+        armed.current = false;
+        apply(0);
         return;
       }
+      if (distance <= 8) return;
       // Stay out of the way of normal scrolling once the finger starts going up.
       event.preventDefault();
       apply(pullOffset(distance));
@@ -92,15 +100,16 @@ export function PullToRefresh() {
       resetTimer.current = setTimeout(() => setRefreshing(false), RESET_MS);
     };
 
+    const cancel = () => { armed.current = false; apply(0); };
     document.addEventListener("touchstart", onStart, { passive: true });
     document.addEventListener("touchmove", onMove, { passive: false });
     document.addEventListener("touchend", finish);
-    document.addEventListener("touchcancel", finish);
+    document.addEventListener("touchcancel", cancel);
     return () => {
       document.removeEventListener("touchstart", onStart);
       document.removeEventListener("touchmove", onMove);
       document.removeEventListener("touchend", finish);
-      document.removeEventListener("touchcancel", finish);
+      document.removeEventListener("touchcancel", cancel);
       if (resetTimer.current) clearTimeout(resetTimer.current);
     };
   }, [enabled, refreshing]);

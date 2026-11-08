@@ -73,3 +73,11 @@ The download and older-version notice target `dolemon-test-1.4.1.apk`.
 This remains a debug-signed test APK; uninstalling an incompatible older build
 clears local/offline data. Server-saved chats are unaffected. No physical-device
 verification has been performed.
+
+
+Published 1.4.1 provenance: [Android test APK run 42454494265](https://github.com/mr-saifali/Dolemon/actions/runs/42454494265),
+built from `ca218ef18b5eafb0912320b3ab2cfa9a488a1652`, published by commit
+`3795df8`. Size: 77,725 bytes. SHA-256:
+`85b2e0b0f40f408d351d8f049dc6a9aab3ff208f56360631005f584e143c6c0a`.
+CI verified the signature and package version before publishing. Web-only changes
+following that build do not alter the APK; they arrive through the deployed site.

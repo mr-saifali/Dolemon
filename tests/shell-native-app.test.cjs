@@ -192,3 +192,13 @@ test('identity reuse never hides same-count reactions, quote edits or media meta
   }
   assert.equal(reuseUnchanged([old], [{ ...old, reactions: old.reactions.map(r => ({ ...r })) }])[0], old);
 });
+
+
+test('refresh yields to forms, panels and horizontal swipes; cancellation never refreshes', () => {
+  const gesture = read('components/pwa/pull-to-refresh.tsx');
+  assert.match(gesture, /target\?\.closest/);
+  assert.match(gesture, /horizontal > Math\.abs\(distance\)/);
+  assert.match(gesture, /addEventListener\("touchcancel", cancel\)/);
+  assert.match(gesture, /removeEventListener\("touchcancel", cancel\)/);
+  assert.match(read('components/chat/consistency-sheet.tsx'), /data-swipe-back="ignore"/);
+});

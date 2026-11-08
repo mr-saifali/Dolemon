@@ -12,9 +12,17 @@ cp .env.example .env.local
 
 ## 1. Auth settings
 
-In **Authentication → Providers → Email**, enable **Email OTP**. Turn *Confirm email* on so
-`signInWithOtp` sends a 6-digit code. Set the OTP length to 6
-(**Authentication → Providers → Email → Email OTP length**).
+In **Authentication → Providers → Email**, enable **Email OTP**. Set the OTP length
+(**Authentication → Providers → Email → Email OTP length**) to the same value as
+`NEXT_PUBLIC_OTP_LENGTH` — the provisioned `dolemon` project uses **8**. The verify screen
+renders exactly that many boxes and auto-submits at that length, so a mismatch silently
+blocks sign-in.
+
+Password signup is the primary path and needs *Confirm email* **off**
+(`mailer_autoconfirm = true` on this project), so `signUp()` returns a session immediately and
+no inbox is involved. If you turn *Confirm email* on for OTP sign-in, edit the confirmation
+template to include `{{ .Token }}` — the default template only renders
+`{{ .ConfirmationURL }}`, so the code never reaches the user.
 
 ## 2. Schema
 
@@ -236,11 +244,12 @@ Realtime channel plugs into.
 
 ## 7a. Chat media — photos, voice notes, files
 
-> **Warning:** This legacy setup creates a public bucket. Anyone who obtains a file URL can open it, and deleting a chat or message does not remove stored files. Do not use for sensitive attachments. Do not flip an existing bucket private without first migrating reads to authorized signed URLs and planning cleanup of existing files.
-
-Run this in the SQL editor. It adds the media columns to `messages` and a
-public `chat-media` storage bucket whose folder-per-conversation RLS policy
-only lets members of that 1:1 upload.
+Chat media lives in a **private** bucket. Members upload into their
+conversation's folder; readers exchange the opaque reference stored in
+`messages.media_url` (`dolemon-media:<conversation>/<file>`) for a short-lived
+signed URL. A copied row, a database dump or a pasted link no longer exposes the
+file — and once a chat is deleted, its membership rows are gone, so nobody can
+mint a URL for it any more.
 
 ```sql
 -- media columns (all nullable — text/sticker rows stay untouched)
@@ -257,10 +266,10 @@ alter table public.messages
   add constraint messages_kind_check
   check (kind in ('text','sticker','call','presence','image','audio','file'));
 
--- public bucket. Object path shape: <conversation_id>/<uuid>.<ext>
-insert into storage.buckets (id, name, public)
-values ('chat-media', 'chat-media', true)
-on conflict (id) do update set public = true;
+-- private bucket. Object path shape: <conversation_id>/<uuid>.<ext>
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('chat-media', 'chat-media', false, 26214400)
+on conflict (id) do update set public = false, file_size_limit = 26214400;
 
 -- the conversation folder a storage path belongs to (null when malformed)
 create or replace function public.chat_media_conv(name text)
@@ -283,6 +292,12 @@ create policy "chat media upload by members" on storage.objects for insert
     and public.is_conversation_member(public.chat_media_conv(name))
   );
 
+-- only members may read, which is what lets the client mint a signed URL
+-- (migration 016)
+drop policy if exists "chat media read by members" on storage.objects;
+create policy "chat media read by members" on storage.objects for select to authenticated
+  using (bucket_id = 'chat-media' and public.is_conversation_member(public.chat_media_conv(name)));
+
 -- anyone may delete files they uploaded
 drop policy if exists "chat media delete own" on storage.objects;
 create policy "chat media delete own" on storage.objects for delete
@@ -293,11 +308,18 @@ create policy "chat media delete own" on storage.objects for delete
 > `target uuid`) or lives under a different name, adjust the one line in the
 > insert policy to match — it's the only place the helper is referenced.
 
+Two migration files finish the job, in this order: `016_chat_media_read_policy.sql`
+(the read policy above) and `017_chat_media_private.sql` (rewrite historical
+public URLs to references, then flip `storage.buckets.public`). **Deploy the
+build that signs media URLs before running 017** — old clients render the stored
+value directly and would lose every attachment the moment the bucket flips.
+
 The client flow (`lib/use-remote-thread.ts` → `uploadChatMedia` in `lib/db.ts`):
 show the bubble instantly with the local data URL, upload to
-`chat-media/<conversation_id>/<uuid>.<ext>`, then insert the row with the
-public URL — the partner's client picks it up over Realtime and renders the
-same photo / player / file card.
+`chat-media/<conversation_id>/<uuid>.<ext>`, store the reference, and resolve it
+through `lib/media-url.ts` (`createSignedUrl`, cached for an hour,
+`lib/use-media-url.ts` in the bubble). The partner's client picks up the row over
+Realtime and signs it the same way.
 
 ### Replacing the local store with Realtime
 
@@ -325,26 +347,77 @@ Note the `filter` above needs `conversation_id` on the reactions table for serve
 filtering; today it's one hop away on `messages`, so subscribe without a filter and drop
 rows that don't belong to the open thread.
 
-## 8. Pending migrations (manual run — in order)
+## 8. Migrations — current status
 
-The app is written to degrade gracefully without these (nothing breaks login),
-but each unlocks a feature. Run them in the Supabase SQL editor, in order:
+These files are **not** an automatic pipeline: they are applied by hand in the SQL editor.
+The `dolemon` project (`lakgolufbudlyaepkehh`, ap-south-1) has **004–015 applied**. Only the
+original core schema and 010–015 appear in `supabase_migrations.schema_migrations` — 004–009
+were pasted into the SQL editor. The table below is the source of truth for what is live, not
+the history table.
 
-| File | Unlocks |
-| --- | --- |
-| `docs/migrations/004_privacy_deletion.sql` | Private/public accounts, delete-chat, (deletion — see 006) |
-| `docs/migrations/005_read_receipts.sql` | Telegram-style read ticks + exact read time (live) |
-| `docs/migrations/006_revoke_self_deletion.sql` | Drops `delete_my_account()` — accounts can't self-delete |
-| `docs/migrations/009_reply_to.sql` | Replies — a message can quote another (the `reply_to_id` column) |
-| `docs/migrations/010_doremon_room.sql` | Doremon's room — private per-user records that survive chat deletion + the talking census (`doremon_stats`) + the record list (`doremon_records`) |
+| File | Status | Unlocks |
+| --- | --- | --- |
+| `docs/migrations/004_privacy_deletion.sql` | applied | Private/public accounts, delete-chat, private accounts hidden from search |
+| `docs/migrations/005_read_receipts.sql` | applied | Telegram-style read ticks + exact read time |
+| `docs/migrations/006_revoke_self_deletion.sql` | applied | Drops `delete_my_account()` — accounts can't self-delete |
+| `docs/migrations/008_doremon_memory.sql` | applied | Doremon's compressed per-conversation memory |
+| `docs/migrations/009_reply_to.sql` | applied | Replies (`reply_to_id`) |
+| `docs/migrations/010_doremon_room.sql` | applied | Per-user, deletion-proof records + `doremon_stats()` + `doremon_records()` |
+| `docs/migrations/011_privacy_and_memory.sql` | applied | Fixes the visibility RPC + private memory policies |
+| `docs/migrations/012_push_notifications.sql` | applied | `push_subscriptions`, `push_notification_events` (Web Push) |
+| `docs/migrations/013_temporary_video.sql` | applied | `temporary_chat_videos` + private `temporary-chat-videos` bucket |
+| `docs/migrations/014_app_presence.sql` | applied | Private `app-presence:<conversation>` Realtime topics |
+| `docs/migrations/015_rpc_and_message_hardening.sql` | applied | Message UPDATE membership check, anon EXECUTE revoked, TRUNCATE/REFERENCES/TRIGGER revoked |
+| `docs/migrations/016_chat_media_read_policy.sql` | applied | Members can read/sign objects in the private `chat-media` bucket |
+| `docs/migrations/017_chat_media_private.sql` | run after deploy | Rewrites stored public URLs to `dolemon-media:` references and flips the bucket private |
+| `docs/migrations/018_presence_moments_integrity.sql` | applied | Presence moments can only name someone you share a chat with |
+| `docs/migrations/019_push_webhook_auth.sql` | applied | `pg_net` INSERT webhook + database-owned secret; no service-role key in Vercel |
+| `docs/migrations/020_storage_cleanup.sql` | applied | Cron cleanup for expired temporary videos and orphaned chat media, anon key only |
 
 Notes:
-- **004 contains `delete_my_account()`.** If you already ran 004, just run 006 —
-  it drops that one function. The app itself has no self-deletion path.
-- `mark_conversation_read` (your existing unread logic) is **not** touched; 005
-  adds a separate `touch_read_cursor` / `conversation_read_state` pair next to it.
-- An account is only ever removed by an admin: Supabase → Authentication → Users
-  → Delete user.
+- **Private accounts were broken even though 004 looked applied.** In the original 004 the
+  `visibility` argument shadows `profiles.visibility`, so `set visibility = visibility` was a
+  no-op: the RPC returned success and the column never changed, which made the Settings
+  toggle fail its "did it stick?" check. 011 replaces it with a positional `$1` version; 004 in
+  this repo now carries the same fixed definition so re-running it cannot regress.
+- **004 contains `delete_my_account()`.** 006 drops that one function again — the app has no
+  self-deletion path.
+- 010 converts `doremon_memory` to one row **per member** (legacy shared rows are copied to
+  both members) and makes the record survive chat deletion. **Do not re-run 010 after 011**:
+  it reinstates the older foreign key and policy.
+- `mark_conversation_read` is untouched; 005 adds `touch_read_cursor` /
+  `conversation_read_state` beside it.
+- An account is only ever removed by an admin: Supabase → Authentication → Users → Delete user.
+
+### Verifying the live configuration
+
+```sql
+-- private accounts: run the toggle, then read it back
+select public.set_account_visibility('private');
+select visibility from public.profiles where id = auth.uid();
+
+-- private accounts must not be searchable
+select * from public.search_users('<your handle>');
+
+-- the private presence channel only authorises members
+select * from pg_policies where schemaname = 'realtime';
+```
+
+### Known gaps that are configuration, not migrations
+
+- **Chat media retention.** The bucket is private and only members can sign an object, so a
+  deleted chat's files become unreachable immediately. `/api/media/cleanup` (daily cron, anon
+  key, migration 020) then removes orphaned objects; message-level deletes inside a live chat
+  keep the file until the chat itself goes.
+- **Web Push needs the VAPID pair in Vercel**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
+  `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Everything else is database-side after 019: `pg_net`,
+  the `messages` INSERT trigger, and the secret in `push_webhook_config`. No
+  `SUPABASE_SERVICE_ROLE_KEY` or `PUSH_WEBHOOK_SECRET` belongs in Vercel.
+  `/api/push/status` reports `configured: false` until the three variables are live. A pair
+  generated for this deployment is in the git-ignored `.env.push.local`.
+- **Free-tier email is capped at 2/hour** (`rate_limit_email_sent`). Password signup with
+  autoconfirm never sends mail, so account creation is unaffected; an OTP flow would hit it.
+- `mailer_otp_exp` is 3600s (1 hour) while README copy once mentioned 10 minutes.
 
 ## 9. Doremon — the private observer
 

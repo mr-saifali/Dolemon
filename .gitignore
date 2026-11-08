@@ -16,3 +16,5 @@ android/local.properties
 !public/downloads/dolemon-test-1.1.0.apk
 
 !public/downloads/dolemon-test-1.2.0.apk
+
+.env.push.local

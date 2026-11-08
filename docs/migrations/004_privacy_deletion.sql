@@ -20,19 +20,26 @@ alter table public.profiles
   check (visibility in ('public', 'private'));
 
 -- The toggle in Settings calls this.
+-- IMPORTANT: the parameter name shadows the `profiles.visibility` column, so an
+-- unqualified `visibility` in the body resolves to the COLUMN, not the
+-- argument — the UPDATE becomes a silent no-op. Always refer to the argument
+-- positionally ($1). This is the same definition migration 011 installs, kept
+-- here so re-running 004 can never regress private accounts.
 create or replace function public.set_account_visibility(visibility text)
 returns void
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  update public.profiles
-     set visibility = visibility
-   where id = auth.uid()
-     and visibility in ('public', 'private');
+begin
+  if auth.uid() is null then raise exception 'NOT_SIGNED_IN'; end if;
+  if $1 is null or $1 not in ('public', 'private') then raise exception 'INVALID_VISIBILITY'; end if;
+  update public.profiles p set visibility = $1 where p.id = auth.uid();
+end;
 $$;
 
-revoke execute on function public.set_account_visibility(text) from anon;
+revoke execute on function public.set_account_visibility(text) from public, anon;
+grant execute on function public.set_account_visibility(text) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 2. Search hides private accounts

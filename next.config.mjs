@@ -5,7 +5,7 @@ const nextConfig = {
     return [{ source: "/", destination: "/app", permanent: false }];
   },
   async headers() {
-    return ["1.0.0", "1.1.0", "1.2.0"].map((version) => ({
+    return ["1.0.0", "1.1.0", "1.2.0", "1.3.0"].map((version) => ({
       source: `/downloads/dolemon-test-${version}.apk`,
       headers: [
         { key: "Content-Type", value: "application/vnd.android.package-archive" },

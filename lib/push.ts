@@ -1,5 +1,6 @@
 "use client";
 import { getSupabase } from "@/lib/supabase";
+import { isDolemonAndroidShell } from "./android-app";
 
 function applicationKey(value: string): Uint8Array {
   const raw = atob((value + "=".repeat((4 - value.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
@@ -7,7 +8,11 @@ function applicationKey(value: string): Uint8Array {
 }
 
 export function pushSupport(): string | null {
-  if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "Push notifications aren’t supported in this browser. On iPhone, add Dolemon to your Home Screen first.";
+  if (typeof window === "undefined") return "Notifications are only available in the app.";
+  // Our Android shell is a WebView: no Push API at all. Say so plainly instead
+  // of pretending the toggle works.
+  if (isDolemonAndroidShell(navigator.userAgent)) return "The Android app can’t receive notifications. Open Dolemon in Chrome to enable them for this account.";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "Push notifications aren’t supported in this browser. On iPhone, add Dolemon to your Home Screen first.";
   if (!window.isSecureContext) return "Notifications need a secure HTTPS connection.";
   if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return "Notifications are not configured on this server yet.";
   return null;

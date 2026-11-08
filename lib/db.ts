@@ -2,6 +2,7 @@
 
 import { getSupabase } from "./supabase";
 import { chatMediaReference } from "./media-url";
+import { cacheConversations, cacheThread, forgetThread, readConversations, readThread } from "./offline/store";
 import { isReactionType, type MessageReaction, type ReactionType } from "./reactions";
 
 /**
@@ -141,10 +142,22 @@ function mapConversation(row: ConversationRow): DbConversation {
   };
 }
 
+/**
+ * The inbox. A successful read refreshes the on-device copy; a failed one
+ * (offline, DNS, a flaky tunnel) falls back to it so the app still opens.
+ */
 export async function listConversations(): Promise<DbConversation[]> {
-  const { data, error } = await client().rpc("my_conversations");
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as ConversationRow[]).map(mapConversation);
+  try {
+    const { data, error } = await client().rpc("my_conversations");
+    if (error) throw new Error(error.message);
+    const rows = ((data ?? []) as ConversationRow[]).map(mapConversation);
+    void cacheConversations(rows);
+    return rows;
+  } catch (error) {
+    const cached = await readConversations();
+    if (cached?.length) return cached;
+    throw error;
+  }
 }
 
 /** Stable keyset page for a future offline sync. An empty page ends the scan;
@@ -175,6 +188,7 @@ export async function openDirectConversation(handle: string): Promise<string> {
 export async function deleteConversation(conversationId: string): Promise<void> {
   const { error } = await client().rpc("delete_conversation", { target: conversationId });
   if (error) throw new Error(error.message);
+  void forgetThread(conversationId);
 }
 
 export type DbPerson = {
@@ -254,7 +268,14 @@ export async function loadThread(
     reactionRequest,
   ]);
   const me = session.data.session?.user.id ?? null;
-  if (result.error) throw new Error(result.error.message);
+  if (result.error) {
+    // Offline is not an error state for reading: serve the last local copy.
+    if (!options.strictOfflineSync) {
+      const cached = await readThread(conversationId);
+      if (cached?.messages.length) return { messages: cached.messages, me: cached.me ?? me };
+    }
+    throw new Error(result.error.message);
+  }
   const messages = ((result.data ?? []) as MessageRow[]).reverse().map((row) => ({
     ...mapRow(row),
     reactions: [] as MessageReaction[],
@@ -262,6 +283,7 @@ export async function loadThread(
   const reactions = initialReactions ?? await loadOfflineReactions(messages.map((message) => message.id), me);
   await resolveQuotes(messages, me, options.strictOfflineSync);
   const withReactions = messages.map((m) => ({ ...m, reactions: reactions.get(m.id) ?? [] }));
+  if (!options.strictOfflineSync) void cacheThread(conversationId, withReactions, me);
   return { messages: withReactions, me };
 }
 

@@ -48,12 +48,22 @@ function HomeScreen() {
     if (!REMOTE) return;
     let alive = true;
     listConversations()
-      .then((rows) => { if (alive) { setRemoteChats(rows); setInboxError(false); } })
+      .then((rows) => {
+        if (!alive) return;
+        setRemoteChats(rows);
+        setInboxError(false);
+        // Warm the routes the user is most likely to open, so tapping a chat
+        // works even if the connection drops before they get there.
+        for (const row of rows.slice(0, 8)) {
+          router.prefetch(`/app/chat/${row.id}`);
+          router.prefetch(`/app/doremon/${row.id}`);
+        }
+      })
       .catch(() => { if (alive) setInboxError(true); });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [router]);
 
   // Reconcile inbox previews after live changes, reconnects and returning
   // from the background. Keep the previous list if a refresh fails.

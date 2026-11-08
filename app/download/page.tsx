@@ -97,7 +97,7 @@ export default function DownloadPage() {
             Download Android APK
           </a>
           <p className="mt-3 text-xs leading-relaxed text-zinc-400">
-            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Internet required; offline chats and push notifications aren&apos;t available yet. Versions 1.0 and 1.1 cannot upgrade in place: uninstall the old app first; uninstalling erases its local app data. Back up anything important first.
+            Test build v{ANDROID_APP_VERSION} for Android 8 or later. Chats you have opened stay readable offline; sending and receiving need internet. Notifications need a real browser engine (Android&apos;s WebView has no push API), so turn them on from Chrome — the app links you there. Test builds cannot upgrade in place: uninstall the old app first; uninstalling erases its local app data. Your chats stay on the server.
           </p>
 
           {canInstall ? (

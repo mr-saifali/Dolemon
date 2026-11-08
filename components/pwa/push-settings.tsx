@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { authMode } from "@/lib/auth";
 import { isKnownOffline } from "@/lib/offline/connectivity";
-import { isAndroidAppWebView } from "@/lib/android-app";
+import { isAndroidAppWebView, isDolemonAndroidShell, openInBrowser } from "@/lib/android-app";
 import { disablePush, enablePush, pushIsEnabled, pushSupport } from "@/lib/push";
 
 export function PushSettings() {
@@ -12,7 +12,13 @@ export function PushSettings() {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(true);
   const [reason, setReason] = useState<string | null>(null);
+  const [shell, setShell] = useState(false);
+
   useEffect(() => {
+    // The Android shell renders the same screens but has no Push API, so the
+    // honest answer here is "open this account in Chrome".
+    const inShell = typeof navigator !== "undefined" && isDolemonAndroidShell(navigator.userAgent);
+    setShell(inShell);
     const unsupported = authMode !== "supabase" ? "Push is available for signed-in live accounts." : pushSupport();
     if (unsupported) { setReason(unsupported); setChecking(false); return; }
     let alive = true;
@@ -23,7 +29,12 @@ export function PushSettings() {
     }).catch(() => { if (alive) setReason("Couldn’t check notification setup. Try again later."); }).finally(() => { if (alive) setChecking(false); });
     return () => { alive = false; };
   }, []);
+
   const toggle = async () => {
+    if (shell) {
+      if (!openInBrowser("/settings")) toast.error("Couldn’t open a browser on this device.");
+      return;
+    }
     if (isKnownOffline() && typeof navigator !== "undefined" && isAndroidAppWebView(navigator.userAgent)) {
       toast.error("Internet is required to change settings."); return;
     }
@@ -32,5 +43,29 @@ export function PushSettings() {
     catch (error) { void pushIsEnabled().then(setEnabled).catch(() => undefined); toast.error(error instanceof Error ? error.message : "Couldn’t change notifications."); }
     finally { setBusy(false); }
   };
-  return <div className="flex items-start gap-3 py-3"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-rose-500 text-white"><Bell className="h-4 w-4" /></span><div className="min-w-0 flex-1"><p className="text-sm text-zinc-100">Message notifications</p><p className="mt-1 text-xs leading-relaxed text-zinc-500">{reason ?? "On this device. Notifications never show message text. Delivery requires server setup; iPhone requires the Home Screen app."}</p></div><button type="button" disabled={busy || checking || !!reason} onClick={() => void toggle()} className="rounded-full bg-white/10 px-3 py-2 text-xs text-white disabled:opacity-40">{checking ? "Checking…" : busy ? "Working…" : enabled ? "Turn off" : "Enable"}</button></div>;
+
+  const label = shell ? "Open in Chrome" : checking ? "Checking…" : busy ? "Working…" : enabled ? "Turn off" : "Enable";
+
+  return (
+    <div className="flex items-start gap-3 py-3">
+      <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-rose-500 text-white"><Bell className="h-4 w-4" /></span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-zinc-100">Message notifications</p>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+          {shell
+            ? "The Android app can’t receive notifications: Android’s WebView has no push API. Open Dolemon in Chrome (or install the browser app) and enable them there — this account stays in sync."
+            : reason ?? "On this device. Notifications never show message text. Delivery requires server setup; iPhone requires the Home Screen app."}
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={busy || checking || (!!reason && !shell)}
+        onClick={() => void toggle()}
+        className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-xs text-white disabled:opacity-40"
+      >
+        {shell && <ExternalLink className="h-3.5 w-3.5" />}
+        {label}
+      </button>
+    </div>
+  );
 }

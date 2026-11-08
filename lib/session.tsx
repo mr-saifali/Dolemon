@@ -11,6 +11,7 @@ import {
 } from "react";
 import { auth } from "@/lib/auth";
 import type { Account } from "@/lib/auth/types";
+import { clearOfflineData, purgePageCache, setOfflineScope } from "@/lib/offline/store";
 
 type SessionState = {
   account: Account | null;
@@ -60,6 +61,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const next = await auth.getAccount();
       setAccount(next);
       cacheAccount(next);
+      // Every offline read is keyed by this id; set it before any screen asks.
+      setOfflineScope(next?.id ?? null);
       return next;
     } catch {
       // A network hiccup is not a logout: keep whatever account we have
@@ -75,6 +78,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const cached = readCachedAccount();
     if (cached) {
       setAccount(cached);
+      setOfflineScope(cached.id);
       setLoading(false);
     }
     void refresh();
@@ -88,6 +92,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await auth.signOut();
     setAccount(null);
     cacheAccount(null);
+    // The cached inbox, threads and pages belong to the account that just left.
+    purgePageCache();
+    await clearOfflineData();
   }, []);
 
   const value = useMemo(

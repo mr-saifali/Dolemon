@@ -28,6 +28,7 @@ import type { ReactionType } from "@/lib/reactions";
 import { isKnownOffline, OFFLINE_SEND_NOTICE, OFFLINE_RETRY_NOTICE, OFFLINE_CHANGE_NOTICE } from "@/lib/offline/connectivity";
 import { toast } from "sonner";
 import { previewFor, type ChatMessage, type QuotedMessage } from "@/lib/thread";
+import { reuseUnchanged } from "@/lib/thread-identity";
 
 const tmpId = () => `tmp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -185,9 +186,19 @@ export function useRemoteThread(
   const refreshReactions = useCallback(async () => {
     try {
       const map = await loadReactions(conversationId, me);
-      setMessages((prev) =>
-        prev.map((m) => ({ ...m, reactions: map.get(m.id) ?? m.reactions ?? [] }))
-      );
+      setMessages((prev) => {
+        let changed = false;
+        const next = prev.map((m) => {
+          const reactions = map.get(m.id) ?? m.reactions ?? [];
+          const current = m.reactions ?? [];
+          const same = current.length === reactions.length &&
+            current.every((reaction, i) => reaction.type === reactions[i]?.type && reaction.by === reactions[i]?.by);
+          if (same) return m;
+          changed = true;
+          return { ...m, reactions };
+        });
+        return changed ? next : prev;
+      });
     } catch {
       /* keep the optimistic state */
     }
@@ -276,7 +287,9 @@ export function useRemoteThread(
           const events = changed;
           if (result.messages.length >= INITIAL_THREAD_PAGE_SIZE) setHasOlder(true);
           setMessages((prev) => {
-            const stable = result.messages.filter((row) => !events.has(row.id)).map((row) => toChatMessage(row, result.me));
+            const stable = reuseUnchanged(prev, result.messages
+              .filter((row) => !events.has(row.id))
+              .map((row) => toChatMessage(row, result.me)));
             const first = stable[0];
             const snapshotIds = new Set(result.messages.map((row) => row.id));
             const persisted = prev.filter((m) => !m.id.startsWith("tmp_") && !events.has(m.id));

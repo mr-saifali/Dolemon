@@ -9,6 +9,7 @@ import { AppPresenceProvider } from "@/lib/app-presence";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { NetworkStatus } from "@/components/pwa/network-status";
 import { AndroidUpdateNotice } from "@/components/pwa/android-update-notice";
+import { ShellChrome } from "@/components/pwa/shell-chrome";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <LiveCallOverlay />
               <NetworkStatus />
               <AndroidUpdateNotice />
+              <ShellChrome />
             </LiveCallProvider>
             </AppPresenceProvider>
           </SessionProvider>

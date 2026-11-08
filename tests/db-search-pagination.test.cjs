@@ -13,7 +13,7 @@ const sb = { rpc: async () => ({ data: [], error: null }), from(table) { const c
 }; return chain; } };
 const old = Module._load;
 Module._load = function(id, parent, main) { if (id === './supabase' && parent.filename.endsWith('/lib/db.ts')) return { getSupabase: () => sb }; return old.call(this, id, parent, main); };
-const { searchThread, loadOlderMessages } = require('../lib/db.ts');
+const { searchThread, loadOlderMessages, OLDER_THREAD_PAGE_SIZE } = require('../lib/db.ts');
 Module._load = old;
 
 test('search is scoped to the conversation and escapes literal LIKE metacharacters', async () => {
@@ -29,6 +29,6 @@ test('older pages use a full-precision timestamp plus id tie-breaker and reject 
   const cursor = { createdAt: '2026-01-01T00:00:00.123456+00:00', id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' };
   await loadOlderMessages('conversation', cursor, 'alice');
   assert.ok(steps.some((s) => s[0] === 'or' && s[1].includes(`created_at.eq.${cursor.createdAt},id.lt.${cursor.id}`)));
-  assert.ok(steps.some((s) => s[0] === 'limit' && s[1] === 6));
+  assert.ok(steps.some((s) => s[0] === 'limit' && s[1] === OLDER_THREAD_PAGE_SIZE));
   await assert.rejects(loadOlderMessages('conversation', { ...cursor, id: 'bad,filter' }, 'alice'), /Invalid message cursor/);
 });

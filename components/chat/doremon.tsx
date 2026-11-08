@@ -78,7 +78,7 @@ export function DoremonThinking() {
         }}
       >
         <DoremonFace size={22} className="animate-pulse-soft" />
-        <span className="text-[13px] text-[#8FD9F8]">Doremon soch raha hai</span>
+        <span className="text-[13px] text-[#8FD9F8]">Doremon is thinking</span>
         <span className="flex items-center gap-0.5" aria-hidden>
           {[0, 1, 2].map((i) => (
             <motion.span

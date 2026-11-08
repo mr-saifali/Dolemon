@@ -150,3 +150,35 @@
     backdrop-filter: brightness(.4);
   }
 }
+
+/* --------------------------------------------------------------------------
+   Inside the Android shell: drop the browser's body language.
+   No grey tap flashes, no text-selection handles appearing on long press, no
+   rubber-band bounce, no scrollbars. Text fields keep selection, because
+   typing (and correcting) a message has to work normally.
+   -------------------------------------------------------------------------- */
+html[data-shell="1"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+html[data-shell="1"] body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+html[data-shell="1"] input,
+html[data-shell="1"] textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html[data-shell="1"] textarea,
+html[data-shell="1"] input,
+html[data-shell="1"] [contenteditable="true"] {
+  -webkit-touch-callout: default;
+}
+html[data-shell="1"] ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

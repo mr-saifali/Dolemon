@@ -17,7 +17,9 @@ test('notice targets older marked versions and unmarked Android WebViews, not br
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.0.0`),'older-marked');
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.1.0`),'older-marked');
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.2.0`),'older-marked');
-  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.3.0`),null);
+  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.3.0`),'older-marked');
+  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.4.0`),"older-marked");
+  assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.4.1`),null);
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/1.10.0`),null);
   assert.equal(androidUpdateTarget(`${wv} DolemonAndroid/2.0.0`),null);
   assert.equal(androidUpdateTarget(wv),'unmarked-webview');

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Download, Plus } from "lucide-react";
@@ -22,6 +22,8 @@ import {
   type DbConversation,
 } from "@/lib/db";
 import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
+import { askShellPermissionsOnce } from "@/lib/android-app";
+import { REFRESH_EVENT } from "@/lib/pull-to-refresh";
 import { playIntroJingle } from "@/lib/sound";
 import { useSession } from "@/lib/session";
 import { useAppPresence } from "@/lib/app-presence";
@@ -32,6 +34,7 @@ import type { ChatMessage } from "@/lib/thread";
 const REMOTE = authMode === "supabase";
 
 function HomeScreen() {
+  useEffect(() => { askShellPermissionsOnce(); }, []);
   const router = useRouter();
   const { account } = useSession();
   const presence = useAppPresence();
@@ -64,6 +67,19 @@ function HomeScreen() {
       alive = false;
     };
   }, [router]);
+
+  // Swipe-down-to-refresh (see PullToRefresh) re-reads the inbox on demand.
+  const refreshInbox = useCallback(() => {
+    if (!REMOTE) return;
+    return listConversations()
+      .then((rows) => { setRemoteChats(rows); setInboxError(false); })
+      .catch(() => setInboxError(true));
+  }, []);
+  useEffect(() => {
+    const onPull = () => { void refreshInbox(); };
+    window.addEventListener(REFRESH_EVENT, onPull);
+    return () => window.removeEventListener(REFRESH_EVENT, onPull);
+  }, [refreshInbox]);
 
   // Reconcile inbox previews after live changes, reconnects and returning
   // from the background. Keep the previous list if a refresh fails.

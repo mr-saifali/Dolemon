@@ -44,9 +44,9 @@ test('offline vault scaffolding binds encrypted entries to their account and req
 test('the release shell version and package configuration match the published update',()=>{
   const build=fs.readFileSync('android/app/build.gradle','utf8');
   assert.match(build,/applicationId 'app\.dolemon\.mobile'/);
-  assert.match(build,/versionCode 4/);
-  assert.match(build,/versionName '1\.3\.0'/);
-  assert.match(activity,/private static final String APP_VERSION = "1\.3\.0"/);
+  assert.match(build,/versionCode 6/);
+  assert.match(build,/versionName '1\.4\.1'/);
+  assert.match(activity,/private static final String APP_VERSION = "1\.4\.1"/);
   assert.match(activity,/DolemonAndroid\/" \+ APP_VERSION/);
 });
 
@@ -54,9 +54,12 @@ test('the JavaScript bridge is tiny, origin-pinned and cannot reach native stora
   assert.match(activity,/addJavascriptInterface\(new Bridge\(\), "DolemonAndroid"\)/);
   const bridge=activity.slice(activity.indexOf('public final class Bridge'));
   const exposed=[...bridge.matchAll(/@JavascriptInterface public (\w+) (\w+)\(/g)].map((m)=>m[2]);
-  assert.deepEqual(exposed,['version','openInBrowser']);
+  assert.deepEqual(exposed,['version','openInBrowser','inboxReady','notifyMessage']);
   // The path is a plain in-app route, never a scheme, host or traversal.
   assert.ok(bridge.includes('path.matches("^/[A-Za-z0-9/_-]{0,120}$")'));
   assert.ok(bridge.includes('"https://" + ORIGIN_HOST + safe'));
   assert.doesNotMatch(bridge,/OfflineVault|startActivity|openFileOutput/);
+  // Notifications are posted from Java, with the text flattened and capped.
+  assert.ok(bridge.includes('oneLine(title, 80)'));
+  assert.ok(bridge.includes('oneLine(body, 200)'));
 });

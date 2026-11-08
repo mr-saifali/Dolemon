@@ -1,5 +1,23 @@
 # Changelog
 
+## Backend — privacy repairs (Supabase)
+
+**Private accounts work again**
+- `set_account_visibility()` from migration 004 was a silent no-op: its `visibility`
+  argument shadowed the `profiles.visibility` column, so the Settings toggle always
+  failed its "did it stick?" check. Migration 011 installs the positional (`$1`)
+  version, and 004 now ships the fixed definition so re-running it cannot regress.
+
+**Migrations 010–015 applied**
+- Doremon's room: per-user, deletion-proof memory plus `doremon_stats()` and
+  `doremon_records()`. Legacy shared memory was copied to both members.
+- Push subscription and webhook-dedupe tables (server env still required).
+- Temporary video registry plus the private `temporary-chat-videos` bucket.
+- Private `app-presence:<conversation>` Realtime policies for the online indicator.
+- Hardening: a message UPDATE must keep the sender inside the target conversation;
+  `anon` can no longer execute app RPCs through the default PUBLIC grant;
+  TRUNCATE/REFERENCES/TRIGGER revoked from `anon` and `authenticated`.
+
 ## 0.1 — First light
 
 The first version you can actually keep on a home screen.

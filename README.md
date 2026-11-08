@@ -30,7 +30,7 @@ first builds were fixed, and the OTP/SMTP caveats before switching to real auth.
 - Live pulses and server-enforced blocking are not implemented. The lamp is local only. TURN relay, message E2EE and a durable offline outbox are also not implemented. Web Push requires explicit server setup and per-device opt-in; see [push setup](docs/push-notifications.md). Retry after an ambiguous failure may duplicate a message.
 - Realtime calling uses DTLS-SRTP transport, but signalling needs private, authenticated Realtime policies and live two-account security testing before making an identity-authenticated end-to-end privacy claim. Calls may fail on restrictive networks and cannot ring a suspended app without push.
 - Automatic local Doremon analysis is opt-in under Settings. Explicit questions and briefings can send recent excerpts and memory to Google Gemini; consider the other person's consent. Inferences can be wrong. Memory controls allow summary edits, JSON export and deletion of your copy (other devices may recreate it if analysis remains enabled).
-- Apply `docs/migrations/011_privacy_and_memory.sql` **only after 004, 008 and 010**, after a backup and staging verification. This fixes the visibility function and memory-related deletion conflict; it does not remove storage objects. The migration is not automatically applied by deploying the app. Do not rerun 010 after 011: it reinstates the old foreign key and policy.
+- Migrations **004–015 are applied** on the provisioned project; see [migration status](docs/supabase.md#8-migrations--current-status). 011 replaces the original `set_account_visibility()`, whose argument shadowed the `profiles.visibility` column and silently no-opped — that is why **private accounts** could not be switched on. 015 tightens the message UPDATE policy and the RPC grants. Migration files are not applied by deploying the app, and 010 must not be rerun after 011: it reinstates the old foreign key and policy.
 - The lockfile has known security advisories including Next.js and Zod; a major framework/dependency upgrade and deployment-specific validation remain necessary. CI and mocked tests are not a substitute for live RLS, storage, two-device and Gemini generation tests.
 
 ## Run it
@@ -78,7 +78,7 @@ Run the mocked API and theme tests with `node --test tests/*.test.cjs`.
 | --- | --- | --- |
 | 1 | `/` | Welcome — "A private space for just you two." |
 | 2 | `/signup/email` | Email entry, zod-validated |
-| 3 | `/signup/verify` | 6-digit OTP, auto-advance, auto-submit, 30s resend cooldown, 10-min expiry, 5-attempt cap |
+| 3 | `/signup/verify` | OTP code (`NEXT_PUBLIC_OTP_LENGTH`, 8 on this project), auto-advance, auto-submit, 30s resend cooldown, 5-attempt cap |
 | 4 | `/signup/password` | Password creation with live strength meter |
 | 5 | `/signup/username` | Live availability check (400ms debounce) + optional emoji avatar |
 | 6 | `/signup/success` | Animated confirmation → `/app` |

@@ -1,7 +1,7 @@
 /** The APK is a debug-signed test build, not a Play Store release. */
-export const ANDROID_APK_URL = "/downloads/dolemon-test-1.4.0.apk";
-export const ANDROID_APK_FILENAME = "Dolemon-test-1.4.0.apk";
-export const ANDROID_APP_VERSION = "1.4.0";
+export const ANDROID_APK_URL = "/downloads/dolemon-test-1.4.1.apk";
+export const ANDROID_APK_FILENAME = "Dolemon-test-1.4.1.apk";
+export const ANDROID_APP_VERSION = "1.4.1";
 
 /**
  * The shell adds a marker. Older versions used the unmodified Android WebView
@@ -20,6 +20,7 @@ export function isDolemonAndroidShell(userAgent: string): boolean {
 
 type AndroidBridge = {
   version?: () => string;
+  inboxReady?: () => void;
   openInBrowser?: (path: string) => void;
   /** posts a system notification from the shell (WebView has no Push API) */
   notifyMessage?: (title: string, body: string) => void;
@@ -103,4 +104,9 @@ export function notifyInShell(title: string, body: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** The authenticated inbox, not a redirecting WebView page-load callback, owns the primer. */
+export function askShellPermissionsOnce(): void {
+  try { bridge()?.inboxReady?.(); } catch { /* Older shells have no permission bridge. */ }
 }

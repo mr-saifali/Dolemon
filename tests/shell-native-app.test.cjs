@@ -139,7 +139,10 @@ test('the shell asks for camera, microphone and notifications once, on the first
   assert.match(activity, /KEY_PRIMER_DONE = "permissions-asked-v1"/);
   assert.match(activity, /if \(prefs\.getBoolean\(KEY_PRIMER_DONE, false\)\) return;/);
   assert.match(activity, /prefs\.edit\(\)\.putBoolean\(KEY_PRIMER_DONE, true\)\.apply\(\)/);
-  assert.match(activity, /if \(url != null && url\.startsWith\(START_URL\)\) askPermissionsOnce\(\)/);
+  assert.match(activity, /@JavascriptInterface public void inboxReady\(\)/);
+  assert.match(activity, /trusted\(current\)/);
+  assert.doesNotMatch(activity, /onPageFinished/);
+  assert.match(read('app/app/page.tsx'), /useEffect\(\(\) => \{ askShellPermissionsOnce\(\); \}, \[\]\)/);
   assert.match(activity, /Manifest\.permission\.POST_NOTIFICATIONS/);
   assert.match(activity, /NotificationChannel\(CHANNEL_ID, "Messages"/);
   assert.match(activity, /manager\.areNotificationsEnabled\(\)/);
@@ -170,4 +173,22 @@ test('the shell drops browser habits: no zoom, no glow, no scrollbars, dark laun
   assert.match(route, /no-store/);
   const config = read('next.config.mjs');
   assert.match(config, /NEXT_PUBLIC_APP_BUILD: process\.env\.VERCEL_GIT_COMMIT_SHA \|\| String\(Date\.now\(\)\)/);
+});
+
+
+test('identity reuse never hides same-count reactions, quote edits or media metadata', () => {
+  const old = { id: 'a', author: 'them', kind: 'file', text: 'file', at: 1,
+    reactions: [{ type: 'dil', by: 'me' }],
+    replyTo: { id: 'q', author: 'me', text: 'old quote' },
+    media: { url: 'same-url', name: 'old-name' } };
+  for (const update of [
+    { reactions: [{ type: 'aww', by: 'me' }] },
+    { replyTo: { ...old.replyTo, text: 'edited quote' } },
+    { media: { ...old.media, name: 'new-name' } },
+    { at: 2 },
+  ]) {
+    const changed = { ...old, ...update };
+    assert.equal(reuseUnchanged([old], [changed])[0], changed);
+  }
+  assert.equal(reuseUnchanged([old], [{ ...old, reactions: old.reactions.map(r => ({ ...r })) }])[0], old);
 });

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 — the Android app that behaves like an app
+## 1.4.1 — the Android app that behaves like an app
 
 **A real swipe-to-refresh**
 - Pulling down from the top of the inbox or a chat now reloads it in place. The gesture
@@ -43,8 +43,8 @@
 - "Just the two of you", "Say it kindly", "Doremon is thinking" and the push body are all
   English. Doremon still speaks Hinglish *in character*.
 
-**Android 1.4.0**
-- versionCode 5 / versionName 1.4.0, published as `public/downloads/dolemon-test-1.4.0.apk`
+**Android 1.4.1**
+- versionCode 6 / versionName 1.4.1, published as `public/downloads/dolemon-test-1.4.1.apk`
   by the workflow. 1.3.0 and older now see the in-app update notice.
 - The workflow reads `versionCode`/`versionName` from `build.gradle`, so a version bump is
   the only edit a release needs.

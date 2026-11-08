@@ -55,3 +55,21 @@ What is new over 1.3.0:
 - **Self-updating shell.** `/api/app-version` exposes the build id baked in at build time; `ShellChrome` re-opens the site when the running bundle is older, so a phone that kept the app in memory for days picks up merged fixes.
 
 The signing certificate again differs from every earlier test APK, so 1.0–1.3 cannot upgrade in place: uninstall first, which erases local app data (chats stay on the server). 1.3.0 and older now see the in-app update notice linking to this file.
+
+
+## 1.4.1 — authenticated inbox permission primer
+
+VersionCode 6 / versionName 1.4.1 supersedes the pre-release 1.4.0 build above.
+It includes all the 1.4.0 changes, with a corrected permission entry point:
+`HomeScreen`, which only mounts inside `AppGuard` after sign-in/unlock, calls
+`DolemonAndroid.inboxReady()`. Native code checks the trusted origin and exact
+inbox path, then uses the same persisted one-time flag. This works after
+client-side sign-in navigation and never asks at the unauthenticated `/app`
+redirect. Settings now distinguishes running-app alerts from unavailable
+closed-app background push. Message identity reuse also compares reactions,
+quoted text, media metadata and call details so optimization cannot hide edits.
+
+The download and older-version notice target `dolemon-test-1.4.1.apk`.
+This remains a debug-signed test APK; uninstalling an incompatible older build
+clears local/offline data. Server-saved chats are unaffected. No physical-device
+verification has been performed.

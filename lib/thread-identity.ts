@@ -16,19 +16,30 @@ export function reuseUnchanged(previous: ChatMessage[], next: ChatMessage[]): Ch
   const merged = next.map((message) => {
     const old = byId.get(message.id);
     if (!old) return message;
+    // Compare every rendered field, not just reaction counts / media URLs.
+    // Same-size reaction changes, quote edits and media metadata must repaint.
     const same =
-      old.text === message.text &&
-      old.kind === message.kind &&
-      old.status === message.status &&
-      old.editedAt === message.editedAt &&
-      old.seenAt === message.seenAt &&
-      old.sticker === message.sticker &&
+      old.author === message.author && old.at === message.at &&
+      old.createdAt === message.createdAt &&
+      old.text === message.text && old.kind === message.kind &&
+      old.status === message.status && old.editedAt === message.editedAt &&
+      old.seenAt === message.seenAt && old.sticker === message.sticker &&
+      equalFields(old.replyTo, message.replyTo) &&
+      equalFields(old.media, message.media) &&
+      equalFields(old.call, message.call) &&
       (old.reactions?.length ?? 0) === (message.reactions?.length ?? 0) &&
-      old.replyTo?.id === message.replyTo?.id &&
-      old.media?.url === message.media?.url;
+      (old.reactions ?? []).every((reaction, i) => equalFields(reaction, message.reactions?.[i]));
     if (!same) return message;
     reused = true;
     return old;
   });
   return reused ? merged : next;
+}
+
+/** These message metadata objects contain only primitive values. */
+function equalFields<T extends object>(left: T | undefined, right: T | undefined): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  const keys = Object.keys(left) as (keyof T)[];
+  return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
 }

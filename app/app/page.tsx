@@ -22,6 +22,7 @@ import {
   type DbConversation,
 } from "@/lib/db";
 import { loadDoremonRecords, type DoremonRecord } from "@/lib/doremon/memory";
+import { askShellPermissionsOnce } from "@/lib/android-app";
 import { REFRESH_EVENT } from "@/lib/pull-to-refresh";
 import { playIntroJingle } from "@/lib/sound";
 import { useSession } from "@/lib/session";
@@ -33,6 +34,7 @@ import type { ChatMessage } from "@/lib/thread";
 const REMOTE = authMode === "supabase";
 
 function HomeScreen() {
+  useEffect(() => { askShellPermissionsOnce(); }, []);
   const router = useRouter();
   const { account } = useSession();
   const presence = useAppPresence();

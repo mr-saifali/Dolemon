@@ -33,7 +33,7 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final String ORIGIN_HOST = "dolemon.vercel.app";
     /** Keep in step with android/app/build.gradle and lib/android-app.ts. */
-    private static final String APP_VERSION = "1.4.0";
+    private static final String APP_VERSION = "1.4.1";
     private static final String START_URL = "https://dolemon.vercel.app/app";
     private static final int FILE_PICKER = 1001;
     private static final int MEDIA_PERMISSIONS = 1002;
@@ -100,12 +100,6 @@ public final class MainActivity extends Activity {
                 if (request.isForMainFrame()) openExternal(uri);
                 return request.isForMainFrame();
             }
-            @Override public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                // "First arrival in the inbox" — the launcher start URL. Android
-                // shows its own dialogs; the answer is remembered either way.
-                if (url != null && url.startsWith(START_URL)) askPermissionsOnce();
-            }
         });
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
@@ -166,6 +160,16 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void openInBrowser(final String path) {
             String safe = path != null && path.matches("^/[A-Za-z0-9/_-]{0,120}$") ? path : "/app";
             runOnUiThread(() -> openExternal(Uri.parse("https://" + ORIGIN_HOST + safe)));
+        }
+
+        /** Called only after the authenticated inbox mounts, including SPA sign-in. */
+        @JavascriptInterface public void inboxReady() {
+            runOnUiThread(() -> {
+                Uri current = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());
+                if (trusted(current) && ("/app".equals(current.getPath()) || "/app/".equals(current.getPath()))) {
+                    askPermissionsOnce();
+                }
+            });
         }
 
         /** Post a message notification from inside the running shell. */

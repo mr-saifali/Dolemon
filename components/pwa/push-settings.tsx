@@ -53,7 +53,7 @@ export function PushSettings() {
         <p className="text-sm text-zinc-100">Message notifications</p>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">
           {shell
-            ? "The Android app can’t receive notifications: Android’s WebView has no push API. Open Dolemon in Chrome (or install the browser app) and enable them there — this account stays in sync."
+            ? "Android 1.4.1 asks for notification permission once in the inbox and can show alerts while the app is running. Alerts after the app closes still need native push, which is not configured. For background notifications, open Dolemon in Chrome and enable them there."
             : reason ?? "On this device. Notifications never show message text. Delivery requires server setup; iPhone requires the Home Screen app."}
         </p>
       </div>

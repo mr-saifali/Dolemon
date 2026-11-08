@@ -10,8 +10,8 @@ const { ANDROID_APK_URL, ANDROID_APK_FILENAME, ANDROID_APP_VERSION, isAndroidApp
 
 test('published APK is a signed CI test build of the current version', () => {
   const apk = fs.readFileSync(`public${ANDROID_APK_URL}`);
-  assert.equal(ANDROID_APP_VERSION, '1.4.0');
-  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.4.0.apk');
+  assert.equal(ANDROID_APP_VERSION, '1.4.1');
+  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.4.1.apk');
   assert.equal(apk.subarray(0, 4).toString('hex'), '504b0304');
   // v2/v3 signature block: the file on our origin is a signed build, not a copy.
   // The bytes are not pinned — a rebuild (fresh debug key, new timestamps) is a
@@ -21,7 +21,7 @@ test('published APK is a signed CI test build of the current version', () => {
   assert.equal(crypto.createHash('sha256').update(apk).digest('hex').length, 64);
 });
 
-test('the shipped binary really is the 1.4.0 shell with the notification hand-off', () => {
+test('the shipped binary really is the 1.4.1 shell with the notification hand-off', () => {
   // Compiled strings live inside the (deflated) dex entries, not the raw file.
   const { execFileSync } = require('node:child_process');
   const out = execFileSync(process.execPath, ['-e', `
@@ -45,7 +45,7 @@ test('the shipped binary really is the 1.4.0 shell with the notification hand-of
       }
     }
     process.stdout.write(JSON.stringify({
-      version: blob.includes('1.4.0'),
+      version: blob.includes('1.4.1'),
       marker: blob.includes('DolemonAndroid/'),
       bridge: blob.includes('openInBrowser'),
       notify: blob.includes('notifyMessage'),

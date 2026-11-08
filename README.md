@@ -224,7 +224,9 @@ full-rounded buttons · 24px mobile gutters · 200–250ms fade + 12px rise on e
 
 Live chats initially load the newest 80 messages; scrolling back loads older pages of 100. New messages use Supabase Realtime, with a lightweight five-second newest-message check while the chat is visible to recover from missed events. The inbox and a failed initial chat load refresh when the browser reports connectivity has returned. Read indicators rely on the read-cursor migration (005) and the other person's read-receipt setting; timestamps are best-effort, not proof of attention. The browser's online indicator is only a hint, not proof that the server is reachable.
 
-In production the service worker caches a standalone offline page and a bounded set of Next.js static build assets. Navigations are network-first with a five-second timeout; if the network fails, the offline page explains how to retry. The worker does not cache private pages, API/RSC responses, messages, or uploaded media. The offline page is available only after a successful worker installation. Remote chats, calls, and delivery still require a connection: there is no persistent offline message queue or automatic resend, and a refresh can lose unsent messages. Local demo data follows its existing device-local storage behavior.
+The app is offline-first for reading. The service worker keeps the screens you have opened — the HTML document plus the Next.js route payload that drives client-side navigation — so the inbox, a chat you visited and Dolemon's room all open again with no connection; anything never visited falls back to `/offline.html`. Build assets are cached content-addressed, and old cache versions are dropped on activation. `/api/*` and `/downloads/*` are never cached, messages included.
+
+Message data comes from an account-scoped IndexedDB cache (`lib/offline/store.ts`): `listConversations()` and `loadThread()` refresh it on every successful read and fall back to it when the network fails, keeping the newest 300 messages per chat. Signing out purges the database and asks the worker to drop the cached screens. Sending, calling, new messages and media uploads still need a connection — there is no offline outbox, so an unsent message is marked failed rather than queued. Message text in the cache is protected by the device lock, not end-to-end encryption.
 
 ### Link previews and Instagram embeds
 
@@ -236,4 +238,4 @@ Videos up to 50 MB use a separate private, temporary Supabase handoff and device
 
 ### Android test app
 
-The Android shell and debug APK build workflow are documented in [Android test app](docs/android-app.md). The APK loads the hosted website and does not include web push support. It is a test build, not a signed production release.
+The Android shell and debug APK build workflow are documented in [Android test app](docs/android-app.md). Version 1.3.0 loads the hosted website, so it inherits offline reading; Android's WebView has no Push API, so notifications are turned on from Chrome and the app links there. It is a test build, not a signed production release, and its per-build debug key means a new APK cannot upgrade the previous one in place.

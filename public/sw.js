@@ -1,10 +1,35 @@
-/* Only public, versioned assets and the standalone offline page are cached.
- * Conversation data, navigations and RSC requests always go to the network. */
-const SHELL_CACHE = "dolemon-shell-v4";
-const STATIC_CACHE = "dolemon-static-v1";
-const MAX_STATIC_ENTRIES = 500;
+/* Dolemon service worker — the app works offline.
+ *
+ * Three kinds of responses are cached, and nothing else:
+ *   · visited app pages (the HTML document)          → PAGE_CACHE
+ *   · their Next.js route payloads (`_rsc`)          → RSC_CACHE
+ *   · build assets under /_next/static/              → STATIC_CACHE
+ *
+ * Messages, profiles and anything else under /api/ always go to the network:
+ * reading them from a cache would be a lie, and sending needs a connection.
+ * The page and RSC caches hold one account's rendered screen, so signing out
+ * posts { type: "dolemon:clear-cache" } and they are deleted.
+ */
+const VERSION = "v5";
+const SHELL_CACHE = `dolemon-shell-${VERSION}`;
+const STATIC_CACHE = `dolemon-static-${VERSION}`;
+const PAGE_CACHE = `dolemon-pages-${VERSION}`;
+const RSC_CACHE = `dolemon-rsc-${VERSION}`;
 const OFFLINE_PAGE = "/offline.html";
-const PUBLIC_ASSETS = [OFFLINE_PAGE, "/icons/icon-192.png?v=2", "/icons/icon-512.png?v=2", "/icons/icon-maskable.png?v=2"];
+const PUBLIC_ASSETS = [
+  OFFLINE_PAGE,
+  "/icons/icon-192.png?v=2",
+  "/icons/icon-512.png?v=2",
+  "/icons/icon-maskable.png?v=2",
+];
+const MAX_STATIC_ENTRIES = 400;
+const MAX_PAGES = 60;
+const MAX_RSC = 120;
+const NAV_TIMEOUT_MS = 4500;
+const RSC_TIMEOUT_MS = 4500;
+
+/** App screens we are willing to keep on the device. Everything else is network-only. */
+const APP_SECTION = /^\/(app|settings|signin|signup|unlock|download)(\/|$)/;
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -17,13 +42,36 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
+    const keep = new Set([SHELL_CACHE, STATIC_CACHE, PAGE_CACHE, RSC_CACHE]);
     const keys = await caches.keys();
-    // Remove our old cache (including older versions that stored page HTML),
-    // not caches owned by other apps on this origin.
-    await Promise.all(keys.filter((key) => key.startsWith("dolemon-") && key !== SHELL_CACHE && key !== STATIC_CACHE).map((key) => caches.delete(key)));
+    await Promise.all(keys.filter((key) => key.startsWith("dolemon-") && !keep.has(key)).map((key) => caches.delete(key)));
     await self.clients.claim();
   })());
 });
+
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data.type !== "dolemon:clear-cache") return;
+  event.waitUntil(Promise.all([caches.delete(PAGE_CACHE), caches.delete(RSC_CACHE)]));
+});
+
+async function trim(cacheName, max) {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+  if (keys.length <= max) return;
+  await Promise.all(keys.slice(0, keys.length - max).map((key) => cache.delete(key)));
+}
+
+/** Fetch with a deadline so a dead network falls back to the cache quickly. */
+async function fetchWithTimeout(request, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(request, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function offlineResponse() {
   const cached = await (await caches.open(SHELL_CACHE)).match(OFFLINE_PAGE);
@@ -32,48 +80,85 @@ async function offlineResponse() {
   });
 }
 
+/** Cache key for an RSC request: the `_rsc` build hash must not split the entry. */
+function rscKey(url) {
+  const clean = new URL(url.href);
+  clean.searchParams.delete("_rsc");
+  return clean.href;
+}
+
+/** Fire-and-forget cache writes; a quota error must never break the response. */
+function store(cacheName, max, key, response) {
+  caches.open(cacheName)
+    .then((cache) => cache.put(key, response))
+    .then(() => trim(cacheName, max))
+    .catch(() => undefined);
+}
+
+async function networkFirst(request, cacheName, key, max, timeoutMs) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetchWithTimeout(request, timeoutMs);
+    if (response && response.ok && response.type === "basic") store(cacheName, max, key, response.clone());
+    return response;
+  } catch {
+    return (await cache.match(key)) || null;
+  }
+}
+
+async function cacheFirstAsset(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const response = await fetch(request);
+  // The response body is streamed to the page; only the clone is stored.
+  if (response.ok && response.type === "basic") store(STATIC_CACHE, MAX_STATIC_ENTRIES, request, response.clone());
+  return response;
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
-  // Never persist Next.js route payloads, even if their URL looks like an asset.
-  if (url.searchParams.has("_rsc") || request.headers.has("rsc") || request.headers.has("next-router-prefetch")) return;
+  if (url.origin !== self.location.origin) return;
+  // Live data: messages, accounts, push, cleanup. Never cached.
+  if (url.pathname.startsWith("/api/")) return;
+  // Multi-megabyte downloads are not app shell.
+  if (url.pathname.startsWith("/downloads/")) return;
 
-  if (request.mode === "navigate") {
+  const rsc = url.searchParams.has("_rsc") || request.headers.get("rsc") === "1";
+  const inApp = APP_SECTION.test(url.pathname);
+
+  if (rsc) {
+    // Route payloads drive client-side navigation; without them every tap needs the network.
+    if (!inApp) return;
+    const key = rscKey(url);
     event.respondWith((async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      try {
-        return await fetch(request, { signal: controller.signal });
-      } catch {
-        return await offlineResponse();
-      } finally {
-        clearTimeout(timer);
-      }
+      const fresh = await networkFirst(request, RSC_CACHE, key, MAX_RSC, RSC_TIMEOUT_MS);
+      if (fresh) return fresh;
+      return (await (await caches.open(RSC_CACHE)).match(key)) || offlineResponse();
     })());
     return;
   }
 
-  // Next's build assets are content-addressed/versioned. Avoid caching arbitrary
-  // images or application paths: they might contain private user content.
+  if (request.mode === "navigate") {
+    event.respondWith((async () => {
+      if (!inApp) {
+        // A page outside the app we have not stored: network or a clear fallback.
+        try { return await fetchWithTimeout(request, NAV_TIMEOUT_MS); } catch { return offlineResponse(); }
+      }
+      const fresh = await networkFirst(request, PAGE_CACHE, request.url, MAX_PAGES, NAV_TIMEOUT_MS);
+      if (fresh) return fresh;
+      const pages = await caches.open(PAGE_CACHE);
+      const page = (await pages.match(request.url)) || (await pages.match(url.pathname));
+      return page || offlineResponse();
+    })());
+    return;
+  }
+
+  // Build output is content-addressed, so a cached copy can never be stale.
   if (!url.pathname.startsWith("/_next/static/") || url.search) return;
-  event.respondWith((async () => {
-    const cache = await caches.open(STATIC_CACHE);
-    const hit = await cache.match(request);
-    if (hit) return hit;
-    const response = await fetch(request);
-    if (response.ok && response.type === "basic") {
-      event.waitUntil((async () => {
-        try {
-          await cache.put(request, response.clone());
-          const keys = await cache.keys();
-          await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_STATIC_ENTRIES)).map((key) => cache.delete(key)));
-        } catch { /* quota or cache unavailable: the network response still works */ }
-      })());
-    }
-    return response;
-  })());
+  event.respondWith(cacheFirstAsset(request).catch(() => offlineResponse()));
 });
 
 // Notifications intentionally contain no sender name or private message text.
@@ -82,7 +167,9 @@ self.addEventListener("push", (event) => {
   try { payload = event.data ? event.data.json() : {}; } catch { /* generic notification */ }
   const path = typeof payload.url === "string" && /^\/app\/chat\/[0-9a-f-]{36}$/i.test(payload.url) ? payload.url : "/app";
   event.waitUntil(self.registration.showNotification("Dolemon", {
-    body: "You have a new message.", icon: "/icons/icon-192.png?v=2", badge: "/icons/icon-192.png?v=2",
+    body: "You have a new message.",
+    icon: "/icons/icon-192.png?v=2",
+    badge: "/icons/icon-192.png?v=2",
     data: { path },
   }));
 });

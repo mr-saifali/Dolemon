@@ -146,6 +146,7 @@ function Room({ conversationId }: { conversationId: string }) {
   useEffect(() => {
     let alive = true;
     (async () => {
+      try {
       const [memory, stats, thread, convoResult] = await Promise.all([
         loadDoremonMemory(conversationId, REMOTE).catch(() => null),
         REMOTE ? loadDoremonStats(conversationId, REMOTE) : Promise.resolve(null),
@@ -185,6 +186,21 @@ function Room({ conversationId }: { conversationId: string }) {
       const previous = local ?? (next.memory.chat ?? []).filter((t) => !isOfflineNotice(t.a)).slice(-5);
       if (local === null && previous.length) saveRoomHistory(account?.id ?? null, conversationId, previous);
       setTurns(previous);
+      } catch {
+        // Opening the room must never leave the screen spinning: a failed or
+        // offline load still renders with whatever is on this device.
+        if (!alive) return;
+        setData((prev) => prev ?? {
+          memory: emptyMemory(),
+          stats: null,
+          recent: [],
+          meId: null,
+          partnerId: null,
+          partnerName: "your person",
+          alive: true,
+        });
+        setTurns(loadRoomHistory(account?.id ?? null, conversationId) ?? []);
+      }
     })();
     return () => {
       alive = false;

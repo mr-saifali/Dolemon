@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -22,6 +23,8 @@ import java.util.List;
 /** Small Android shell for the hosted app. Never grants camera/mic to other origins. */
 public final class MainActivity extends Activity {
     private static final String ORIGIN_HOST = "dolemon.vercel.app";
+    /** Keep in step with android/app/build.gradle and lib/android-app.ts. */
+    private static final String APP_VERSION = "1.3.0";
     private static final String START_URL = "https://dolemon.vercel.app/app";
     private static final int FILE_PICKER = 1001;
     private static final int MEDIA_PERMISSIONS = 1002;
@@ -47,7 +50,7 @@ public final class MainActivity extends Activity {
         setContentView(webView);
         WebSettings settings = webView.getSettings();
         // Identify this shell so the hosted site does not offer to install it again.
-        settings.setUserAgentString(settings.getUserAgentString() + " DolemonAndroid/1.2.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " DolemonAndroid/" + APP_VERSION);
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);
@@ -100,7 +103,26 @@ public final class MainActivity extends Activity {
             if ("blob".equalsIgnoreCase(uri.getScheme())) Toast.makeText(this, "Open Dolemon in your browser to save this file", Toast.LENGTH_LONG).show();
             else openExternal(uri);
         });
+        // A deliberately tiny bridge. The site can ask which build this is and
+        // can hand a link to the real browser — it cannot touch native storage,
+        // files or the camera without the WebChromeClient asking first.
+        webView.addJavascriptInterface(new Bridge(), "DolemonAndroid");
         webView.loadUrl(START_URL);
+    }
+
+    /** Called from JavaScript as window.DolemonAndroid.*. Runs on the JS thread. */
+    public final class Bridge {
+        @JavascriptInterface public String version() { return APP_VERSION; }
+
+        /**
+         * Open one of our own screens in the default browser. Web Push needs a
+         * real browser engine (Android WebView has no Push API), so the site
+         * uses this when someone asks for notifications inside the app.
+         */
+        @JavascriptInterface public void openInBrowser(final String path) {
+            String safe = path != null && path.matches("^/[A-Za-z0-9/_-]{0,120}$") ? path : "/app";
+            runOnUiThread(() -> openExternal(Uri.parse("https://" + ORIGIN_HOST + safe)));
+        }
     }
 
     private void requestMediaPermission(PermissionRequest request) {

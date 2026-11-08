@@ -8,6 +8,7 @@ import { ChatAvatar } from "@/components/home/chat-row";
 import { ReactionChip } from "./ReactionChip";
 import { VideoMessage } from "./VideoMessage";
 import { parseVideoReference } from "@/lib/video-reference";
+import { useMediaUrl } from "@/lib/use-media-url";
 import { LinkContent } from "./link-content";
 import type { BubbleAnchor } from "./ReactionPicker";
 import { buzz } from "@/lib/prefs";
@@ -59,6 +60,8 @@ export const MessageBubble = memo(function MessageBubble({
   const [burst, setBurst] = useState(0);
   const [swipe, setSwipe] = useState(0);
   const [tooltip, setTooltip] = useState<string | null>(null);
+  // private chat media needs a signed URL before it can render
+  const mediaUrl = useMediaUrl(message.media?.url ?? null);
 
   const chips = reactionChips(message.reactions);
   const failed = message.status === "failed";
@@ -109,6 +112,28 @@ export const MessageBubble = memo(function MessageBubble({
   };
 
   const metaColor = emojiOnly ? "text-zinc-500" : "text-white/50";
+
+  const fileCard = message.media ? (
+    <>
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+          mine ? "bg-black/15" : "bg-white/10"
+        )}
+      >
+        <FileText className={cn("h-[18px] w-[18px]", mine ? "text-white" : "text-white/85")} />
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-[14px]">{message.media.name || "File"}</span>
+        {message.media.sizeBytes ? (
+          <span className={cn("block text-[11px]", mine ? "text-white/60" : "text-zinc-500")}>
+            {formatBytes(message.media.sizeBytes)}
+          </span>
+        ) : null}
+      </span>
+      <Download className={cn("h-[18px] w-[18px] shrink-0", mine ? "text-white/70" : "text-zinc-500")} />
+    </>
+  ) : null;
 
   return (
     <motion.div
@@ -215,60 +240,62 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             ) : message.kind === "image" && message.media ? (
               <div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenImage?.(message.media!.url);
-                  }}
-                  className="block overflow-hidden rounded-[15px]"
-                  aria-label="Open photo"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={message.media.url}
-                    alt="Shared photo"
-                    className="max-h-[300px] w-full max-w-[248px] object-cover"
+                {mediaUrl ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenImage?.(mediaUrl);
+                    }}
+                    className="block overflow-hidden rounded-[15px]"
+                    aria-label="Open photo"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={mediaUrl}
+                      alt="Shared photo"
+                      className="max-h-[300px] w-full max-w-[248px] object-cover"
+                    />
+                  </button>
+                ) : (
+                  <div
+                    className="h-[180px] w-[248px] max-w-full animate-pulse rounded-[15px] bg-white/10"
+                    aria-label="Loading photo"
                   />
-                </button>
+                )}
                 <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : message.kind === "file" && message.media && parseVideoReference(message.media.url) ? (
               <div><VideoMessage reference={message.media.url} conversationId={conversationId} name={message.media.name} size={message.media.sizeBytes} mine={mine} /><BubbleMeta message={message} metaColor={metaColor} /></div>
             ) : message.kind === "file" && message.media ? (
               <div>
-                <a
-                  href={message.media.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  download={message.media.name}
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-3 py-1"
-                  aria-label={`Download ${message.media.name || "file"}`}
-                >
-                  <span
-                    className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                      mine ? "bg-black/15" : "bg-white/10"
-                    )}
+                {mediaUrl ? (
+                  <a
+                    href={mediaUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    download={message.media.name}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-3 py-1"
+                    aria-label={`Download ${message.media.name || "file"}`}
                   >
-                    <FileText className={cn("h-[18px] w-[18px]", mine ? "text-white" : "text-white/85")} />
-                  </span>
-                  <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate text-[14px]">{message.media.name || "File"}</span>
-                    {message.media.sizeBytes ? (
-                      <span className={cn("block text-[11px]", mine ? "text-white/60" : "text-zinc-500")}>
-                        {formatBytes(message.media.sizeBytes)}
-                      </span>
-                    ) : null}
-                  </span>
-                  <Download className={cn("h-[18px] w-[18px] shrink-0", mine ? "text-white/70" : "text-zinc-500")} />
-                </a>
+                    {fileCard}
+                  </a>
+                ) : (
+                  <span className="flex items-center gap-3 py-1 opacity-60">{fileCard}</span>
+                )}
                 <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : message.kind === "audio" && message.media ? (
               <div>
-                <AudioBubble url={message.media.url} durationMs={message.media.durationMs ?? 0} mine={mine} />
+                {mediaUrl ? (
+                  <AudioBubble url={mediaUrl} durationMs={message.media.durationMs ?? 0} mine={mine} />
+                ) : (
+                  <div
+                    className="h-8 w-[190px] max-w-full animate-pulse rounded-full bg-white/10"
+                    aria-label="Loading voice note"
+                  />
+                )}
                 <BubbleMeta message={message} metaColor={metaColor} />
               </div>
             ) : (

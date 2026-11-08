@@ -24,13 +24,13 @@ first builds were fixed, and the OTP/SMTP caveats before switching to real auth.
 
 ## Privacy and deployment limitations
 
-- The documented `chat-media` bucket is **public**. Anyone with an attachment URL can access it. Deleting a message or chat does not remove its stored files. Check the actual bucket configuration before using sensitive media.
+- Chat media lives in a **private** bucket: attachments are stored as `dolemon-media:<path>` references and resolved with short-lived signed URLs, so a copied row or link no longer exposes the file. Deleting a chat makes its files unreachable at once, and a daily cron (`/api/media/cleanup`) removes the orphaned objects; files attached to a single deleted message inside a live chat stay until the chat goes.
 - App lock is a UI gate, not encryption. Local preferences and presence history are device-specific. New local secrets require Web Crypto; users with old weak fallback hashes should reset their password/app lock on HTTPS.
 - Typing and presence controls stop future signals from this device; a previously shared last-seen timestamp may remain. App-wide online indicators require the private Realtime setup in [app presence setup](docs/app-presence.md). An untracked partner is not necessarily offline. Live room history is an incomplete, device-local observation, not an authoritative shared record. Legacy history is preserved but excluded because it could contain demo data.
 - Live pulses and server-enforced blocking are not implemented. The lamp is local only. TURN relay, message E2EE and a durable offline outbox are also not implemented. Web Push requires explicit server setup and per-device opt-in; see [push setup](docs/push-notifications.md). Retry after an ambiguous failure may duplicate a message.
 - Realtime calling uses DTLS-SRTP transport, but signalling needs private, authenticated Realtime policies and live two-account security testing before making an identity-authenticated end-to-end privacy claim. Calls may fail on restrictive networks and cannot ring a suspended app without push.
 - Automatic local Doremon analysis is opt-in under Settings. Explicit questions and briefings can send recent excerpts and memory to Google Gemini; consider the other person's consent. Inferences can be wrong. Memory controls allow summary edits, JSON export and deletion of your copy (other devices may recreate it if analysis remains enabled).
-- Migrations **004–015 are applied** on the provisioned project; see [migration status](docs/supabase.md#8-migrations--current-status). 011 replaces the original `set_account_visibility()`, whose argument shadowed the `profiles.visibility` column and silently no-opped — that is why **private accounts** could not be switched on. 015 tightens the message UPDATE policy and the RPC grants. Migration files are not applied by deploying the app, and 010 must not be rerun after 011: it reinstates the old foreign key and policy.
+- Migrations **004–019 are applied** on the provisioned project, except `017_chat_media_private.sql`, which must run only after the signed-URL build is live; see [migration status](docs/supabase.md#8-migrations--current-status). 011 replaces the original `set_account_visibility()`, whose argument shadowed the `profiles.visibility` column and silently no-opped — that is why **private accounts** could not be switched on. 015 tightens the message UPDATE policy and the RPC grants; 016–017 move chat media to a private bucket with signed URLs; 019 delivers push without a service-role key. Migration files are not applied by deploying the app, and 010 must not be rerun after 011: it reinstates the old foreign key and policy.
 - The lockfile has known security advisories including Next.js and Zod; a major framework/dependency upgrade and deployment-specific validation remain necessary. CI and mocked tests are not a substitute for live RLS, storage, two-device and Gemini generation tests.
 
 ## Run it
@@ -191,8 +191,8 @@ The local demo keeps the simulated call screen (no media) for click-through.
 | Gap | Why |
 | --- | --- |
 | End-to-end encrypted **messages** | Call media uses DTLS-SRTP, but signalling identity is not yet independently authenticated. Text is stored in Postgres under RLS, so it is encrypted in transit but readable by the project owner. Real message E2EE needs a key exchange per device |
-| Push notifications | Opt-in Web Push; requires deployment configuration and a Supabase INSERT webhook. See [setup](docs/push-notifications.md). |
-| Private media | Live attachments use public links; private storage and object cleanup need a migration |
+| Push notifications | Opt-in Web Push; the database webhook is installed, but delivery needs the VAPID pair in Vercel. See [setup](docs/push-notifications.md). |
+| Per-message media cleanup | A deleted message's file is unreachable only once its whole conversation is removed; there is no per-object erasure |
 | Full multi-device state | Messages sync, but preferences, themes, drafts and local room history do not |
 | Block / report, backups | Server-authoritative features that follow the backend |
 | Durable outbox | Unsent messages currently live in memory and do not survive reload |

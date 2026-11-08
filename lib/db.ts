@@ -1,6 +1,7 @@
 "use client";
 
 import { getSupabase } from "./supabase";
+import { chatMediaReference } from "./media-url";
 import { isReactionType, type MessageReaction, type ReactionType } from "./reactions";
 
 /**
@@ -33,7 +34,7 @@ export type DbMessage = {
   createdAt?: string;
   /** set once the sender edits the text — rendered as a quiet "edited" */
   editedAt?: number | null;
-  /** chat media (photo / voice note / file) — public URL in the chat-media bucket */
+  /** chat media (photo / voice note / file) — opaque reference signed on read */
   mediaUrl?: string | null;
   mediaName?: string | null;
   mediaSize?: number | null;
@@ -429,9 +430,11 @@ export type MediaPayload = {
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
 /**
- * Uploads chat media (photo / voice note / file) to the public `chat-media`
- * bucket under `<conversation_id>/…` and returns the public URL. The RLS
- * policy only lets members of that 1:1 write into its folder.
+ * Uploads chat media (photo / voice note / file) to the private `chat-media`
+ * bucket under `<conversation_id>/…` and returns an opaque reference. Readers
+ * exchange the reference for a short-lived signed URL, so a copied message row
+ * never leaks a permanent public link. The RLS policy only lets members of that
+ * 1:1 write into its folder (and read it back).
  */
 export async function uploadChatMedia(conversationId: string, dataUrl: string, ext = "bin"): Promise<string> {
   const sb = client();
@@ -448,8 +451,7 @@ export async function uploadChatMedia(conversationId: string, dataUrl: string, e
   });
   if (error) throw new Error(error.message);
 
-  const { data } = sb.storage.from("chat-media").getPublicUrl(path);
-  return data.publicUrl;
+  return chatMediaReference(path);
 }
 
 export async function postMessage(

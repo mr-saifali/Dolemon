@@ -244,11 +244,12 @@ Realtime channel plugs into.
 
 ## 7a. Chat media — photos, voice notes, files
 
-> **Warning:** This legacy setup creates a public bucket. Anyone who obtains a file URL can open it, and deleting a chat or message does not remove stored files. Do not use for sensitive attachments. Do not flip an existing bucket private without first migrating reads to authorized signed URLs and planning cleanup of existing files.
-
-Run this in the SQL editor. It adds the media columns to `messages` and a
-public `chat-media` storage bucket whose folder-per-conversation RLS policy
-only lets members of that 1:1 upload.
+Chat media lives in a **private** bucket. Members upload into their
+conversation's folder; readers exchange the opaque reference stored in
+`messages.media_url` (`dolemon-media:<conversation>/<file>`) for a short-lived
+signed URL. A copied row, a database dump or a pasted link no longer exposes the
+file — and once a chat is deleted, its membership rows are gone, so nobody can
+mint a URL for it any more.
 
 ```sql
 -- media columns (all nullable — text/sticker rows stay untouched)
@@ -265,10 +266,10 @@ alter table public.messages
   add constraint messages_kind_check
   check (kind in ('text','sticker','call','presence','image','audio','file'));
 
--- public bucket. Object path shape: <conversation_id>/<uuid>.<ext>
-insert into storage.buckets (id, name, public)
-values ('chat-media', 'chat-media', true)
-on conflict (id) do update set public = true;
+-- private bucket. Object path shape: <conversation_id>/<uuid>.<ext>
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('chat-media', 'chat-media', false, 26214400)
+on conflict (id) do update set public = false, file_size_limit = 26214400;
 
 -- the conversation folder a storage path belongs to (null when malformed)
 create or replace function public.chat_media_conv(name text)
@@ -291,6 +292,12 @@ create policy "chat media upload by members" on storage.objects for insert
     and public.is_conversation_member(public.chat_media_conv(name))
   );
 
+-- only members may read, which is what lets the client mint a signed URL
+-- (migration 016)
+drop policy if exists "chat media read by members" on storage.objects;
+create policy "chat media read by members" on storage.objects for select to authenticated
+  using (bucket_id = 'chat-media' and public.is_conversation_member(public.chat_media_conv(name)));
+
 -- anyone may delete files they uploaded
 drop policy if exists "chat media delete own" on storage.objects;
 create policy "chat media delete own" on storage.objects for delete
@@ -301,11 +308,18 @@ create policy "chat media delete own" on storage.objects for delete
 > `target uuid`) or lives under a different name, adjust the one line in the
 > insert policy to match — it's the only place the helper is referenced.
 
+Two migration files finish the job, in this order: `016_chat_media_read_policy.sql`
+(the read policy above) and `017_chat_media_private.sql` (rewrite historical
+public URLs to references, then flip `storage.buckets.public`). **Deploy the
+build that signs media URLs before running 017** — old clients render the stored
+value directly and would lose every attachment the moment the bucket flips.
+
 The client flow (`lib/use-remote-thread.ts` → `uploadChatMedia` in `lib/db.ts`):
 show the bubble instantly with the local data URL, upload to
-`chat-media/<conversation_id>/<uuid>.<ext>`, then insert the row with the
-public URL — the partner's client picks it up over Realtime and renders the
-same photo / player / file card.
+`chat-media/<conversation_id>/<uuid>.<ext>`, store the reference, and resolve it
+through `lib/media-url.ts` (`createSignedUrl`, cached for an hour,
+`lib/use-media-url.ts` in the bubble). The partner's client picks up the row over
+Realtime and signs it the same way.
 
 ### Replacing the local store with Realtime
 
@@ -354,6 +368,11 @@ the history table.
 | `docs/migrations/013_temporary_video.sql` | applied | `temporary_chat_videos` + private `temporary-chat-videos` bucket |
 | `docs/migrations/014_app_presence.sql` | applied | Private `app-presence:<conversation>` Realtime topics |
 | `docs/migrations/015_rpc_and_message_hardening.sql` | applied | Message UPDATE membership check, anon EXECUTE revoked, TRUNCATE/REFERENCES/TRIGGER revoked |
+| `docs/migrations/016_chat_media_read_policy.sql` | applied | Members can read/sign objects in the private `chat-media` bucket |
+| `docs/migrations/017_chat_media_private.sql` | run after deploy | Rewrites stored public URLs to `dolemon-media:` references and flips the bucket private |
+| `docs/migrations/018_presence_moments_integrity.sql` | applied | Presence moments can only name someone you share a chat with |
+| `docs/migrations/019_push_webhook_auth.sql` | applied | `pg_net` INSERT webhook + database-owned secret; no service-role key in Vercel |
+| `docs/migrations/020_storage_cleanup.sql` | applied | Cron cleanup for expired temporary videos and orphaned chat media, anon key only |
 
 Notes:
 - **Private accounts were broken even though 004 looked applied.** In the original 004 the
@@ -386,15 +405,19 @@ select * from pg_policies where schemaname = 'realtime';
 
 ### Known gaps that are configuration, not migrations
 
-- **`chat-media` is a public bucket** (see the warning in 7a). Anyone with a file URL can read
-  it, and deleting a chat or message does not remove stored files.
-- **Web Push needs server env**: `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
-  `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUSH_WEBHOOK_SECRET` (32+ chars) plus the database
-  webhook that calls `/api/push/message`. The tables exist; `/api/push/status` reports
-  `configured: false` until those are set.
+- **Chat media retention.** The bucket is private and only members can sign an object, so a
+  deleted chat's files become unreachable immediately. `/api/media/cleanup` (daily cron, anon
+  key, migration 020) then removes orphaned objects; message-level deletes inside a live chat
+  keep the file until the chat itself goes.
+- **Web Push needs the VAPID pair in Vercel**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
+  `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Everything else is database-side after 019: `pg_net`,
+  the `messages` INSERT trigger, and the secret in `push_webhook_config`. No
+  `SUPABASE_SERVICE_ROLE_KEY` or `PUSH_WEBHOOK_SECRET` belongs in Vercel.
+  `/api/push/status` reports `configured: false` until the three variables are live. A pair
+  generated for this deployment is in the git-ignored `.env.push.local`.
 - **Free-tier email is capped at 2/hour** (`rate_limit_email_sent`). Password signup with
-  autoconfirm avoids it; OTP flows will hit it quickly.
-- `mailer_otp_exp` is 3600s (1 hour) while the UI copy mentions 10 minutes.
+  autoconfirm never sends mail, so account creation is unaffected; an OTP flow would hit it.
+- `mailer_otp_exp` is 3600s (1 hour) while README copy once mentioned 10 minutes.
 
 ## 9. Doremon — the private observer
 

@@ -2,6 +2,7 @@ import { listOfflineConversationPage, loadThread, type DbMessage } from "@/lib/d
 import { getSupabase } from "@/lib/supabase";
 import { loadVideoOnDevice } from "@/lib/video-storage";
 import { parseVideoReference, supportedVideo, VIDEO_BUCKET } from "@/lib/video-reference";
+import { CHAT_MEDIA_BUCKET, parseChatMediaReference } from "@/lib/media-url";
 import { MAX_OFFLINE_ATTACHMENT_BYTES, type OfflineSyncSource } from "./snapshot";
 
 /** Reject redirects, unrelated origins, other chats and ambiguous encoded paths. */
@@ -87,7 +88,17 @@ export function createSupabaseOfflineSource(accountId: string): OfflineSyncSourc
         if (error || !data?.signedUrl || !isAllowedOfflineMediaUrl(data.signedUrl, base, VIDEO_BUCKET, message.conversationId, video.videoId)) return null;
         return downloadOfflineAttachment(data.signedUrl, signal);
       }
-      if (!isAllowedOfflineMediaUrl(reference, base, "chat-media", message.conversationId)) return null;
+      // private chat media: sign the stored path, then re-validate the result
+      const mediaPath = parseChatMediaReference(reference);
+      if (mediaPath) {
+        const [folder, file] = mediaPath.split("/");
+        if (folder !== message.conversationId || !file) return null;
+        const { data, error } = await sb.storage.from(CHAT_MEDIA_BUCKET).createSignedUrl(mediaPath, 60);
+        if (error || !data?.signedUrl || !isAllowedOfflineMediaUrl(data.signedUrl, base, CHAT_MEDIA_BUCKET, message.conversationId, file)) return null;
+        return downloadOfflineAttachment(data.signedUrl, signal);
+      }
+      // legacy rows that still hold a public URL
+      if (!isAllowedOfflineMediaUrl(reference, base, CHAT_MEDIA_BUCKET, message.conversationId)) return null;
       return downloadOfflineAttachment(reference, signal);
     },
   };

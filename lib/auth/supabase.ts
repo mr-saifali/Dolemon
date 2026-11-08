@@ -1,5 +1,6 @@
 import { getSupabase } from "@/lib/supabase";
 import { getPrefs } from "@/lib/prefs";
+import { clearChatMediaCache } from "@/lib/media-url";
 import {
   AuthFailure,
   RESERVED_USERNAMES,
@@ -196,6 +197,8 @@ export const supabaseProvider: AuthProvider = {
 
   async signOut() {
     await client().auth.signOut();
+    // never let the next account on this device reuse signed media URLs
+    clearChatMediaCache();
     if (typeof window !== "undefined") window.sessionStorage.removeItem("dolemon:app-unlocked");
   },
 

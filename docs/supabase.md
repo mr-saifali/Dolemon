@@ -369,7 +369,7 @@ the history table.
 | `docs/migrations/014_app_presence.sql` | applied | Private `app-presence:<conversation>` Realtime topics |
 | `docs/migrations/015_rpc_and_message_hardening.sql` | applied | Message UPDATE membership check, anon EXECUTE revoked, TRUNCATE/REFERENCES/TRIGGER revoked |
 | `docs/migrations/016_chat_media_read_policy.sql` | applied | Members can read/sign objects in the private `chat-media` bucket |
-| `docs/migrations/017_chat_media_private.sql` | run after deploy | Rewrites stored public URLs to `dolemon-media:` references and flips the bucket private |
+| `docs/migrations/017_chat_media_private.sql` | applied (after the signed-URL build went live) | Rewrites stored public URLs to `dolemon-media:` references, flips the bucket private and caps uploads at 25 MB |
 | `docs/migrations/018_presence_moments_integrity.sql` | applied | Presence moments can only name someone you share a chat with |
 | `docs/migrations/019_push_webhook_auth.sql` | applied | `pg_net` INSERT webhook + database-owned secret; no service-role key in Vercel |
 | `docs/migrations/020_storage_cleanup.sql` | applied | Cron cleanup for expired temporary videos and orphaned chat media, anon key only |
@@ -409,12 +409,12 @@ select * from pg_policies where schemaname = 'realtime';
   deleted chat's files become unreachable immediately. `/api/media/cleanup` (daily cron, anon
   key, migration 020) then removes orphaned objects; message-level deletes inside a live chat
   keep the file until the chat itself goes.
-- **Web Push needs the VAPID pair in Vercel**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
-  `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Everything else is database-side after 019: `pg_net`,
-  the `messages` INSERT trigger, and the secret in `push_webhook_config`. No
-  `SUPABASE_SERVICE_ROLE_KEY` or `PUSH_WEBHOOK_SECRET` belongs in Vercel.
-  `/api/push/status` reports `configured: false` until the three variables are live. A pair
-  generated for this deployment is in the git-ignored `.env.push.local`.
+- **Web Push** is configured: the VAPID pair and subject live in Vercel (production and
+  preview), everything else is database-side after 019 (`pg_net`, the `messages` INSERT
+  trigger, the secret in `push_webhook_config`). No `SUPABASE_SERVICE_ROLE_KEY` or
+  `PUSH_WEBHOOK_SECRET` belongs in Vercel. `/api/push/status` reports `configured: true` once
+  the variables are present in a build, and each device still has to opt in from Settings.
+  Android's WebView has no Push API, so the APK hands notification setup to Chrome.
 - **Free-tier email is capped at 2/hour** (`rate_limit_email_sent`). Password signup with
   autoconfirm never sends mail, so account creation is unaffected; an OTP flow would hit it.
 - `mailer_otp_exp` is 3600s (1 hour) while README copy once mentioned 10 minutes.

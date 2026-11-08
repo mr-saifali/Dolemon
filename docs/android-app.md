@@ -27,7 +27,7 @@ This remains an **online-only test build**, not an offline-ready or Play Store r
 
 ## Published 1.3.0 test APK (offline reading)
 
-`public/downloads/dolemon-test-1.3.0.apk` is the debug-signed APK built by the **Android test APK** workflow from commit `d2ee014` ([run 42438756465](https://github.com/mr-saifali/Dolemon/actions/runs/42438756465)). Package `app.dolemon.mobile`, Android versionCode 4, versionName 1.3.0, 74,261 bytes. SHA-256: `d7e743090c344834cd7b05033a29b212bdcab215372fa9a143f3e2cb055aefe0`. CI verified the v2 signature and the `versionCode='4' versionName='1.3.0'` badging before the workflow committed the binary here, so the file served by the download button is the file CI built.
+`public/downloads/dolemon-test-1.3.0.apk` is the debug-signed APK built by the **Android test APK** workflow from commit `7981415` after the merge of #50 (the Android workflow's first successful publish was run 42438756465). Package `app.dolemon.mobile`, Android versionCode 4, versionName 1.3.0, 74,261 bytes. SHA-256: `dc7bc19d4b29e4592f27b0adaa7ee4a133494a02ba67bafa71c28d4a336e9d49`. CI verified the v2 signature and the `versionCode='4' versionName='1.3.0'` badging before the workflow committed the binary here. Publishing is one-shot per version: a later build sees the file already present and stops, because every CI run produces different bytes (fresh debug key) and re-publishing would silently invalidate links and hashes. Bump `versionName` to ship a new build.
 
 What is new over 1.2.0:
 

@@ -41,6 +41,12 @@ jobs:
           VERSION=$(sed -n "s/.*versionName '\([0-9.]*\)'.*/\1/p" android/app/build.gradle | head -1)
           TARGET="public/downloads/dolemon-test-${VERSION}.apk"
           if [ -z "$VERSION" ]; then echo "No versionName in android/app/build.gradle"; exit 1; fi
+          # A rebuilt APK is byte-different (fresh debug key, new timestamps). Once a
+          # version is published it stays the file people already downloaded.
+          if [ -f "$TARGET" ]; then
+            echo "$TARGET is already published ($(sha256sum "$TARGET" | cut -d' ' -f1)); bump versionName to ship a new build."
+            exit 0
+          fi
           cp "$APK" "$TARGET"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

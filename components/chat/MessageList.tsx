@@ -150,7 +150,7 @@ export function MessageList({
         <div className="mx-auto w-full max-w-2xl px-3 pb-3 pt-3">
           <div className="mb-1 flex justify-center">
             <span className="rounded-full bg-[color:var(--chat-label-bg,rgba(255,255,255,.08))] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--chat-label-text,#d4d4d8)]">
-              Sirf tum dono ke liye
+              Just the two of you
             </span>
           </div>
 

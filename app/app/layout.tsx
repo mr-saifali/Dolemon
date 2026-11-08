@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ChatTransitionLayer } from "@/components/chat/swipe-back";
+import { PullToRefresh } from "@/components/pwa/pull-to-refresh";
 
 /**
  * The inbox stays mounted while a chat is open.
@@ -23,5 +24,10 @@ export default function AppSectionLayout({
   /** the `@chat` parallel slot */
   chat: ReactNode;
 }) {
-  return <ChatTransitionLayer chat={chat}>{children}</ChatTransitionLayer>;
+  return (
+    <>
+      <ChatTransitionLayer chat={chat}>{children}</ChatTransitionLayer>
+      <PullToRefresh />
+    </>
+  );
 }

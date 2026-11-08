@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.4.0 — the Android app that behaves like an app
+
+**A real swipe-to-refresh**
+- Pulling down from the top of the inbox or a chat now reloads it in place. The gesture
+  only arms inside the Android shell and only when the list is already at its very top, so
+  it never fights scrolling; screens listen for `dolemon:refresh` and reload their own data.
+
+**50 messages, then 50 more**
+- A thread opens with the latest **50** messages (was 6) and each "Load older messages" tap
+  fetches another 50 — a full screen and a half of history per tap instead of one bubble.
+
+**The chat keeps up with fast typing**
+- Message objects are reused when nothing about them changed (`lib/thread-identity.ts`), so
+  polling every five seconds, an incoming message, or a reaction no longer re-renders every
+  bubble. Typing pings are throttled to one every 1.5 s instead of one per keystroke. The
+  lag when typing at the same moment a message arrived is gone.
+
+**No more web-page tells**
+- The spinning loader behind every private screen is replaced by a still launch screen, and
+  the route skeletons are now plain frames.
+- Inside the shell, CSS drops the grey tap flashes, text-selection handles, long-press
+  call-outs, rubber-band overscroll and scrollbars. Inputs stay selectable.
+- The Android shell adds a centred-icon splash, dark status/navigation bars, no pinch or
+  double-tap zoom, no overscroll glow, no scrollbars and `textZoom` pinned at 100%.
+- The "…" menu's panels (search, compare, chat background) are part of the chat bundle now —
+  a failed lazy-chunk load used to make those menu items do nothing in the app.
+
+**Permissions, once**
+- On the first arrival in the inbox the shell asks for camera, microphone and notifications
+  in Android's own dialogs and remembers that it asked — never again after a denial.
+- Notifications get a real channel, and `DolemonAndroid.notifyMessage(title, body)` lets the
+  running shell post a system notification (the WebView has no Push API, so this covers a
+  message that arrives while you are not looking at that screen).
+
+**The app picks up merged fixes by itself**
+- `/api/app-version` returns a per-build id; `ShellChrome` compares it with the bundle it is
+  running and re-opens the site when a newer build is live and the app has been in the
+  background for a while. A WebView left open for days no longer keeps stale JavaScript.
+
+**English, not Hinglish**
+- "Just the two of you", "Say it kindly", "Doremon is thinking" and the push body are all
+  English. Doremon still speaks Hinglish *in character*.
+
+**Android 1.4.0**
+- versionCode 5 / versionName 1.4.0, published as `public/downloads/dolemon-test-1.4.0.apk`
+  by the workflow. 1.3.0 and older now see the in-app update notice.
+- The workflow reads `versionCode`/`versionName` from `build.gradle`, so a version bump is
+  the only edit a release needs.
+
+
 ## Backend — privacy repairs (Supabase)
 
 **Private accounts work again**

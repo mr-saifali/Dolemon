@@ -4,7 +4,6 @@ import { toRemoteSendOptions } from "@/lib/remote-send-options";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BellOff,
@@ -56,11 +55,15 @@ import { isKnownOffline, OFFLINE_SEND_NOTICE } from "@/lib/offline/connectivity"
 import { clearConversationVideos, prepareVideo, removeVideoFromDevice } from "@/lib/video-storage";
 import { parseVideoReference } from "@/lib/video-reference";
 import { useViewportHeight } from "@/lib/use-viewport-height";
+import { REFRESH_EVENT } from "@/lib/pull-to-refresh";
+import { useShellNotifications } from "@/components/pwa/shell-notifications";
 
-// These panels are only downloaded when opened, not on every chat visit.
-const ConsistencySheet = dynamic(() => import("@/components/chat/consistency-sheet").then((m) => m.ConsistencySheet));
-const MessageSearchSheet = dynamic(() => import("@/components/chat/MessageSearchSheet").then((m) => m.MessageSearchSheet));
-const ChatThemeSheet = dynamic(() => import("@/components/chat/ChatThemePicker").then((m) => m.ChatThemeSheet));
+// The "…" menu's panels ship with the chat bundle. They used to be lazily
+// imported; inside the shell a failed chunk fetch meant the menu item did
+// nothing at all, which read as "these pages don't open in the app".
+import { ConsistencySheet } from "@/components/chat/consistency-sheet";
+import { MessageSearchSheet } from "@/components/chat/MessageSearchSheet";
+import { ChatThemeSheet } from "@/components/chat/ChatThemePicker";
 
 const REMOTE = authMode === "supabase";
 
@@ -135,6 +138,17 @@ function ThreadScreen() {
   const lastSeenMessage = useRef<string | null>(null);
 
   useViewportHeight();
+  useShellNotifications(messages);
+
+  // Swipe-down-to-refresh re-reads this thread without leaving it. The handler
+  // goes through a ref so the listener is attached once, not on every render.
+  const reloadThread = useRef(remote.reload);
+  reloadThread.current = remote.reload;
+  useEffect(() => {
+    const onPull = () => reloadThread.current();
+    window.addEventListener(REFRESH_EVENT, onPull);
+    return () => window.removeEventListener(REFRESH_EVENT, onPull);
+  }, []);
 
   // a soft chime when their message lands (never for my own sends)
   useEffect(() => {

@@ -238,4 +238,4 @@ Videos up to 50 MB use a separate private, temporary Supabase handoff and device
 
 ### Android test app
 
-The Android shell and debug APK build workflow are documented in [Android test app](docs/android-app.md). Version 1.3.0 loads the hosted website, so it inherits offline reading; Android's WebView has no Push API, so notifications are turned on from Chrome and the app links there. It is a test build, not a signed production release, and its per-build debug key means a new APK cannot upgrade the previous one in place.
+The Android shell and debug APK build workflow are documented in [Android test app](docs/android-app.md). Version 1.4.0 loads the hosted website, so it inherits offline reading and looks like a native app (swipe-to-refresh, no zoom, no web loading spinner, one-time permissions); Android's WebView has no Push API, so notifications are turned on from Chrome and the app links there. It is a test build, not a signed production release, and its per-build debug key means a new APK cannot upgrade the previous one in place.

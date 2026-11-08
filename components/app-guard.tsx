@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
 import { useSession, landingFor } from "@/lib/session";
 import { autoLockMs, clearUnlocked, isUnlocked } from "@/lib/app-lock";
 import { usePrefs } from "@/lib/prefs";
@@ -63,9 +62,13 @@ export function AppGuard({ children }: { children: ReactNode }) {
   }, [account?.hasAppLock, account?.id, autoLock, router]);
 
   if (loading || !account || !account.profileComplete || locked) {
+    // A still splash, not a spinner: the shell already shows the launcher icon
+    // while the page paints, and a spinning loader in the middle of the screen
+    // is the single biggest "this is a website" tell.
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-ink">
-        <Loader2 className="h-5 w-5 animate-spin text-text-muted" aria-label="Loading" />
+      <main aria-busy="true" aria-label="Dolemon" className="flex min-h-dvh items-center justify-center bg-ink">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/icons/icon-192.png?v=2" alt="" width={64} height={64} className="h-16 w-16 rounded-[18px] opacity-90" />
       </main>
     );
   }

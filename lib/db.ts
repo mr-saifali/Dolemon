@@ -246,8 +246,9 @@ export async function uploadAvatarImage(dataUrl: string): Promise<string> {
 }
 
 /** Latest messages rendered on first open; older messages are loaded on demand. */
-export const INITIAL_THREAD_PAGE_SIZE = 6;
-export const OLDER_THREAD_PAGE_SIZE = 6;
+export const INITIAL_THREAD_PAGE_SIZE = 50;
+/** "Load older messages" adds a full screen-and-a-half of history per tap. */
+export const OLDER_THREAD_PAGE_SIZE = 50;
 
 export async function loadThread(
   conversationId: string,

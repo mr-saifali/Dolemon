@@ -55,7 +55,7 @@ test('reload resolves quoted authors relative to each participant and labels sti
 
 test('initial thread load requests the latest bounded page', async () => {
   const { INITIAL_THREAD_PAGE_SIZE } = require('../lib/db.ts');
-  assert.equal(INITIAL_THREAD_PAGE_SIZE, 6);
+  assert.equal(INITIAL_THREAD_PAGE_SIZE, 50);
   // Capture the limit supplied to the actual query without affecting the other tests.
   const originalFrom = sb.from;
   let limit;

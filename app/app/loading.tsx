@@ -1,13 +1,11 @@
-/** Fast navigation feedback while an app route's code loads. */
+/**
+ * A quiet frame, not a skeleton.
+ *
+ * The shell already paints its own dark launch screen, so pulsing placeholder
+ * blocks here only read as "web page loading". Keeping the screen empty (with
+ * the background colour the rest of the app uses) makes navigation look like
+ * one native screen replacing another.
+ */
 export default function AppLoading() {
-  return (
-    <main aria-busy="true" aria-label="Loading page" className="min-h-dvh bg-ink px-4 safe-t">
-      <div className="mx-auto w-full max-w-2xl pt-5" aria-hidden="true">
-        <div className="h-10 w-40 rounded-xl bg-white/5" />
-        <div className="mt-7 h-16 rounded-2xl bg-white/5" />
-        <div className="mt-3 h-16 rounded-2xl bg-white/5" />
-        <div className="mt-3 h-16 rounded-2xl bg-white/5" />
-      </div>
-    </main>
-  );
+  return <main aria-busy="true" aria-label="Loading" className="min-h-dvh bg-ink" />;
 }

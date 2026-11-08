@@ -30,7 +30,10 @@ export function AndroidUpdateNotice() {
         {target === "unmarked-webview" ? `test version ${ANDROID_APP_VERSION} is available.` : `Latest test version: ${ANDROID_APP_VERSION}.`}
       </p>
       <p className="mt-2 text-xs leading-relaxed text-zinc-300">
-        v{ANDROID_APP_VERSION} adds offline reading — chats you have opened stay readable without a connection — plus private media and in-app update checks.
+        v{ANDROID_APP_VERSION} brings the merged site into the app and makes it behave like one: offline
+        reading, swipe down to refresh, 50 messages per screen with “load older”, a native launch screen
+        instead of a web spinner, permissions asked once on first launch, in-app notifications, and a chat
+        that keeps up when you type while messages arrive.
       </p>
       <p className="mt-2 text-xs leading-relaxed text-amber-200">
         Test builds are signed with a per-build key, so Android cannot upgrade in place: uninstall the old app before installing this one. Uninstalling erases the app&apos;s local data — your chats stay on the server. Back up anything important first.

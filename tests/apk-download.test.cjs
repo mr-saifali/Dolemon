@@ -10,8 +10,8 @@ const { ANDROID_APK_URL, ANDROID_APK_FILENAME, ANDROID_APP_VERSION, isAndroidApp
 
 test('published APK is a signed CI test build of the current version', () => {
   const apk = fs.readFileSync(`public${ANDROID_APK_URL}`);
-  assert.equal(ANDROID_APP_VERSION, '1.3.0');
-  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.3.0.apk');
+  assert.equal(ANDROID_APP_VERSION, '1.4.0');
+  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.4.0.apk');
   assert.equal(apk.subarray(0, 4).toString('hex'), '504b0304');
   // v2/v3 signature block: the file on our origin is a signed build, not a copy.
   // The bytes are not pinned — a rebuild (fresh debug key, new timestamps) is a
@@ -21,7 +21,7 @@ test('published APK is a signed CI test build of the current version', () => {
   assert.equal(crypto.createHash('sha256').update(apk).digest('hex').length, 64);
 });
 
-test('the shipped binary really is the 1.3.0 shell with the notification hand-off', () => {
+test('the shipped binary really is the 1.4.0 shell with the notification hand-off', () => {
   // Compiled strings live inside the (deflated) dex entries, not the raw file.
   const { execFileSync } = require('node:child_process');
   const out = execFileSync(process.execPath, ['-e', `
@@ -45,15 +45,17 @@ test('the shipped binary really is the 1.3.0 shell with the notification hand-of
       }
     }
     process.stdout.write(JSON.stringify({
-      version: blob.includes('1.3.0'),
+      version: blob.includes('1.4.0'),
       marker: blob.includes('DolemonAndroid/'),
       bridge: blob.includes('openInBrowser'),
+      notify: blob.includes('notifyMessage'),
     }));
   `], { encoding: 'utf8' });
   const found = JSON.parse(out);
   assert.equal(found.version, true);
   assert.equal(found.marker, true);
   assert.equal(found.bridge, true);
+  assert.equal(found.notify, true);
 });
 
 test('website uses the current APK but app installation prompts are gated in the Android shell', () => {
@@ -83,7 +85,7 @@ test('Android app marker and legacy Android WebView are recognized without hidin
   assert.equal(isAndroidAppWebView('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'), false);
   assert.equal(isAndroidAppWebView('Mozilla/5.0'), false);
   const activity = fs.readFileSync('android/app/src/main/java/app/dolemon/mobile/MainActivity.java','utf8');
-  assert.match(activity, /private static final String APP_VERSION = "1\.3\.0"/);
+  assert.match(activity, /private static final String APP_VERSION = "1\.4\.0"/);
   assert.match(activity, /setUserAgentString\(settings\.getUserAgentString\(\) \+ " DolemonAndroid\/" \+ APP_VERSION\)/);
 });
 

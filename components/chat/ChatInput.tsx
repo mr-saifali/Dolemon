@@ -55,6 +55,8 @@ export function ChatInput({
   const [trayOpen, setTrayOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement | null>(null);
+  /** Typing pings are throttled: one broadcast every 1.5s, not one per key. */
+  const lastTypingPing = useRef(0);
   const composer = useRef<HTMLDivElement | null>(null);
   const plus = useRef<HTMLButtonElement | null>(null);
   const hasText = value.trim().length > 0;
@@ -187,7 +189,7 @@ export function ChatInput({
               </div>
               {showPulse && (
                 <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] pt-1.5">
-                  <span className="pl-1.5 text-[11px] text-zinc-500">Theek se kehna hai?</span>
+                  <span className="pl-1.5 text-[11px] text-zinc-500">Say it kindly</span>
                   <PulseButton onPulse={onPulse} coolingUntil={pulseCoolingUntil} disabled={pulseDisabled} />
                 </div>
               )}
@@ -215,7 +217,11 @@ export function ChatInput({
               onChange={(e) => {
                 setValue(e.target.value);
                 if (e.target.value.length) { setOptionsOpen(false); setTrayOpen(false); }
-                if (e.target.value.trim()) onTyping?.();
+                if (!e.target.value.trim()) return;
+                const now = Date.now();
+                if (now - lastTypingPing.current < 1500) return;
+                lastTypingPing.current = now;
+                onTyping?.();
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

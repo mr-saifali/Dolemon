@@ -44,7 +44,7 @@ jobs:
           cp "$APK" "$TARGET"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$TARGET"
+          git add -f "$TARGET"
           if git diff --cached --quiet; then echo "$TARGET is already current"; exit 0; fi
           git commit -m "chore(android): publish ${VERSION} test APK [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"

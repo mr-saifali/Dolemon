@@ -10,11 +10,47 @@ const { ANDROID_APK_URL, ANDROID_APK_FILENAME, ANDROID_APP_VERSION, isAndroidApp
 
 test('published APK is the exact signed CI test build', () => {
   const apk = fs.readFileSync(`public${ANDROID_APK_URL}`);
-  assert.equal(ANDROID_APP_VERSION, '1.2.0');
+  assert.equal(ANDROID_APP_VERSION, '1.3.0');
   assert.equal(apk.subarray(0, 4).toString('hex'), '504b0304');
+  // v2/v3 signature block: the file on our origin is a signed build, not a copy.
   assert.ok(apk.includes(Buffer.from('APK Sig Block 42')));
-  assert.equal(crypto.createHash('sha256').update(apk).digest('hex'), '278bc8a1f1710ed4e0486792b408f1aa69c4a13bfbfbdacc9c267047eea13d26');
-  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.2.0.apk');
+  assert.equal(crypto.createHash('sha256').update(apk).digest('hex'), 'd7e743090c344834cd7b05033a29b212bdcab215372fa9a143f3e2cb055aefe0');
+  assert.equal(ANDROID_APK_FILENAME, 'Dolemon-test-1.3.0.apk');
+});
+
+test('the shipped binary really is the 1.3.0 shell with the notification hand-off', () => {
+  // Compiled strings live inside the (deflated) dex entries, not the raw file.
+  const { execFileSync } = require('node:child_process');
+  const out = execFileSync(process.execPath, ['-e', `
+    const fs=require('fs');
+    const data=fs.readFileSync('public${ANDROID_APK_URL}');
+    // Inflate every stored entry with a tiny reader: class files are the only big ones.
+    const { inflateRawSync } = require('node:zlib');
+    let blob='';
+    for (let i = 0; i < data.length - 4; i++) {
+      if (data.readUInt32LE(i) === 0x04034b50) {
+        const method = data.readUInt16LE(i + 8);
+        const size = data.readUInt32LE(i + 18);
+        const nameLen = data.readUInt16LE(i + 26);
+        const extraLen = data.readUInt16LE(i + 28);
+        const name = data.slice(i + 30, i + 30 + nameLen).toString();
+        const start = i + 30 + nameLen + extraLen;
+        if (name.endsWith('.dex')) {
+          const raw = data.slice(start, start + size);
+          blob += (method === 8 ? inflateRawSync(raw) : raw).toString('latin1');
+        }
+      }
+    }
+    process.stdout.write(JSON.stringify({
+      version: blob.includes('1.3.0'),
+      marker: blob.includes('DolemonAndroid/'),
+      bridge: blob.includes('openInBrowser'),
+    }));
+  `], { encoding: 'utf8' });
+  const found = JSON.parse(out);
+  assert.equal(found.version, true);
+  assert.equal(found.marker, true);
+  assert.equal(found.bridge, true);
 });
 
 test('website uses the current APK but app installation prompts are gated in the Android shell', () => {
@@ -32,19 +68,20 @@ test('website uses the current APK but app installation prompts are gated in the
   }
   const download = fs.readFileSync('app/download/page.tsx', 'utf8');
   assert.match(download, /if \(androidApp\) return/);
-  assert.match(download, /offline chats and push notifications aren/);
+  assert.match(download, /Chats you have opened stay readable offline/);
   assert.match(download, /Install browser app/);
   assert.match(fs.readFileSync('app/signin/page.tsx', 'utf8'), /No offline chats or push notifications/);
 });
 
 test('Android app marker and legacy Android WebView are recognized without hiding in Chrome or iOS', () => {
-  assert.equal(isAndroidAppWebView('Mozilla/5.0 (Linux; Android 13; Pixel) AppleWebKit/537.36 DolemonAndroid/1.1.0'), true);
+  assert.equal(isAndroidAppWebView('Mozilla/5.0 (Linux; Android 13; Pixel) AppleWebKit/537.36 DolemonAndroid/1.2.0'), true);
   assert.equal(isAndroidAppWebView('Mozilla/5.0 (Linux; Android 10; Pixel; wv) AppleWebKit/537.36'), true);
   assert.equal(isAndroidAppWebView('Mozilla/5.0 (Linux; Android 13; Pixel) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36'), false);
   assert.equal(isAndroidAppWebView('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'), false);
   assert.equal(isAndroidAppWebView('Mozilla/5.0'), false);
   const activity = fs.readFileSync('android/app/src/main/java/app/dolemon/mobile/MainActivity.java','utf8');
-  assert.match(activity, /setUserAgentString\(settings\.getUserAgentString\(\) \+ " DolemonAndroid\/1\.2\.0"\)/);
+  assert.match(activity, /private static final String APP_VERSION = "1\.3\.0"/);
+  assert.match(activity, /setUserAgentString\(settings\.getUserAgentString\(\) \+ " DolemonAndroid\/" \+ APP_VERSION\)/);
 });
 
 test('server labels the latest APK download correctly', async () => {

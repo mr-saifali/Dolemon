@@ -9,9 +9,8 @@
 --     `dolemon-media:<conversation>/<file>` (new uploads already write this)
 --   * makes the `chat-media` bucket private
 --
--- Retention: objects still outlive a deleted chat. With the bucket private and
--- membership rows gone, nobody can sign them, but the files stay in storage
--- until a service-role cleanup job removes them.
+-- Retention: with the bucket private and membership rows gone, nobody can sign
+-- an object of a deleted chat. 020 then removes those orphaned objects.
 -- ============================================================================
 
 begin;
@@ -22,7 +21,8 @@ update public.messages
  where media_url like '%/storage/v1/object/public/chat-media/%';
 
 update storage.buckets
-   set public = false
+   set public = false,
+       file_size_limit = coalesce(file_size_limit, 26214400)
  where id = 'chat-media';
 
 commit;

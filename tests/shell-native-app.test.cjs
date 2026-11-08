@@ -51,7 +51,7 @@ test('swipe-down refresh is mounted for the app screens and both screens reload 
   assert.match(inbox, /refreshInbox/);
   assert.match(inbox, /listConversations\(\)/);
   const chat = read('app/app/chat/[id]/page.tsx');
-  assert.match(chat, /const onPull = \(\) => reloadThread\(\)/);
+  assert.match(chat, /const onPull = \(\) => reloadThread\.current\(\)/);
   assert.match(chat, /useShellNotifications\(messages\)/);
   const gesture = read('components/pwa/pull-to-refresh.tsx');
   assert.match(gesture, /isDolemonAndroidShell/);

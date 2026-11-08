@@ -50,7 +50,7 @@ export function ReactionPicker({ anchor, mine, editable, myReaction, onPick, onA
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50" role="presentation">
+    <div className="fixed inset-0 z-50" role="presentation" data-swipe-back="ignore">
       <motion.button type="button" tabIndex={-1} aria-label="Dismiss message options" onClick={onClose}
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 cursor-default bg-black/40" />
       <motion.div

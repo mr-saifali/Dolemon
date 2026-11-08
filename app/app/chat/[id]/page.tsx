@@ -24,6 +24,7 @@ import { AppGuard } from "@/components/app-guard";
 
 
 import { ChatInput } from "@/components/chat/ChatInput";
+import { SwipeBackWrapper, useSwipeBackDismiss } from "@/components/chat/swipe-back";
 import { AttachmentSheet, type AttachmentSheetHandle } from "@/components/chat/attachment-sheet";
 
 
@@ -71,6 +72,9 @@ function ThreadScreen() {
     () => demoConversations().find((c) => c.id === conversationId) ?? null
   );
 
+  // The wrapper's animated dismissal — the header arrow slides the screen out
+  // exactly like a swipe does, then navigates.
+  const swipeBack = useSwipeBackDismiss();
   const live = useLiveCall();
   const prefs = usePrefs();
   const meta = useChatMetaFor(conversationId);
@@ -173,45 +177,6 @@ function ThreadScreen() {
   useEffect(() => {
     if (REMOTE && ready && !loadError && visible && atBottom) markRemoteRead();
   }, [ready, visible, atBottom, latestId, loadError, markRemoteRead]);
-
-  // Swipe in from the left edge to go back to the inbox (the gesture every phone app has).
-  const edge = useRef<{ x: number; y: number; id: number } | null>(null);
-  const [edgePull, setEdgePull] = useState(0);
-
-  useEffect(() => {
-    const onStart = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      if (!touch || touch.clientX > 34) return;
-      edge.current = { x: touch.clientX, y: touch.clientY, id: touch.identifier };
-    };
-    const onMove = (event: TouchEvent) => {
-      if (!edge.current) return;
-      const touch = Array.from(event.touches).find((t) => t.identifier === edge.current?.id);
-      if (!touch) return;
-      const dx = touch.clientX - edge.current.x;
-      const dy = Math.abs(touch.clientY - edge.current.y);
-      if (dx > 8 && dx > dy) setEdgePull(Math.min(110, dx * 0.55));
-    };
-    const onEnd = () => {
-      if (!edge.current) return;
-      edge.current = null;
-      setEdgePull((pull) => {
-        if (pull > 46) router.push("/app");
-        return 0;
-      });
-    };
-
-    window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("touchmove", onMove, { passive: true });
-    window.addEventListener("touchend", onEnd);
-    window.addEventListener("touchcancel", onEnd);
-    return () => {
-      window.removeEventListener("touchstart", onStart);
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onEnd);
-      window.removeEventListener("touchcancel", onEnd);
-    };
-  }, [router]);
 
   const pulses = usePulses({
     demo: !REMOTE,
@@ -479,14 +444,6 @@ function ThreadScreen() {
     >
       <ChatWallpaper theme={theme} reduceMotion={prefs.reduceMotion} />
 
-      {edgePull > 0 && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 z-40 w-1.5 rounded-r-full bg-rose/60"
-          style={{ transform: `translateX(${edgePull - 6}px)`, opacity: Math.min(1, edgePull / 46) }}
-        />
-      )}
-
       <PulseOverlay
         burst={pulses.burst}
         incoming={Boolean(pulses.incoming)}
@@ -501,6 +458,7 @@ function ThreadScreen() {
         status={status}
         typing={(REMOTE ? remote.typing : partner === "typing") && prefs.typingIndicator}
         hidden={!REMOTE && !prefs.showPresence}
+        onBack={swipeBack ?? (() => router.push("/app"))}
         onMenu={() => setMenuOpen(true)}
         onCall={(type) => REMOTE ? void live.start(conversationId, type) : router.push(`/app/call/${conversationId}?kind=${type}&direction=outgoing`)}
       />
@@ -661,6 +619,7 @@ function ThreadScreen() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            data-swipe-back="ignore"
             className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 p-4"
           >
             <button
@@ -682,8 +641,10 @@ function ThreadScreen() {
 
 export default function ThreadPage() {
   return (
-    <AppGuard>
-      <ThreadScreen />
-    </AppGuard>
+    <SwipeBackWrapper>
+      <AppGuard>
+        <ThreadScreen />
+      </AppGuard>
+    </SwipeBackWrapper>
   );
 }

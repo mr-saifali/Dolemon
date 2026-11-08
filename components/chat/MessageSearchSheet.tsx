@@ -52,7 +52,7 @@ export function MessageSearchSheet({ open, onClose, conversationId, remote, me, 
   }, [open, query, conversationId, remote, me, messages]);
 
   if (!open) return null;
-  return <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/70 sm:items-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+  return <div data-swipe-back="ignore" className="fixed inset-0 z-[80] flex items-end justify-center bg-black/70 sm:items-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="search-title" className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-[26px] border border-white/10 bg-[#14141A] p-5 shadow-card sm:rounded-[26px]">
       <div className="mb-4 flex items-center justify-between"><h2 id="search-title" className="text-lg font-semibold">Search messages</h2><button type="button" onClick={onClose} aria-label="Close search" className="rounded-full p-2 text-zinc-400"><X className="h-4 w-4" /></button></div>
       <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3"><Search className="h-4 w-4 text-zinc-500" /><input value={query} maxLength={100} onChange={(e) => setQuery(e.target.value)} placeholder="Search text messages" aria-label="Search text messages" className="min-w-0 flex-1 bg-transparent py-3 text-sm text-white outline-none" /></label>

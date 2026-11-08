@@ -19,6 +19,7 @@ export function ChatHeader({
   hidden,
   onMenu,
   onCall,
+  onBack,
 }: {
   name: string;
   avatarId: string | null;
@@ -32,19 +33,29 @@ export function ChatHeader({
   onMenu: () => void;
   /** live calls only — hidden in the local demo */
   onCall?: (type: "voice" | "video") => void;
+  /**
+   * The swipe-back wrapper's animated dismissal. Passed by the chat screen so
+   * the arrow plays the same "screen slides away" transition instead of
+   * navigating instantly.
+   */
+  onBack?: () => void;
 }) {
   const line = typing ? "typing…" : hidden ? "presence off" : status;
+  const backClass =
+    "-ml-1 flex h-10 w-10 shrink-0 items-center justify-center text-white transition-colors hover:text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white";
 
   return (
     <header className="sticky top-0 z-30 shrink-0 bg-black/40 backdrop-blur-xl">
       <div className="mx-auto flex h-[60px] w-full max-w-2xl items-center gap-1 px-2">
-        <Link
-          href="/app"
-          aria-label="Back to chats"
-          className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center text-white transition-colors hover:text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-        >
-          <ArrowLeft className="h-6 w-6" strokeWidth={1.8} />
-        </Link>
+        {onBack ? (
+          <button type="button" onClick={onBack} aria-label="Back to chats" className={backClass}>
+            <ArrowLeft className="h-6 w-6" strokeWidth={1.8} />
+          </button>
+        ) : (
+          <Link href="/app" aria-label="Back to chats" className={backClass}>
+            <ArrowLeft className="h-6 w-6" strokeWidth={1.8} />
+          </Link>
+        )}
 
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="relative h-8 w-8 shrink-0">
@@ -122,7 +133,7 @@ export function ChatMenuSheet({
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+        <div data-swipe-back="ignore" className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
           <motion.button
             type="button"
             aria-label="Close menu"

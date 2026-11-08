@@ -293,7 +293,7 @@ export const AttachmentSheet = forwardRef<AttachmentSheetHandle, {
     <>
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+        <div data-swipe-back="ignore" className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
           <motion.button
             type="button"
             aria-label="Close"

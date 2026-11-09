@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Copy, CornerUpLeft, Pencil, Trash2 } from "lucide-react";
+import { isTextEntry } from "@/lib/keep-keyboard";
+import { DialogPortal } from "@/components/ui/dialog-portal";
+import { Plus, Copy, CornerUpLeft, Pencil, Trash2 } from "lucide-react";
 import { ReactionIcon } from "@/components/reactions";
 import { messageMenuPosition } from "@/lib/message-menu";
 import { REACTION_META, REACTION_TYPES, type ReactionType } from "@/lib/reactions";
@@ -23,13 +25,16 @@ export function ReactionPicker({ anchor, mine, editable, myReaction, onPick, onA
   const dialog = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  const [expanded, setExpanded] = useState(false);
   const actionCount = 2 + (mine ? 1 : 0) + (mine && editable ? 1 : 0);
-  const viewport = { width: typeof window === "undefined" ? 390 : window.innerWidth, height: typeof window === "undefined" ? 844 : window.innerHeight };
-  const position = messageMenuPosition(anchor, viewport, mine, actionCount);
+  const viewport = { width: typeof window === "undefined" ? 390 : window.innerWidth, height: typeof window === "undefined" ? 844 : window.visualViewport?.height ?? window.innerHeight };
+  const position = messageMenuPosition(anchor, viewport, mine, actionCount, expanded ? 330 : 56);
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialog.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    const panel = dialog.current;
+    // Keep the soft keyboard and composer selection exactly as they were.
+    if (!isTextEntry(previous)) dialog.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); close.current(); return; }
       if (event.key !== "Tab" || !dialog.current) return;
@@ -45,12 +50,13 @@ export function ReactionPicker({ anchor, mine, editable, myReaction, onPick, onA
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      if (previous?.isConnected && (document.activeElement === document.body || panel?.contains(document.activeElement))) previous.focus({ preventScroll: true });
     };
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50" role="presentation" data-swipe-back="ignore">
+    <DialogPortal><div className="fixed inset-0 z-[150]" role="presentation" data-swipe-back="ignore"
+      onPointerDownCapture={(event) => { if (isTextEntry(document.activeElement)) event.preventDefault(); }}>
       <motion.button type="button" tabIndex={-1} aria-label="Dismiss message options" onClick={onClose}
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 cursor-default bg-black/40" />
       <motion.div
@@ -60,14 +66,18 @@ export function ReactionPicker({ anchor, mine, editable, myReaction, onPick, onA
         className="absolute overflow-y-auto overscroll-contain [scrollbar-width:none]"
       >
         <div role="group" aria-label="React to message" className="flex items-center justify-between rounded-full border border-white/10 bg-[#20242b]/95 p-1 shadow-[0_12px_35px_rgba(0,0,0,.4)] backdrop-blur-xl">
-          {REACTION_TYPES.map((type) => (
+          {REACTION_TYPES.slice(0, 5).map((type) => (
             <button key={type} type="button" aria-label={REACTION_META[type].label} aria-pressed={myReaction === type}
               title={`${REACTION_META[type].label} — ${REACTION_META[type].means}`} onClick={() => onPick(type)}
-              className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70 ${myReaction === type ? "bg-white/15" : ""}`}>
+              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70 ${myReaction === type ? "bg-white/15" : ""}`}>
               <ReactionIcon type={type} size={25} />
             </button>
           ))}
+          <button type="button" aria-label="More emoji reactions" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10"><Plus className="h-5 w-5" /></button>
         </div>
+        {expanded && <div role="group" aria-label="All emoji reactions" className="mt-2 grid max-h-64 grid-cols-6 gap-1 overflow-y-auto rounded-2xl bg-[#20242b] p-2">
+          {REACTION_TYPES.map((type) => <button key={type} type="button" aria-label={REACTION_META[type].label} aria-pressed={myReaction === type} onClick={() => onPick(type)} className={`flex h-9 items-center justify-center rounded-lg hover:bg-white/10 ${myReaction === type ? "bg-white/15" : ""}`}><ReactionIcon type={type} size={26} /></button>)}
+        </div>}
         <div role="menu" aria-label="Message actions" onKeyDown={(event) => {
           if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
           const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]"));
@@ -81,7 +91,7 @@ export function ReactionPicker({ anchor, mine, editable, myReaction, onPick, onA
           {mine && <ActionButton icon={<Trash2 />} label="Delete" danger onClick={() => onAction("delete")} />}
         </div>
       </motion.div>
-    </div>
+    </div></DialogPortal>
   );
 }
 

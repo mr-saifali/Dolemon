@@ -1,4 +1,5 @@
 "use client";
+import { DialogPortal } from "@/components/ui/dialog-portal";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -140,9 +141,9 @@ export function ChatThemeSheet({
   }, [open, onClose]);
 
   return (
-    <AnimatePresence>
+    <DialogPortal><AnimatePresence>
       {open && (
-        <div data-swipe-back="ignore" className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+        <div data-swipe-back="ignore" className="fixed inset-0 z-[150] flex items-end justify-center sm:items-center">
           <motion.button type="button" aria-label="Close chat themes" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/65" />
           <motion.div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="chat-theme-title" initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 16, opacity: 0 }} transition={{ type: "spring", stiffness: 400, damping: 34 }} className="relative max-h-[min(90dvh,720px)] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[28px] bg-[#111113] px-5 pb-[max(env(safe-area-inset-bottom),24px)] pt-5 shadow-2xl sm:rounded-[28px]">
             <div className="flex items-start justify-between gap-3">
@@ -163,6 +164,6 @@ export function ChatThemeSheet({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence></DialogPortal>
   );
 }

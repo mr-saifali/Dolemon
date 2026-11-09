@@ -1,5 +1,7 @@
 "use client";
+import { DialogPortal } from "./dialog-portal";
 
+import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 
@@ -24,10 +26,29 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const panel = useRef<HTMLDivElement | null>(null);
+  const cancel = useRef(onCancel);
+  cancel.current = onCancel;
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = requestAnimationFrame(() => panel.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus());
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); cancel.current(); }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(panel.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+      if (!controls.length) return;
+      const i = controls.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.shiftKey && i <= 0) { event.preventDefault(); controls[controls.length - 1].focus(); }
+      else if (!event.shiftKey && (i < 0 || i === controls.length - 1)) { event.preventDefault(); controls[0].focus(); }
+    };
+    window.addEventListener("keydown", key);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("keydown", key); if (previous?.isConnected) previous.focus(); };
+  }, [open]);
   return (
-    <AnimatePresence>
+    <DialogPortal><AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6">
+        <div data-swipe-back="ignore" className="fixed inset-0 z-[160] flex items-center justify-center p-6">
           <motion.button
             type="button"
             aria-label="Close"
@@ -38,6 +59,7 @@ export function ConfirmDialog({
             className="absolute inset-0 bg-black/70"
           />
           <motion.div
+            ref={panel}
             role="alertdialog"
             aria-modal="true"
             aria-label={title}
@@ -45,7 +67,7 @@ export function ConfirmDialog({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
-            className="relative w-full max-w-xs rounded-[22px] border border-white/[0.08] bg-[#15151A] p-5 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.95)]"
+            className="relative max-h-[90dvh] w-full max-w-xs overflow-y-auto rounded-[22px] border border-white/[0.08] bg-[#15151A] p-5 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.95)]"
           >
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FF5C7A]/12 text-[#FF8FA3]">
@@ -77,6 +99,6 @@ export function ConfirmDialog({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence></DialogPortal>
   );
 }

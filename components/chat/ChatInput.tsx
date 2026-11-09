@@ -31,7 +31,7 @@ export function ChatInput({
   hint,
   disabled = false,
 }: {
-  onSend: (text: string) => void | boolean;
+  onSend: (text: string) => void | boolean | Promise<void | boolean>;
   onSticker: (type: ReactionType) => void;
   onPulse: () => void;
   onAttach: () => void;
@@ -59,6 +59,7 @@ export function ChatInput({
   const lastTypingPing = useRef(0);
   const composer = useRef<HTMLDivElement | null>(null);
   const plus = useRef<HTMLButtonElement | null>(null);
+  const submitting = useRef(false);
   const hasText = value.trim().length > 0;
   const hasDraft = value.length > 0;
 
@@ -86,11 +87,16 @@ export function ChatInput({
     return () => { window.removeEventListener("pointerdown", onPointer); window.removeEventListener("keydown", onKey); };
   }, [optionsOpen, trayOpen]);
 
-  const submit = () => {
+  const submit = async () => {
     const text = value.trim();
-    if (!text || disabled) return;
-    if (onSend(text) === false) return;
-    setValue("");
+    if (!text || disabled || submitting.current) return;
+    submitting.current = true;
+    try {
+      const result = onSend(text);
+      if ((result instanceof Promise ? await result : result) === false) return;
+    } finally { submitting.current = false; }
+    // Do not erase a newer draft typed while an acknowledgement was open.
+    setValue((current) => current.trim() === text ? "" : current);
     setTrayOpen(false);
     setOptionsOpen(false);
     // Keep the keyboard exactly where it is. Re-focusing an already-focused
@@ -104,7 +110,7 @@ export function ChatInput({
     <div ref={composer} className="relative z-20">
       <div className="mx-auto flow-root w-full max-w-2xl pb-[env(safe-area-inset-bottom)] pt-1.5">
         {hint && <div className="mx-3 mb-1.5 px-1 text-[11.5px] text-zinc-500">{hint}</div>}
-        {/^\/doremon\b/i.test(value.trim()) && <p className="mx-3 mb-2 px-1 text-xs leading-relaxed text-sky-200">Only generic labels and partial counts go to an external AI service; it cannot see message text. Ask the other person first; AI can be wrong.</p>}
+        {/^\/doremon\b/i.test(value.trim()) && <p className="mx-3 mb-2 px-1 text-xs leading-relaxed text-sky-200">With your approval, your question and selected recent messages go to the external AI service. Ask the other person before sharing their text; AI can be wrong.</p>}
 
         <AnimatePresence>
           {replyTo && (

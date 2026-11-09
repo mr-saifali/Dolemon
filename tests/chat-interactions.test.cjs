@@ -12,6 +12,7 @@ const { MessageBubble } = require('../components/chat/MessageBubble.tsx');
 
 test('holding a text or sticker bubble opens its options without activating the tap reaction', async () => {
   const { act, create } = require('react-test-renderer');
+  global.document = { activeElement: { matches: () => true } };
   for (const kind of ['text', 'sticker']) {
     let presses = 0, taps = 0, captured;
     const message = { id: kind, author: 'them', kind, text: kind === 'text' ? 'Hello' : '', sticker: kind === 'sticker' ? 'dil' : undefined, at: 0 };
@@ -20,8 +21,9 @@ test('holding a text or sticker bubble opens its options without activating the 
       tree = create(React.createElement(MessageBubble, { message, grouped:false, tail:true, partnerName:'Sam', animateIn:false, onLongPress: (_, anchor) => { presses++; captured = anchor; }, onDoubleTap: () => taps++, onRemoveMyReaction() {}, onRetry() {} }), { createNodeMock: () => ({ getBoundingClientRect: () => ({ top: 100, bottom: 140, left: 30, width: 120 }) }) });
     });
     const bubble = tree.root.findByProps({ role: 'button' });
-    await act(async () => { bubble.props.onPointerDown(); await new Promise(resolve => setTimeout(resolve, 330)); bubble.props.onPointerUp(); });
+    await act(async () => { bubble.props.onPointerDown({ preventDefault() { captured = 'focus preserved'; } }); assert.equal(captured, 'focus preserved'); await new Promise(resolve => setTimeout(resolve, 330)); bubble.props.onPointerUp(); });
     assert.equal(presses, 1); assert.equal(taps, 0); assert.deepEqual(captured, { top:100, bottom:140, left:30, width:120 });
     await act(async () => tree.unmount());
   }
+  delete global.document;
 });

@@ -25,7 +25,8 @@ export function offlineReason(detail: string | null | undefined, retryAfterSecon
   if (!detail) return "";
   if (/AUTH_REQUIRED/i.test(detail)) return "session expire ho gayi — sign in karke phir try karo";
   if (/AUTH_UNAVAILABLE|AUTH_CONFIG/i.test(detail)) return "login verify nahi ho paaya — thodi der baad try karo";
-  if (/MODEL_QUOTA/i.test(detail)) return "is service ke liye free quota available nahi hai — administrator se sampark karo";
+  if (/RATE_LIMIT/i.test(detail)) return `Another request is running or the short-term request limit was reached. Try again in ${retryAfterSeconds ?? 5} seconds.`;
+  if (/MODEL_QUOTA/i.test(detail)) return "is model ka quota available nahi hai — administrator se sampark karo";
   if (/quota|429|limit exceeded/i.test(detail)) {
     if (quotaScope === "day") return "AI service ki daily request limit hit hui — daily quota midnight Pacific time par reset hota hai";
     const wait = retryAfterSeconds && retryAfterSeconds > 0

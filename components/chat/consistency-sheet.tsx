@@ -1,4 +1,5 @@
 "use client";
+import { DialogPortal } from "@/components/ui/dialog-portal";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -36,7 +37,7 @@ export function ConsistencySheet({ messages, onClose, hasOlder, loadingOlder, on
   }, [onClose]);
 
   const label = (m: ChatMessage) => `${m.author === "me" ? "You" : "Other person"} · ${new Date(m.at).toLocaleString()} · ${m.text.replace(/\s+/g, " ").slice(0, 80)}`;
-  return <div data-swipe-back="ignore" className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+  return <DialogPortal><div data-swipe-back="ignore" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/70 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="compare-title">
     <button type="button" className="absolute inset-0" aria-label="Close comparison" onClick={onClose} />
     <div ref={panel} className="relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-[24px] bg-[#18181b] p-5 pb-[max(24px,env(safe-area-inset-bottom))] sm:rounded-[24px]">
       <div className="flex items-start justify-between gap-3"><div><h2 id="compare-title" className="text-lg font-medium text-white">Compare statements</h2><p className="mt-1 text-xs leading-relaxed text-zinc-400">Compare two messages from the same person. Differences do not establish a lie; context and memory can change.</p></div><button type="button" onClick={onClose} aria-label="Close comparison" className="rounded-full p-2 text-zinc-400 hover:bg-white/5"><X className="h-5 w-5" /></button></div>
@@ -52,5 +53,5 @@ export function ConsistencySheet({ messages, onClose, hasOlder, loadingOlder, on
         <p className="text-xs leading-relaxed text-zinc-400">Shared words: {result.shared.length ? result.shared.join(", ") : "none detected"}. {result.negationDiffers ? "One message contains a negation word and the other does not. " : ""}{result.firstNumbers.length && result.secondNumbers.length && result.firstNumbers.join(",") !== result.secondNumbers.join(",") ? `Numbers differ (${result.firstNumbers.join(", ")} vs ${result.secondNumbers.join(", ")}). ` : ""}These are surface-level cues only, not proof of inconsistency or dishonesty.</p>
       </div>}
     </div>
-  </div>;
+  </div></DialogPortal>;
 }

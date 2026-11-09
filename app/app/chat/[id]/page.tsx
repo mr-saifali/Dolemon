@@ -290,10 +290,12 @@ function ThreadScreen() {
     if (/^\/doremon\b/i.test(trimmed)) {
       const question = trimmed.replace(/^\/doremon\s*/i, "").trim();
       if (REMOTE && isKnownOffline()) { toast.error("Doremon needs internet for this request."); return false; }
-      if (!question || !confirmDoremonSharing(REMOTE)) return false;
-      setReplyTo(null);
-      void doremon.ask(question);
-      return;
+      if (!question || doremon.thinking) return false;
+      return (async () => {
+        if (!await confirmDoremonSharing(REMOTE)) return false;
+        setReplyTo(null);
+        void doremon.ask(question);
+      })();
     }
     if (sendNow(text, replyTo ? { replyTo } : {}) === false) return false;
     setReplyTo(null);

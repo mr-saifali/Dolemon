@@ -15,6 +15,7 @@ import { getSupabase } from "./supabase";
 import { listConversations, postMessage } from "./db";
 import { formatCallDuration } from "./thread";
 import { useSession } from "./session";
+import { replaceCamera, removeCamera, setCameraEnabled } from "./call-media";
 import { waitForCallSubscription } from "./call-subscription";
 
 /**
@@ -52,6 +53,7 @@ type Signal = {
   avatar?: string | null;
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit | null;
+  acknowledged?: boolean;
 };
 
 const ICE: RTCConfiguration = {
@@ -342,13 +344,25 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
       pcRef.current = pc;
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      // Reserve the camera sender even on voice calls, so upgrades and restarts
+      // reuse the same negotiated video m-line instead of adding orphan senders.
+      if (!stream.getVideoTracks().length && callRef.current?.direction === "outgoing") {
+        pc.addTransceiver("video", { direction: "sendrecv", streams: [stream] });
+      }
 
       pc.onicecandidate = (event) => {
         if (event.candidate) sendCall({ kind: "ice", candidate: event.candidate.toJSON() });
       };
+      const received = new MediaStream();
       pc.ontrack = (event) => {
-        const [remote] = event.streams;
-        if (remote) setRemoteStream(remote);
+        if (pcRef.current !== pc) return;
+        if (!received.getTracks().includes(event.track)) received.addTrack(event.track);
+        const publish = () => {
+          if (pcRef.current === pc) setRemoteStream(new MediaStream(received.getTracks().filter((track) => track.readyState !== "ended")));
+        };
+        event.track.onunmute = publish;
+        event.track.onended = publish;
+        publish();
       };
       const markConnected = () => {
         if (connectedAt.current) return;
@@ -403,6 +417,46 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     sendCall({ kind: "offer", sdp: pc.localDescription ?? offer });
   }, [sendCall]);
 
+  const cameraBusy = useRef(false);
+  const makingOffer = useRef(false);
+
+  const applyCallType = useCallback(async (target: CallType) => {
+    const current = callRef.current;
+    const pc = pcRef.current;
+    const stream = localRef.current;
+    if (!current || !pc || !stream || cameraBusy.current) return false;
+    cameraBusy.current = true;
+    const active = () => pcRef.current === pc && localRef.current === stream && callRef.current?.conversationId === current.conversationId;
+    try {
+      if (target === "video") {
+        if (!await replaceCamera(pc, stream, facing.current, true, active)) return false;
+      } else await removeCamera(pc, stream);
+      if (!active()) return false;
+      setLocalStream(new MediaStream(stream.getTracks()));
+      setCameraOn(target === "video");
+      const next: ActiveCall = { ...callRef.current!, type: target };
+      callRef.current = next;
+      setCall(next);
+      return true;
+    } catch {
+      setNotice("Camera unavailable. Check camera permission and try again.");
+      return false;
+    } finally { cameraBusy.current = false; }
+  }, []);
+
+  const renegotiate = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc || !offerChannelReady.current || pc.signalingState !== "stable" || makingOffer.current) return;
+    makingOffer.current = true;
+    try {
+      const offer = await pc.createOffer();
+      if (pcRef.current !== pc || pc.signalingState !== "stable") return;
+      await pc.setLocalDescription(offer);
+      sendCall({ kind: "offer", sdp: pc.localDescription ?? offer });
+    } catch { setNotice("Video negotiation failed. Try switching again."); }
+    finally { makingOffer.current = false; }
+  }, [sendCall]);
+
   /* ------------------------------------------------------- signal handlers */
 
   const beginCaller = useCallback(async () => {
@@ -443,18 +497,12 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // the other side flipped voice ↔ video — their renegotiation offer follows
+      // Wait for the receiver's camera before negotiating: UI-only switching
+      // left voice -> video upgrades with no outgoing track on the far end.
       if (signal.kind === "switch" && signal.type) {
-        if (signal.type === "voice") {
-          const sender = pcRef.current?.getSenders().find((item) => item.track?.kind === "video");
-          localRef.current?.getVideoTracks().forEach((track) => { track.stop(); localRef.current?.removeTrack(track); });
-          if (sender) await sender.replaceTrack(null).catch(() => undefined);
-          if (localRef.current) setLocalStream(new MediaStream(localRef.current.getTracks()));
-          setCameraOn(false);
-        }
-        const next: ActiveCall = { ...current, type: signal.type };
-        callRef.current = next;
-        setCall(next);
+        if (signal.acknowledged) { await renegotiate(); return; }
+        if (current.type !== signal.type) await applyCallType(signal.type);
+        sendCall({ kind: "switch", type: signal.type, acknowledged: true });
         return;
       }
 
@@ -469,6 +517,12 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
             return;
           }
         }
+        // Perfect-negotiation collision handling: the incoming side yields;
+        // the outgoing side ignores the colliding offer and keeps its own.
+        if (makingOffer.current || pc.signalingState !== "stable") {
+          if (current.direction === "outgoing") return;
+          await pc.setLocalDescription({ type: "rollback" });
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         await flushIce(pc);
         const answer = await pc.createAnswer();
@@ -479,7 +533,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
       if (signal.kind === "answer" && signal.sdp) {
         const pc = pcRef.current;
-        if (!pc) return;
+        if (!pc || pc.signalingState !== "have-local-offer") return;
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         await flushIce(pc);
         return;
@@ -498,7 +552,7 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [buildPeer, finish, flushIce, getMedia, sendCall, sendOffer]
+    [applyCallType, buildPeer, finish, flushIce, getMedia, renegotiate, sendCall, sendOffer]
   );
 
   const handleUserSignal = useCallback(
@@ -560,9 +614,15 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     [beginCaller, finish, later, sendOn, startRing]
   );
 
+  const signalQueue = useRef<Promise<void>>(Promise.resolve());
+  // Serialize SDP/media work: an offer must not overtake a camera permission prompt.
   // keep the refs pointing at the latest handlers so subscriptions stay stable
   useEffect(() => {
-    callHandler.current = (signal) => void handleCallSignal(signal);
+    callHandler.current = (signal) => {
+      signalQueue.current = signalQueue.current.then(() => handleCallSignal(signal)).catch(() => {
+        if (callRef.current) setNotice("Call update failed. Please try again.");
+      });
+    };
   }, [handleCallSignal]);
   useEffect(() => {
     userHandler.current = handleUserSignal;
@@ -756,13 +816,16 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
 
   const toggleCamera = useCallback(() => {
     const stream = localRef.current;
-    if (!stream) return;
-    setCameraOn((previous) => {
-      const next = !previous;
-      stream.getVideoTracks().forEach((track) => (track.enabled = !next));
-      return next;
-    });
-  }, []);
+    if (!stream || cameraBusy.current) return;
+    const tracks = stream.getVideoTracks();
+    if (!tracks.length || tracks.some((track) => track.readyState === "ended")) {
+      void applyCallType("video");
+      return;
+    }
+    const enabled = !tracks.some((track) => track.enabled);
+    setCameraEnabled(stream, enabled);
+    setCameraOn(enabled);
+  }, [applyCallType]);
 
   /**
    * Route the far end to the loudspeaker. Browsers that expose setSinkId get real
@@ -782,103 +845,27 @@ export function LiveCallProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  /** Push a fresh offer/answer round-trip after local tracks change. */
-  const renegotiate = useCallback(async () => {
-    const pc = pcRef.current;
-    if (!pc || !offerChannelReady.current) return;
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      sendCall({ kind: "offer", sdp: pc.localDescription ?? offer });
-    } catch {
-      /* a mid-call renegotiation failing shouldn't kill an active call */
-    }
-  }, [sendCall]);
-
-  /**
-   * Flip a live call between voice and video. The local tracks change first
-   * (add/kill the video track), then a renegotiation carries it to the other
-   * side, and a "switch" signal flips their UI so both screens agree.
-   */
-  const switchType = useCallback(
-    async (target: CallType) => {
-      const current = callRef.current;
-      const pc = pcRef.current;
-      if (!current || !pc || current.phase !== "connected" || current.type === target) return;
-
-      if (target === "video") {
-        let fresh: MediaStream | null = null;
-        try {
-          fresh = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facing.current, width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false,
-          });
-          // Permission prompts can outlive the call; don't leave a camera on.
-          if (callRef.current !== current || pcRef.current !== pc || !localRef.current) {
-            fresh.getTracks().forEach((track) => track.stop());
-            return;
-          }
-          const [track] = fresh.getVideoTracks();
-          if (!track) throw new Error("No camera track");
-          const sender = pc.getSenders().find((item) => item.track?.kind === "video");
-          if (sender) await sender.replaceTrack(track);
-          else pc.addTrack(track, fresh);
-          if (callRef.current !== current || !localRef.current) {
-            fresh.getTracks().forEach((item) => item.stop());
-            return;
-          }
-          localRef.current.addTrack(track);
-          setLocalStream(new MediaStream(localRef.current.getTracks()));
-        } catch {
-          fresh?.getTracks().forEach((track) => track.stop());
-          setNotice("Camera permission is needed for video");
-          return;
-        }
-      } else {
-        const sender = pc.getSenders().find((item) => item.track?.kind === "video");
-        // Replacing a sender does not stop the device capture itself.
-        localRef.current?.getVideoTracks().forEach((track) => {
-          track.stop();
-          localRef.current?.removeTrack(track);
-        });
-        if (sender) await sender.replaceTrack(null).catch(() => undefined);
-        if (localRef.current) setLocalStream(new MediaStream(localRef.current.getTracks()));
-        setCameraOn(false);
-      }
-      if (target === "video") setCameraOn(true);
-
-      const next: ActiveCall = { ...current, type: target };
-      callRef.current = next;
-      setCall(next);
-      sendCall({ kind: "switch", type: target });
-      await renegotiate();
-    },
-    [renegotiate, sendCall]
-  );
+  const switchType = useCallback(async (target: CallType) => {
+    const current = callRef.current;
+    if (!current || current.phase !== "connected" || current.type === target) return;
+    if (await applyCallType(target)) sendCall({ kind: "switch", type: target });
+  }, [applyCallType, sendCall]);
 
   const flipCamera = useCallback(async () => {
     const pc = pcRef.current;
     const stream = localRef.current;
-    const current = callRef.current;
-    if (!pc || !stream || current?.type !== "video") return;
-
+    if (!pc || !stream || callRef.current?.type !== "video" || cameraBusy.current) return;
+    cameraBusy.current = true;
     const wanted = facing.current === "user" ? "environment" : "user";
+    const enabled = stream.getVideoTracks().some((track) => track.enabled && track.readyState === "live");
     try {
-      const fresh = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: wanted, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      const [videoTrack] = fresh.getVideoTracks();
-      const sender = pc.getSenders().find((item) => item.track?.kind === "video");
-      await sender?.replaceTrack(videoTrack);
-      stream.getVideoTracks().forEach((track) => track.stop());
-      stream.removeTrack(stream.getVideoTracks()[0]);
-      stream.addTrack(videoTrack);
-      facing.current = wanted;
-      setLocalStream(new MediaStream(stream.getTracks()));
-    } catch {
-      setNotice("This camera can't flip");
-    }
+      const active = () => pcRef.current === pc && localRef.current === stream;
+      if (await replaceCamera(pc, stream, wanted, enabled, active)) {
+        facing.current = wanted;
+        setLocalStream(new MediaStream(stream.getTracks()));
+      }
+    } catch { setNotice("This camera can't flip. Tap Camera to restart it."); }
+    finally { cameraBusy.current = false; }
   }, []);
 
   const minimize = useCallback(() => setMinimized(true), []);

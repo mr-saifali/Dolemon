@@ -89,6 +89,11 @@ export function LiveCallOverlay() {
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
   const remoteAudio = useRef<HTMLAudioElement | null>(null);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const floatingBounds = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  useEffect(() => { setChromeVisible(true); }, [call?.conversationId, call?.type, call?.phase]);
 
   const video = call?.type === "video";
   const connected = call?.phase === "connected";
@@ -98,7 +103,8 @@ export function LiveCallOverlay() {
     if (localVideo.current && localVideo.current.srcObject !== localStream) {
       localVideo.current.srcObject = localStream;
     }
-  }, [localStream, call?.phase]);
+    if (localStream) void localVideo.current?.play().catch(() => {});
+  }, [localStream, call?.phase, call?.type, minimized]);
 
   useEffect(() => {
     const isVideo = call?.type === "video";
@@ -235,10 +241,14 @@ export function LiveCallOverlay() {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          onClick={(event) => {
+            if (video && connected && !(event.target as Element).closest("button, [data-call-chrome], [data-self-preview]")) setChromeVisible((visible) => !visible);
+          }}
           onPointerDown={() => {
             void remoteVideo.current?.play().catch(() => {});
             void remoteAudio.current?.play().catch(() => {});
           }}
+          aria-label="Call screen"
           className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[#08080B]"
         >
           {/* ambient wash — pure gradients, nothing blurs per frame */}
@@ -260,11 +270,13 @@ export function LiveCallOverlay() {
               )}
             />
           )}
-          {video && <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80" />}
+          {video && chromeVisible && <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80" />}
+          {/* Drag constraints use the whole usable screen, independently of chrome. */}
+          <div ref={floatingBounds} className="pointer-events-none absolute inset-3" />
 
           {/* top bar: duration + collapse */}
-          <div className="relative z-20 flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),12px)]">
-            <div className="w-9" />
+          <div data-call-chrome hidden={video && connected && !chromeVisible} className={cn("relative z-20 flex items-center justify-between gap-2 px-4 pt-[max(env(safe-area-inset-top),12px)]", video && connected && !chromeVisible && "!hidden")}>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">@{call.peerName.replace(/^@/, "")}</span>
             {connected ? (
               <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-3 py-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-mint animate-pulse-soft" />
@@ -289,10 +301,20 @@ export function LiveCallOverlay() {
           {/* self-view picture-in-picture */}
           {video && (
             <motion.div
+              data-self-preview
+              aria-label="Your camera preview. Drag to move."
+              drag
+              dragConstraints={floatingBounds}
+              dragElastic={0}
+              dragMomentum={false}
+              onDragStart={() => { dragging.current = true; }}
+              onDragEnd={() => { window.setTimeout(() => { dragging.current = false; }, 0); }}
+              onClick={(event) => { event.stopPropagation(); if (!dragging.current && connected) setChromeVisible((visible) => !visible); }}
+              style={{ touchAction: "none" }}
               initial={{ opacity: 0, scale: 0.9, y: -6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 380, damping: 32 }}
-              className="absolute right-4 top-[calc(max(env(safe-area-inset-top),12px)+52px)] z-20 h-[150px] w-[108px] overflow-hidden rounded-[18px] border border-white/[0.14] bg-black/70 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.95)]"
+              className="absolute cursor-grab active:cursor-grabbing right-4 top-[calc(max(env(safe-area-inset-top),12px)+52px)] z-20 h-[150px] w-[108px] overflow-hidden rounded-[18px] border border-white/[0.14] bg-black/70 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.95)]"
             >
               <video
                 ref={localVideo}
@@ -312,7 +334,7 @@ export function LiveCallOverlay() {
           )}
 
           {/* who you're talking to */}
-          <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-8">
+          <div className="pointer-events-none relative z-10 flex flex-1 flex-col items-center justify-center px-8">
             {(!video || !connected) && (
               <div className="relative mb-8 flex items-center justify-center">
                 {ringing && !ended && (
@@ -338,7 +360,7 @@ export function LiveCallOverlay() {
               </div>
             )}
 
-            <p
+            {(!video || !connected) && <><p
               className={cn(
                 "text-[23px] font-light tracking-[-0.01em] text-white",
                 video && connected && "drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]"
@@ -354,7 +376,7 @@ export function LiveCallOverlay() {
               )}
             >
               {status}
-            </p>
+            </p></>}
 
             {connected && !video && (
               <p className="mt-6 flex items-center gap-1.5 text-[11.5px] text-white/35">
@@ -365,7 +387,8 @@ export function LiveCallOverlay() {
           </div>
 
           {/* controls */}
-          <div className="relative z-10 px-5 pb-[max(env(safe-area-inset-bottom),26px)]">
+          <div data-call-chrome hidden={video && connected && !chromeVisible} className={cn("relative z-10 px-5 pb-[max(env(safe-area-inset-bottom),26px)]", video && connected && !chromeVisible && "!hidden")}>
+            {video && connected && <button type="button" className="mb-3 w-full text-center text-xs text-white/60" onClick={() => setChromeVisible(false)}>Tap video to hide controls</button>}
             {notice && <p className="mb-4 text-center text-[12px] text-white/45">{notice}</p>}
 
             {incoming ? (

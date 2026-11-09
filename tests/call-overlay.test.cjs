@@ -1,0 +1,38 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const Module=require('node:module');const ts=require('typescript');const React=require('react');const {act,create}=require('react-test-renderer');
+const resolve=Module._resolveFilename;
+Module._resolveFilename=function(id,parent,...rest){if(id.startsWith('@/'))id=path.join(__dirname,'..',id.slice(2));return resolve.call(this,id,parent,...rest);};
+for(const ext of ['.ts','.tsx'])require.extensions[ext]=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,f);
+let value;
+const load=Module._load;
+const div=React.forwardRef(({children,...props},ref)=>React.createElement('div',{...props,ref},children));
+const button=React.forwardRef(({children,...props},ref)=>React.createElement('button',{...props,ref},children));
+Module._load=function(id,parent,...rest){
+ if(id==='@/lib/live-call')return {useLiveCall:()=>value};
+ if(id==='framer-motion')return {motion:{div,button},AnimatePresence:({children})=>children};
+ return load.call(this,id,parent,...rest);
+};
+const {LiveCallOverlay}=require('../components/call/live-call-overlay.tsx');Module._load=load;
+test('connected video name is header-only; screen tap toggles chrome, preview is draggable, mounts reattach streams',async()=>{
+ global.HTMLMediaElement=class {};
+ value={call:{conversationId:'one',peerName:'Sam',type:'voice',phase:'connected',direction:'incoming'},localStream:{id:'local'},remoteStream:{id:'remote'},elapsed:1000,cameraOn:true,muted:false,minimized:false,encrypted:true,notice:null,outputs:[],minimize(){},expand(){}};
+ const nodes=[];
+ const node=()=>{const n={srcObject:null,play:()=>Promise.resolve()};nodes.push(n);return n;};
+ let tree;await act(async()=>{tree=create(React.createElement(LiveCallOverlay),{createNodeMock:node});});
+ value={...value,call:{...value.call,type:'video'}};
+ await act(async()=>tree.update(React.createElement(LiveCallOverlay)));
+ assert.ok(nodes.some(n=>n.srcObject===value.localStream),'local video is attached on voice -> video mount');
+ const chrome=()=>tree.root.findAll(n=>n.type==='div'&&n.props['data-call-chrome']!==undefined);
+ assert.equal(chrome().length,2);assert.ok(chrome().every(n=>!n.props.hidden));
+ const screen=tree.root.find(n=>n.type==='div'&&n.props['aria-label']==='Call screen');
+ await act(async()=>screen.props.onClick({target:{closest:()=>null}}));
+ assert.ok(chrome().every(n=>n.props.hidden),'all chrome including name is hidden');
+ await act(async()=>screen.props.onClick({target:{closest:()=>null}}));assert.ok(chrome().every(n=>!n.props.hidden));
+ assert.equal(tree.root.findAll(n=>n.type==='span'&&n.children.join('')==='@Sam').length,1);
+ assert.equal(tree.root.findAll(n=>n.type==='p'&&n.children.join('')==='@Sam').length,0);
+ const preview=tree.root.find(n=>n.type==='div'&&n.props['data-self-preview']!==undefined);
+ assert.equal(preview.props.drag,true);assert.equal(preview.props.dragMomentum,false);assert.equal(preview.props.style.touchAction,'none');assert.ok(preview.props.dragConstraints);
+ value={...value,minimized:true};await act(async()=>tree.update(React.createElement(LiveCallOverlay)));
+ value={...value,minimized:false};const count=nodes.length;await act(async()=>tree.update(React.createElement(LiveCallOverlay)));
+ assert.ok(nodes.slice(count).some(n=>n.srcObject===value.localStream),'restored preview reattaches even when stream reference unchanged');
+ await act(async()=>tree.unmount());delete global.HTMLMediaElement;
+});

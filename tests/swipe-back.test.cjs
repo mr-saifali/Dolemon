@@ -16,11 +16,20 @@ test('the chat screen is draggable sideways, elastically, and snaps back under t
   assert.match(wrapper, /<motion\.div/);
   assert.match(wrapper, /drag="x"/);
   assert.match(wrapper, /dragConstraints=\{\{ left: 0, right: 0 \}\}/);
-  assert.match(wrapper, /dragElastic=\{0\.2\}/);
+  assert.match(wrapper, /dragElastic=\{\{ left: 0, right: 1 \}\}/);
   // 100px of travel or a 500px/s flick dismisses; anything less springs home.
-  assert.match(wrapper, /const SWIPE_DISTANCE = 100;/);
-  assert.match(wrapper, /const SWIPE_FLICK_VELOCITY = 500;/);
-  assert.match(wrapper, /info\.offset\.x > SWIPE_DISTANCE \|\| info\.velocity\.x > SWIPE_FLICK_VELOCITY/);
+  const { shouldDismissChat, SWIPE_DISTANCE, SWIPE_FLICK_VELOCITY } = require('../lib/swipe-back.ts');
+  assert.equal(SWIPE_DISTANCE, 100);
+  assert.equal(SWIPE_FLICK_VELOCITY, 500);
+  assert.equal(shouldDismissChat(101, 0), true);
+  assert.equal(shouldDismissChat(15, 501), true);
+  assert.equal(shouldDismissChat(100, 500), false);
+  assert.equal(shouldDismissChat(40, 100), false);
+  assert.equal(shouldDismissChat(-15, 700), false);
+  assert.equal(shouldDismissChat(0, 700), false);
+  assert.equal(shouldDismissChat(NaN, 700), false);
+  assert.equal(shouldDismissChat(150, Infinity), false);
+  assert.match(wrapper, /shouldDismissChat\(info\.offset\.x, info\.velocity\.x\)/);
   assert.match(wrapper, /animate\(x, 0, \{ type: "spring"/);
 });
 
@@ -33,8 +42,9 @@ test('dragging maps distance onto scale, corner radius, shadow and a fading scre
 });
 
 test('dismissing slides the screen fully off to the right before navigating exactly once', () => {
-  assert.match(wrapper, /animate\(x, width \* 1\.02, \{ duration: LEAVE_SECONDS, ease: IOS_EASE \}\)/);
-  assert.match(wrapper, /if \(navigated\.current\) return;\s*navigated\.current = true;/);
+  assert.match(wrapper, /animate\(x, width \* 1\.02, \{[\s\S]*?onComplete: finish/);
+  assert.doesNotMatch(wrapper, /setTimeout\(finish/);
+  assert.match(wrapper, /if \(!mounted\.current \|\| navigated\.current\) return;/);
   assert.match(wrapper, /router\.back\(\)/);
   // a deep link has no inbox in history — replace instead of leaving the app
   assert.match(wrapper, /router\.replace\(fallbackHref\)/);

@@ -55,6 +55,17 @@ function mediaLabel(m: DbMessage): string {
   }
 }
 
+/** Refresh the loaded window on deliberate AI requests, with a bounded wait. */
+async function latestForAi(conversationId: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      loadThread(conversationId).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 4000); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 /** Local date as "YYYY-MM-DD" — the day-stamp of Doremon's daily brief. */
 function localDay(now = new Date()): string {
   const y = now.getFullYear();
@@ -107,6 +118,15 @@ function Room({ conversationId }: { conversationId: string }) {
   /** Google's own words when the brain is down — shown in the chip tooltip */
   const [brainDetail, setBrainDetail] = useState("");
   const brainAsked = useRef(false);
+  const requestBusy = useRef(false);
+  const requestGeneration = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
+    requestBusy.current = false;
+    setThinking(false); setDailyBusy(false); setPendingQuestion(null);
+    return () => { requestGeneration.current = generation + 1; activeRequest.current?.abort(); };
+  }, [conversationId, account?.id]);
   const [dailyBusy, setDailyBusy] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [summaryDraft, setSummaryDraft] = useState("");
@@ -145,6 +165,7 @@ function Room({ conversationId }: { conversationId: string }) {
   /* ------------------------------------------------------------ load room */
   useEffect(() => {
     let alive = true;
+    setData(null); setTurns([]); setDraft("");
     (async () => {
       try {
       const [memory, stats, thread, convoResult] = await Promise.all([
@@ -225,12 +246,19 @@ function Room({ conversationId }: { conversationId: string }) {
   // WRITTEN ONLY ON TAP (the Sunrise button): one deliberate call per day,
   // never automatic. Opening the room no longer triggers any AI call.
   const runDaily = useCallback(async () => {
-    if (!data || dailyBusy) return;
+    if (!data || dailyBusy || requestBusy.current) return;
+    const generation = requestGeneration.current;
     const today = localDay();
-    if (data.memory.dailyDay === today || !confirmDoremonSharing(REMOTE)) return;
+    if (data.memory.dailyDay === today) return;
+    requestBusy.current = true;
+    const allowed = await confirmDoremonSharing(REMOTE);
+    if (generation !== requestGeneration.current) return;
+    if (!allowed) { requestBusy.current = false; return; }
     setDailyBusy(true);
+    const fresh = REMOTE ? await latestForAi(conversationId) : null;
+    if (generation !== requestGeneration.current) return;
     const dayAgo = Date.now() - 24 * 3600 * 1000;
-    const yesterday = data.recent
+    const yesterday = (fresh?.messages ?? data.recent)
       .filter((m) => m.kind !== "presence" && m.at > dayAgo)
       .slice(-12)
       .map((m) => ({
@@ -241,15 +269,15 @@ function Room({ conversationId }: { conversationId: string }) {
     let text: string | null = null;
     if (REMOTE) {
       const controller = new AbortController();
+      activeRequest.current = controller;
       const timeout = setTimeout(() => controller.abort(), 50_000);
       try {
         const res = await doremonFetch({
-          action: "daily",
+          action: "daily", sharing: "conversation-v1",
           me: myHandle,
           partner: data.partnerName,
           meId: data.meId,
           partnerId: data.partnerId,
-          recent: [],
           yesterday,
           day: today,
           memory: data.memory,
@@ -258,16 +286,19 @@ function Room({ conversationId }: { conversationId: string }) {
         const out = (await res.json()) as { ok?: boolean; answer?: string };
         if (res.ok && out.ok && out.answer) text = out.answer;
       } catch {
-        // offline / timeout — his pocket brain still writes the day (free)
+        // No invented fallback brief when the provider is unavailable.
       } finally {
         clearTimeout(timeout);
       }
     }
+    if (generation !== requestGeneration.current) return;
     if (!text) {
+      requestBusy.current = false;
       setDailyBusy(false);
       toast("Briefing unavailable. The loaded message window may be incomplete; please try again later.");
       return;
     }
+    requestBusy.current = false;
     setDailyBusy(false);
     // land the two daily fields on whatever the FRESHEST memory is
     setData((prev) => (prev ? { ...prev, memory: { ...prev.memory, dailyDay: today, dailyBriefing: text } } : prev));
@@ -301,12 +332,13 @@ function Room({ conversationId }: { conversationId: string }) {
   const ask = useCallback(
     async (raw: string) => {
       const q = raw.trim();
-      if (!q || !data || thinking) return;
+      if (!q || !data || thinking || requestBusy.current) return;
+      const generation = requestGeneration.current;
       const partner = data.partnerName;
       // token discipline: presence/system rows are noise, not conversation
-      const recent = data.recent
+      let recent = data.recent
         .filter((m) => m.kind !== "presence")
-        .slice(-16)
+        .slice(-50)
         .map((m) => ({
           who: (m.senderId === data.meId ? "me" : "them") as "me" | "them",
           text: m.body || mediaLabel(m),
@@ -314,15 +346,27 @@ function Room({ conversationId }: { conversationId: string }) {
         }));
 
       const previous = turns.filter((turn) => !isOfflineNotice(turn.a));
-      if (/previous (?:answer|reply|response)|you said|tumne kaha/i.test(q) && previous.length) {
+      if (/^(?:repeat (?:your )?(?:last|previous) (?:answer|reply)|pichla jawab repeat karo)[.!?]*$/i.test(q) && previous.length) {
+        setDraft("");
         persistTurn(q, `Previous answer (on this device): ${previous[previous.length - 1].a}`);
         return;
       }
-      const lookup = localLookup(q, recent);
-      if (lookup) { persistTurn(q, lookup); return; }
+      const lookup = !REMOTE || /^(?:search|find|dhundo)\b/i.test(q) ? localLookup(q, recent) : null;
+      if (lookup) { setDraft(""); persistTurn(q, lookup); return; }
 
+      requestBusy.current = true;
+      const allowed = await confirmDoremonSharing(REMOTE);
+      if (generation !== requestGeneration.current) return;
+      if (!allowed) { requestBusy.current = false; return; }
+      setDraft((current) => current.trim() === q ? "" : current);
       setThinking(true);
       setPendingQuestion({ text: q, at: Date.now() });
+      if (REMOTE) {
+        const fresh = await latestForAi(conversationId);
+        if (generation !== requestGeneration.current) return;
+        if (fresh) recent = fresh.messages.filter((m) => m.kind !== "presence").slice(-50)
+          .map((m) => ({ who: m.senderId === fresh.me ? "me" as const : "them" as const, text: m.body || mediaLabel(m), at: m.at }));
+      }
       let answer: string | null = null;
       let lastDetail: string | null = null;
       let retryAfter: number | null = null;
@@ -330,14 +374,16 @@ function Room({ conversationId }: { conversationId: string }) {
       if (REMOTE) {
         brainAsked.current = true;
         const controller = new AbortController();
+        activeRequest.current = controller;
         const timeout = setTimeout(() => controller.abort(), 50_000);
         try {
           const res = await doremonFetch({
-            action: "roomAsk", me: myHandle, partner, meId: data.meId,
-            partnerId: data.partnerId, recent, memory: { chat: turns },
+            action: "roomAsk", sharing: "conversation-v1", me: myHandle, partner, meId: data.meId,
+            partnerId: data.partnerId, recent, memory: { summary: data.memory.summary, chat: previous },
             stats: data.stats, question: q,
           }, controller.signal);
           const out = (await res.json()) as { ok?: boolean; answer?: string; error?: string; detail?: string; retryAfterSeconds?: number | null; quotaScope?: "day" | "minute" | "unknown" };
+          if (generation !== requestGeneration.current) return;
           lastDetail = (out.error === "QUOTA" || out.error === "MODEL_QUOTA") ? out.error : out.detail ?? out.error ?? null;
           retryAfter = out.retryAfterSeconds ?? null;
           quotaScope = out.quotaScope ?? "unknown";
@@ -350,6 +396,7 @@ function Room({ conversationId }: { conversationId: string }) {
             setBrainState(out.error === "NO_KEY" ? "no-key" : out.error === "BAD_KEY" ? "bad-key" : "offline");
           }
         } catch (err) {
+          if (generation !== requestGeneration.current) return;
           lastDetail = err instanceof Error && err.message === "DOREMON_AUTH_REQUIRED" ? "AUTH_REQUIRED" : err instanceof Error && err.name === "AbortError" ? "timeout" : "NETWORK";
           setBrainState("offline");
           setBrainDetail(offlineReason(lastDetail));
@@ -357,6 +404,7 @@ function Room({ conversationId }: { conversationId: string }) {
           clearTimeout(timeout);
         }
       }
+      if (generation !== requestGeneration.current) return;
       if (!answer) {
         if (REMOTE) {
           // No canned demo answers in remote mode — an honest offline
@@ -370,11 +418,12 @@ function Room({ conversationId }: { conversationId: string }) {
         }
       }
 
+      requestBusy.current = false;
       setThinking(false);
       setPendingQuestion(null);
       persistTurn(q, answer);
     },
-    [data, thinking, myHandle, persistTurn, turns]
+    [data, thinking, myHandle, persistTurn, turns, conversationId]
   );
 
   if (!data) {
@@ -496,15 +545,15 @@ function Room({ conversationId }: { conversationId: string }) {
         ))}
       </div>
       {/* input */}
-      <p className="mx-auto w-full max-w-2xl px-4 pt-2 text-center text-[10px] leading-relaxed text-zinc-500">Only generic labels and partial message counts are sent to an external AI service; message text, questions and history stay on this device. Answers cannot use those details and may be wrong. New history: last five exchanges stored on this device when storage is available, without encryption. Older history may remain in your account.</p>
+      <p className="mx-auto w-full max-w-2xl px-4 pt-2 text-center text-[10px] leading-relaxed text-zinc-500">With your approval, Doremon sends your question, selected loaded messages, a short note and up to three previous exchanges to the external AI service. No attachments or full archive. This can include personal text; ask the other person first. Answers can be wrong. Last five exchanges are saved unencrypted on this device; older history may remain in your account.</p>
       <div>
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!draft.trim() || thinking || !confirmDoremonSharing(REMOTE)) return;
+            if (!draft.trim() || thinking) return;
             void ask(draft);
-            setDraft("");
+
           }}
         >
           <textarea
@@ -513,9 +562,9 @@ function Room({ conversationId }: { conversationId: string }) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!draft.trim() || thinking || !confirmDoremonSharing(REMOTE)) return;
+                if (!draft.trim() || thinking) return;
                 void ask(draft);
-                setDraft("");
+
               }
             }}
             rows={1}

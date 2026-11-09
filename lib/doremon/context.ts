@@ -1,4 +1,4 @@
-/** Only fixed labels and bounded counts leave the device. No free text is a
+/** Legacy/no-sharing path: only fixed labels and bounded counts leave the device. No free text is a
  * safe field, even after names have been replaced. Counts are from the loaded
  * window only, not a claim about the complete conversation. */
 export type Intent = "greeting" | "recap" | "reply" | "idea" | "stats" | "followup" | "other";

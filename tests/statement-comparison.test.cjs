@@ -10,7 +10,13 @@ const resolve = Module._resolveFilename;
 Module._resolveFilename = function(id, parent, ...rest) { if (id.startsWith('@/')) id = path.join(__dirname, '..', id.slice(2)); return resolve.call(this, id, parent, ...rest); };
 for (const ext of ['.ts','.tsx']) require.extensions[ext] = (m,f) => m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS, target:ts.ScriptTarget.ES2020, jsx:ts.JsxEmit.ReactJSX, esModuleInterop:true}}).outputText,f);
 const { compareStatements } = require('../lib/statement-comparison.ts');
+const originalLoad = Module._load;
+Module._load = function(id, parent, ...rest) {
+  if (id === '@/components/ui/dialog-portal') return { DialogPortal: ({ children }) => children };
+  return originalLoad.call(this, id, parent, ...rest);
+};
 const { ConsistencySheet } = require('../components/chat/consistency-sheet.tsx');
+Module._load = originalLoad;
 
 test('simple comparison surfaces cues, never a lie verdict', () => {
   assert.deepEqual(compareStatements('I will meet at 5', 'I will not meet at 7'), {shared:['will','meet'], firstNumbers:['5'],secondNumbers:['7'],negationDiffers:true});

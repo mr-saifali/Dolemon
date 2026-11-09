@@ -1,9 +1,10 @@
+import { confirmAction } from "../confirm-action";
+
 /** Acknowledgement is local to this action; it does not verify the other person's consent. */
-export function confirmDoremonSharing(remote: boolean): boolean {
+export async function confirmDoremonSharing(remote: boolean): Promise<boolean> {
   if (!remote) return true;
-  if (typeof window === "undefined") return false;
-  return window.confirm(
-    "If the external AI service is used, it receives only generic request labels and, when relevant, partial message counts. Questions, message text and Doremon history are not sent to that service. New room history is stored unencrypted on this device; older saved history may remain in your account. The service may use and review submitted content to improve its products. Answers cannot use details it has not received and may be inaccurate. Please ask the other person before sharing information about your conversation.\n\nContinue only if you have permission."
+  return confirmAction(
+    "This request sends your question, a small selection of loaded conversation text, a short saved note and up to three previous Doremon exchanges to the external AI service. Speaker labels replace account handles; messages can still contain personal information. Attachments, media URLs and the full chat archive are not uploaded. Ask the other person before sharing their messages. Paid API access does not itself guarantee privacy; your provider/account data policy applies. Answers can be wrong. New Doremon history stays unencrypted on this device. Nothing is sent automatically when this room opens."
   );
 }
 

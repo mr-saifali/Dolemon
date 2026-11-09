@@ -1,5 +1,48 @@
 # Changelog
 
+## Chat interaction and live calling fixes (2026-11-08)
+
+- Preserve composer focus during message long-press and reaction selection; add a
+  scrollable 37-emoji range while keeping the original quick reactions.
+- Movable, screen-bounded self-preview; connected peer name in the header only;
+  tap video to hide/show header and controls. Reattach preview after upgrades and
+  minimizing/restoring calls.
+- Fix inverted camera enablement, reuse negotiated camera senders, support camera
+  replacement/restart and Android busy-camera retry, and await receiver media
+  before negotiating voice/video upgrades. Serialize signalling and handle glare.
+- Migration 021 expands only the message reaction check constraint. No changes to
+  API credentials, AI model/billing, RLS, storage, TURN servers or APK version.
+- Browser WebRTC tests use synthetic media, not physical cameras or remote-network
+  calls. Real Android/dual-device acceptance remains required; the existing
+  STUN-only configuration still cannot guarantee calls on restrictive NATs.
+
+## Unreleased — chat menu and contextual Doremon
+
+- Clear intercepted chat slots on navigation to Doremon, Room, calls or inbox.
+  Render menu/search/comparison/theme/confirmation overlays through body portals,
+  outside transformed swipe containers; make the menu scrollable on short screens.
+- With explicit in-app acknowledgement, send bounded conversation context and
+  the actual question to Doremon. Restore short follow-up history and replace
+  the generic-only prompt with useful, evidence-grounded companion behavior.
+- Bound context JSON to 9,000 bytes / 16 selected excerpts / three short Q&A
+  turns, retain 512 output-token caps, and reject concurrent same-account calls.
+  Add a best-effort 12 requests/minute per-instance limiter; no silent AI calls
+  on room opening, typing or local automatic analysis.
+- Use an app-rendered sharing acknowledgement, not WebView's unsupported JS
+  confirm default. Update privacy disclosures; paid access is not a privacy guarantee.
+
+## Unreleased — chat swipe-back polish
+
+- Keep the 100px right-swipe / 500px-per-second flick thresholds, with true
+  finger-tracking rightward motion and no leftward overscroll.
+- Preserve the inbox depth overlay; scope its context to the intercepted chat
+  slot so directly opened chats safely return to `/app` instead of external history.
+- Header back and swipe dismissal navigate only after the slide completes.
+  Stop animations/timers on unmount, ignore duplicate dismissals, and restore
+  the chat if a navigation request leaves it mounted. Reduced motion remains respected.
+- Add component regression tests for completion ordering, flick/snap behavior,
+  direct-entry navigation, unmount cleanup and blocked-navigation recovery.
+
 ## 1.4.1 — the Android app that behaves like an app
 
 **A real swipe-to-refresh**

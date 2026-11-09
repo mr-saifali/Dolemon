@@ -11,6 +11,11 @@ Module._resolveFilename = function(id, parent, ...rest) { if (id.startsWith('@/'
 for (const ext of ['.ts', '.tsx']) require.extensions[ext] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, filename);
 const { CHAT_THEMES, resolveChatTheme } = require('../lib/chat-themes.ts');
 const { messageMenuPosition } = require('../lib/message-menu.ts');
+const load = Module._load;
+Module._load = function(id, parent, ...rest) {
+  if (id === '@/components/ui/dialog-portal') return { DialogPortal: ({children}) => children };
+  return load.call(this, id, parent, ...rest);
+};
 const { ReactionPicker } = require('../components/chat/ReactionPicker.tsx');
 const { MessageBubble } = require('../components/chat/MessageBubble.tsx');
 

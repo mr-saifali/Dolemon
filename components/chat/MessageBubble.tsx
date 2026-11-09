@@ -1,5 +1,6 @@
 "use client";
 
+import { isTextEntry } from "@/lib/keep-keyboard";
 import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CornerUpLeft, Download, FileText, Pause, Play, RotateCw } from "lucide-react";
@@ -79,7 +80,9 @@ export const MessageBubble = memo(function MessageBubble({
     onLongPress(message, { top: r.top, bottom: r.bottom, left: r.left, width: r.width });
   };
 
-  const onPointerDown = () => {
+  const onPointerDown = (event: React.PointerEvent) => {
+    // A focusable bubble must not steal focus from a live composer on touch.
+    if (isTextEntry(document.activeElement)) event.preventDefault();
     longFired.current = false;
     clearTimer();
     longTimer.current = setTimeout(() => {

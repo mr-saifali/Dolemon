@@ -1,9 +1,10 @@
 "use client";
 
+import { conversationPacket } from "./shared-context";
 import { minimizeQuestionRequest } from "./context";
 import { getSupabase } from "@/lib/supabase";
 
-/** Raw questions, messages and memory do not leave the device in this request. */
+/** Text is shared only by explicitly opted-in callers, with hard server-mirrored limits. */
 export async function doremonFetch(body: unknown, signal: AbortSignal): Promise<Response> {
   const client = getSupabase();
   const { data, error } = client ? await client.auth.getSession() : { data: { session: null }, error: null };
@@ -13,6 +14,6 @@ export async function doremonFetch(body: unknown, signal: AbortSignal): Promise<
   return fetch("/api/doremon", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session.access_token}` },
-    body: JSON.stringify(minimizeQuestionRequest(body)), signal,
+    body: JSON.stringify(conversationPacket(body) ?? minimizeQuestionRequest(body)), signal,
   });
 }

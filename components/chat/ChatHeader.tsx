@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DialogPortal } from "@/components/ui/dialog-portal";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, MoreHorizontal, Phone, Video } from "lucide-react";
 import { ChatAvatar } from "@/components/home/chat-row";
@@ -131,9 +132,9 @@ export function ChatMenuSheet({
   onClose: () => void;
 }) {
   return (
-    <AnimatePresence>
+    <DialogPortal><AnimatePresence>
       {open && (
-        <div data-swipe-back="ignore" className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+        <div data-swipe-back="ignore" className="fixed inset-0 z-[140] flex items-end justify-center sm:items-center">
           <motion.button
             type="button"
             aria-label="Close menu"
@@ -151,7 +152,7 @@ export function ChatMenuSheet({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 16, opacity: 0, scale: 0.985 }}
             transition={{ type: "spring", stiffness: 400, damping: 34 }}
-            className="relative w-full max-w-md overflow-hidden rounded-t-[24px] border border-white/[0.07] bg-[#111113] pb-6 sm:mb-0 sm:rounded-[22px]"
+            className="relative max-h-[85dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[24px] border border-white/[0.07] bg-[#111113] pb-6 sm:mb-0 sm:rounded-[22px]"
           >
             <div className="mx-auto mt-2.5 h-1 w-9 rounded-full bg-white/15 sm:hidden" />
             <p className="px-5 pb-2 pt-4 text-[11px] uppercase tracking-[0.16em] text-zinc-600">
@@ -163,8 +164,8 @@ export function ChatMenuSheet({
                   key={action.key}
                   type="button"
                   onClick={() => {
-                    action.onSelect();
                     onClose();
+                    action.onSelect();
                   }}
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] transition-colors hover:bg-white/[0.05] ${
                     action.danger ? "text-[#FF6B6B]" : "text-zinc-200"
@@ -202,6 +203,6 @@ export function ChatMenuSheet({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence></DialogPortal>
   );
 }

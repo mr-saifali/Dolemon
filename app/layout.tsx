@@ -10,6 +10,7 @@ import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { NetworkStatus } from "@/components/pwa/network-status";
 import { AndroidUpdateNotice } from "@/components/pwa/android-update-notice";
 import { ShellChrome } from "@/components/pwa/shell-chrome";
+import { ConfirmationHost } from "@/components/ui/confirmation-host";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <NetworkStatus />
               <AndroidUpdateNotice />
               <ShellChrome />
+              <ConfirmationHost />
             </LiveCallProvider>
             </AppPresenceProvider>
           </SessionProvider>

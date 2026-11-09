@@ -217,7 +217,7 @@ messages(id, conversation_id, sender_id, kind, body, created_at)
 message_reactions(
   id, message_id → messages(id) on delete cascade,
   user_id → auth.users(id) on delete cascade,
-  reaction_type check in ('dil','haha','wow','aww','hype'),
+  reaction_type text, -- checked against lib/reactions.ts; expanded by migration 021
   created_at,
   unique (message_id, user_id)                          -- one reaction per person
 )
@@ -435,16 +435,27 @@ Do not infer emotions, intentions or future behavior from message counts.
   the actual database history before applying anything; these files are not an
   automatic migration pipeline and must not be blindly replayed.
 - An authenticated `POST /api/doremon` accepts only `ask`, `roomAsk` or
-  `daily`. The browser creates a closed-schema packet of generic intent and
-  language labels, at most five history intent labels, and bounded per-day
-  counts from the currently loaded window. The server independently strips
-  other fields, including for legacy clients. No raw message, question, memory,
-  participant name or code-to-original mapping is sent to the external AI.
-  The counts are incomplete and can themselves still carry contextual risk.
-- Local keyword search only covers loaded messages; it is not a full-history
-  index. Detailed AI summaries and contextual reasoning over message contents
-  are unavailable under the selected privacy design.
+  `daily`. With explicit per-request acknowledgement, `conversation-v1` shares
+  selected text, the actual question, a short note and up to three Q&A turns.
+  Browser and server apply the same bounds (maximum 16 excerpts and 9,000-byte
+  context JSON). Names, IDs and media objects are not packet fields; personal
+  information embedded in message text can still be shared. Legacy packets
+  without the marker remain generic. See [privacy and token controls](doremon-context.md).
+- Local search covers only loaded messages. Contextual AI can now reason over
+  selected excerpts, not the complete archive. No external AI call runs on
+  room opening or on every message; automatic memory bookkeeping stays local.
 - New room Q&A is kept in unencrypted browser storage (five exchanges per
   account and conversation), not uploaded as new account history. Existing
   server-saved history and other memories may remain until explicitly deleted.
   This is not a substitute for device security or a formal privacy audit.
+
+### Expanded emoji reactions (021)
+
+`docs/migrations/021_expanded_reactions.sql` expands the existing reaction check to
+37 stable IDs (the original five remain unchanged). Apply before deploying the
+expanded picker. It changes only `message_reactions_reaction_type_check`; no rows,
+RLS policies, storage objects, API keys or Realtime configuration are changed.
+
+Applied on 2026-11-08 to `lakgolufbudlyaepkehh` as
+`expanded_reactions_021`; a readback confirmed all 37 IDs and
+`convalidated = true`. Do not rerun old privacy/storage migrations for this change.

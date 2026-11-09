@@ -46,3 +46,51 @@ test('browser fetch sends the safe packet for both question and daily actions', 
     await assert.rejects(()=>doremonFetch({...input,action:'analyze'},new AbortController().signal),/UNSUPPORTED/);
   } finally {global.fetch=oldFetch;}
 });
+
+test('explicit sharing sends the actual bounded question and context, never account/media fields', () => {
+  const { conversationPacket, MAX_CONTEXT_BYTES } = require('../lib/doremon/shared-context.ts');
+  assert.equal(conversationPacket(input), null, 'legacy callers cannot accidentally opt in');
+  const p = conversationPacket({ ...input, sharing: 'conversation-v1', meId: 'SECRET-ID', attachments: ['PRIVATE-IMAGE'], mediaUrl: 'PRIVATE-URL' });
+  assert.equal(p.question, input.question);
+  assert.equal(p.note, memory.summary);
+  assert.equal(p.history.length, 3);
+  assert.match(JSON.stringify(p.recent), /dinner PRIVATE SECRET/);
+  assert.doesNotMatch(JSON.stringify(p), /SECRET NAME|PRIVATE HANDLE|SECRET-ID|PRIVATE-IMAGE|PRIVATE-URL/);
+  assert.ok(Buffer.byteLength(JSON.stringify(p)) <= MAX_CONTEXT_BYTES);
+  assert.deepEqual(conversationPacket(p), p, 'server allowlist preserves an already compact request');
+});
+
+test('Unicode, large history and message bursts stay within a byte budget with newest messages retained', () => {
+  const { conversationPacket, MAX_CONTEXT_BYTES } = require('../lib/doremon/shared-context.ts');
+  for (const text of ['नमस्ते 🐱 '.repeat(3000), '\n"\\'.repeat(3000), 'A'.repeat(10000)]) {
+    const p = conversationPacket({ sharing: 'conversation-v1', action: 'roomAsk', question: text,
+      memory: { summary: text, chat: Array.from({ length: 30 }, () => ({ q: text, a: text })) },
+      recent: Array.from({ length: 100 }, (_, i) => ({ who: i % 2 ? 'me' : 'them', text: `${i}: ${text}`, media: 'NEVER-SENT' })) });
+    assert.ok(Buffer.byteLength(JSON.stringify(p)) <= MAX_CONTEXT_BYTES);
+    assert.ok(p.history.length <= 3); assert.ok(p.recent.length <= 16);
+    assert.match(p.recent.at(-1).text, /^99:/);
+    assert.doesNotMatch(JSON.stringify(p), /NEVER-SENT/);
+    assert.equal(p.incomplete, true);
+  }
+});
+
+test('a question can retrieve an older relevant loaded excerpt without uploading the whole window', () => {
+  const { conversationPacket } = require('../lib/doremon/shared-context.ts');
+  const p = conversationPacket({ sharing: 'conversation-v1', action: 'roomAsk', question: 'What about the dinner plan?', recent: Array.from({ length: 50 }, (_, i) => ({ who: 'them', text: i === 4 ? 'Dinner is booked for seven.' : `Small update ${i}` })) });
+  assert.ok(p.recent.some(row => row.text === 'Dinner is booked for seven.'));
+  assert.ok(p.recent.some(row => row.text === 'Small update 49'));
+  assert.ok(p.recent.length <= 16);
+});
+
+test('browser opt-in path shares text only with the explicit marker', async () => {
+  const oldFetch = global.fetch;
+  const { doremonFetch } = require('../lib/doremon/api.ts');
+  let sent;
+  global.fetch = async (_url, opts) => { sent = JSON.parse(opts.body); return Response.json({}); };
+  try {
+    await doremonFetch({ ...input, sharing: 'conversation-v1' }, new AbortController().signal);
+    assert.equal(sent.question, input.question);
+    assert.equal(sent.sharing, 'conversation-v1');
+    assert.ok(sent.recent.length);
+  } finally { global.fetch = oldFetch; }
+});

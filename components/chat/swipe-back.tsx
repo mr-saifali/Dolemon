@@ -33,18 +33,15 @@ import {
   useMotionValue,
   useSpring,
   useTransform,
+  type AnimationPlaybackControls,
   type MotionValue,
   type PanInfo,
 } from "framer-motion";
 import { usePrefs } from "@/lib/prefs";
+import { shouldDismissChat } from "@/lib/swipe-back";
 
-/** px of travel to the right that counts as "they meant it" */
-const SWIPE_DISTANCE = 100;
-/** px/s flick speed that counts even when the travel is short */
-const SWIPE_FLICK_VELOCITY = 500;
 /** how long the screen takes to leave once dismissed */
 const LEAVE_SECONDS = 0.3;
-const LEAVE_MS = LEAVE_SECONDS * 1000 + 40;
 /** if the route somehow never changes, put the chat back rather than leave a blank screen */
 const RESTORE_MS = 1400;
 /** iOS-ish curve: quick out, soft landing */
@@ -97,7 +94,7 @@ export function ChatTransitionLayer({
   });
 
   return (
-    <BackdropProgress.Provider value={progress}>
+    <>
       {children}
       <motion.div
         aria-hidden="true"
@@ -107,8 +104,10 @@ export function ChatTransitionLayer({
         className="pointer-events-none fixed inset-0 z-40 bg-black/40 opacity-0"
         style={{ opacity: scrim }}
       />
-      {chat}
-    </BackdropProgress.Provider>
+      {/* Only the intercepted slot has an inbox underneath. A direct chat
+          page lives in children and must replace /app, not go back off-site. */}
+      <BackdropProgress.Provider value={progress}>{chat}</BackdropProgress.Provider>
+    </>
   );
 }
 
@@ -152,6 +151,8 @@ export function SwipeBackWrapper({
   const leaving = useRef(false);
   const navigated = useRef(false);
   const mounted = useRef(true);
+  const animation = useRef<AnimationPlaybackControls | null>(null);
+  const restoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const x = useMotionValue(0);
@@ -192,34 +193,46 @@ export function SwipeBackWrapper({
    * deep link there is nothing to go back to, so we replace the entry instead.
    */
   const finish = useCallback(() => {
-    if (navigated.current) return;
+    if (!mounted.current || navigated.current) return;
     navigated.current = true;
     if (backdrop) router.back();
     else router.replace(fallbackHref);
-  }, [backdrop, fallbackHref, router]);
+    // If navigation is blocked, restore the still-mounted chat. Do not test
+    // navigated here: it records the request, not whether the route changed.
+    restoreTimer.current = setTimeout(() => {
+      if (!mounted.current) return;
+      leaving.current = false;
+      navigated.current = false;
+      if (reduceMotion) x.set(0);
+      else animation.current = animate(x, 0, { type: "spring", stiffness: 380, damping: 40, mass: 0.7 });
+    }, RESTORE_MS);
+  }, [backdrop, fallbackHref, router, x, reduceMotion]);
 
   const leave = useCallback(() => {
-    if (leaving.current) return;
+    if (!mounted.current || leaving.current) return;
     leaving.current = true;
+    animation.current?.stop();
+    if (restoreTimer.current !== null) clearTimeout(restoreTimer.current);
     if (reduceMotion || typeof window === "undefined") {
       finish();
       return;
     }
     const width = span.current || window.innerWidth || 1;
-    animate(x, width * 1.02, { duration: LEAVE_SECONDS, ease: IOS_EASE });
-    window.setTimeout(finish, LEAVE_MS);
-    window.setTimeout(() => {
-      // The route never changed (blocked history, offline shell…): come back.
-      if (!mounted.current || navigated.current) return;
-      leaving.current = false;
-      animate(x, 0, { type: "spring", stiffness: 380, damping: 40, mass: 0.7 });
-    }, RESTORE_MS);
+    // Navigate from animation completion, not a guessed timer. Header taps
+    // and swipes share this exact path, so neither can cut the slide short.
+    animation.current = animate(x, width * 1.02, {
+      duration: LEAVE_SECONDS,
+      ease: IOS_EASE,
+      onComplete: finish,
+    });
   }, [finish, reduceMotion, x]);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      animation.current?.stop();
+      if (restoreTimer.current !== null) clearTimeout(restoreTimer.current);
     };
   }, []);
 
@@ -245,19 +258,21 @@ export function SwipeBackWrapper({
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (!owns(event.target, frame.current)) return;
     span.current = frame.current?.offsetWidth || window.innerWidth;
+    animation.current?.stop();
     dragControls.start(event);
   };
 
   const onDragEnd = (_event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => {
     setDragging(false);
+    if (leaving.current) return;
     // Far enough, or flicked fast enough.
-    if (info.offset.x > SWIPE_DISTANCE || info.velocity.x > SWIPE_FLICK_VELOCITY) {
+    if (shouldDismissChat(info.offset.x, info.velocity.x)) {
       leave();
       return;
     }
     // Not far enough: snap home. This also overrides Framer's own bounce-back,
     // so a spring we control is the only thing touching `x`.
-    animate(x, 0, { type: "spring", stiffness: 420, damping: 42, mass: 0.7 });
+    animation.current = animate(x, 0, { type: "spring", stiffness: 420, damping: 42, mass: 0.7 });
   };
 
   return (
@@ -269,7 +284,8 @@ export function SwipeBackWrapper({
         dragListener={false}
         dragControls={dragControls}
         dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.2}
+        // Track rightward finger travel 1:1; never reveal an empty left edge.
+        dragElastic={{ left: 0, right: 1 }}
         dragMomentum={false}
         onPointerDown={onPointerDown}
         onDragStart={() => {

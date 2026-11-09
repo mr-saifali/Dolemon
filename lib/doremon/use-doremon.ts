@@ -49,6 +49,16 @@ export function useDoremon(
   const memoryRef = useRef<DoremonMemory | null>(null);
   const analysisEnabledRef = useRef(analysisEnabled);
   analysisEnabledRef.current = analysisEnabled;
+  const requestBusy = useRef(false);
+  const requestGeneration = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
+    requestBusy.current = false;
+    setThinking(false);
+    return () => { requestGeneration.current = generation + 1; activeRequest.current?.abort(); };
+  }, [conversationId]);
+  const answerHistory = useRef<{ q: string; a: string }[]>([]);
   const lastAnalyzedId = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -79,14 +89,20 @@ export function useDoremon(
 
   /* ------------------------------------------------ load memory + old messages */
   useEffect(() => {
+    let alive = true;
+    answerHistory.current = [];
+    memoryRef.current = null;
+    setMemory(null);
     // drop any offline notices saved before they were excluded from history
     setDoremonMessages(loadDoremonMessages(conversationId, meId).filter((m) => !isOfflineNotice(m.text)));
     void loadDoremonMemory(conversationId, remote).then((mem) => {
+      if (!alive) return;
       memoryRef.current = mem;
       setMemory(mem);
       // keep the partner's handle in the record, even before the first analysis
       if (analysisEnabledRef.current && mem && mem.partnerUsername !== partner) commitMemory(mem);
     });
+    return () => { alive = false; };
   }, [conversationId, remote, partner, commitMemory, meId]);
 
   /* --------------------------------------------------------- the watcher */
@@ -183,7 +199,9 @@ export function useDoremon(
   /* ------------------------------------------------------ /doremon mention */
   const ask = useCallback(
     async (question: string) => {
-      if (thinking) return;
+      if (thinking || requestBusy.current) return;
+      requestBusy.current = true;
+      const generation = requestGeneration.current;
       setThinking(true);
       const recent = brainMessages();
 
@@ -193,9 +211,10 @@ export function useDoremon(
       let quotaScope: "day" | "minute" | "unknown" = "unknown";
       if (remote) {
         const controller = new AbortController();
+        activeRequest.current = controller;
         const timeout = setTimeout(() => controller.abort(), 50_000);
         try {
-          const res = await doremonFetch({ action: "ask", me, partner, recent, memory: memoryRef.current, question }, controller.signal);
+          const res = await doremonFetch({ action: "ask", sharing: "conversation-v1", me, partner, recent, memory: { summary: memoryRef.current?.summary, chat: answerHistory.current }, question }, controller.signal);
           const data = (await res.json()) as { ok?: boolean; answer?: string; detail?: string; error?: string; retryAfterSeconds?: number | null; quotaScope?: "day" | "minute" | "unknown" };
           lastDetail = (data.error === "QUOTA" || data.error === "MODEL_QUOTA") ? data.error : data.detail ?? data.error ?? null;
           retryAfter = data.retryAfterSeconds ?? null;
@@ -207,6 +226,7 @@ export function useDoremon(
           clearTimeout(timeout);
         }
       }
+      if (generation !== requestGeneration.current) return;
       if (!answer) {
         if (remote) {
           // No canned demo answers in remote mode — an honest status WITH
@@ -220,7 +240,9 @@ export function useDoremon(
         }
       }
 
+      if (!isOfflineNotice(answer)) answerHistory.current = [...answerHistory.current, { q: question, a: answer }].slice(-3);
       pushDoremon("answer", answer);
+      requestBusy.current = false;
       setThinking(false);
     },
     [brainMessages, me, partner, pushDoremon, remote, thinking]

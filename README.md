@@ -44,7 +44,7 @@ No backend needed to click through onboarding: without Supabase keys the app use
 self-contained local provider, and the emailed code is shown on the verify screen
 (any code also accepts `123456` in demo mode).
 
-## Doremon and Gemini free tier
+## Doremon and token-efficient AI
 
 For AI replies in live (Supabase) mode, set the server-only `GEMINI_API_KEY` in
 `.env.local` or your deployment environment. The model is hardcoded to
@@ -59,16 +59,22 @@ availability or free quota. A temporary HTTP 503 gets one retry of the same
 model; other failures are not retried and no model fallback is used. If a quota
 error occurs, check the project's quota and billing in Google AI Studio.
 The public model-catalog diagnostic is disabled. AI generation requires a valid
-Supabase login. The current client sends only fixed generic intent/language
-labels and bounded partial per-day message counts; raw questions, messages,
-names, code mappings and room Q&A are not sent to the external AI service.
-Older clients can still send raw content to the application server, where it
-is stripped before generation. The AI cannot interpret private chat details
-under this design. Local keyword lookup searches only the loaded window and
-is explicitly incomplete. New room history stores the latest five exchanges
-on this device without encryption, scoped by account and conversation. Older
-history may still exist in account memory until explicitly deleted. This is
-not a security audit or a guarantee against all privacy risks.
+Supabase login. After an in-app acknowledgement, the new client shares the actual
+question, up to 16 selected loaded messages, up to three short Q&A turns and a
+short saved note. It does not upload attachments, media objects, account handles,
+IDs or the full archive; message text can still contain personal data. The browser
+and server enforce the same allowlist and a 9,000-byte JSON context ceiling.
+Legacy requests without the explicit sharing marker still use generic labels.
+
+Opening the room, typing and the automatic local watcher do not call AI.
+Answers are capped at 512 output tokens; only an explicit 503 permits one same-model
+retry. Concurrent requests from the same account are rejected, with a best-effort
+12 requests/minute per-instance cap; this is not a global billing limit. See
+[context, privacy and costs](docs/doremon-context.md). Paid API access alone does
+not guarantee privacy: check your provider/account policy and get the other
+person's permission. New Q&A keeps five exchanges locally without encryption;
+older account memory may remain until explicitly deleted. No formal security
+audit or real-provider verification is claimed by the mocked tests.
 
 Run the mocked API and theme tests with `node --test tests/*.test.cjs`.
 

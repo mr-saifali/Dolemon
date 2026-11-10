@@ -51,7 +51,11 @@ function openDb(): Promise<IDBDatabase | null> {
       if (!db.objectStoreNames.contains(CONVERSATIONS)) db.createObjectStore(CONVERSATIONS);
       if (!db.objectStoreNames.contains(THREADS)) db.createObjectStore(THREADS);
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => { db.close(); opening = null; };
+      resolve(db);
+    };
     request.onerror = () => resolve(null);
     request.onblocked = () => resolve(null);
   });
@@ -172,7 +176,9 @@ export function purgePageCache(): void {
 export async function clearOfflineData(): Promise<void> {
   scope = null;
   if (typeof indexedDB === "undefined") return;
+  const previous = opening;
   opening = null;
+  (await previous)?.close();
   await new Promise<void>((resolve) => {
     try {
       const request = indexedDB.deleteDatabase(DB_NAME);

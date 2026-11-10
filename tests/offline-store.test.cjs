@@ -50,3 +50,15 @@ test('signing out clears pages through the service worker when one controls the 
     else delete global.navigator;
   }
 });
+
+test('clearing an already-open offline cache really deletes its private records', async () => {
+  global.indexedDB = require('fake-indexeddb').indexedDB;
+  store.setOfflineScope('alice');
+  await store.cacheThread('chat', [{id:'private'}], 'alice');
+  assert.equal((await store.readThread('chat')).messages[0].id,'private');
+  await store.clearOfflineData();
+  store.setOfflineScope('alice');
+  assert.equal(await store.readThread('chat'), null);
+  await store.clearOfflineData();
+  delete global.indexedDB;
+});

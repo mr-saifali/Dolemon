@@ -119,6 +119,8 @@ export default function SignInPage() {
           Sign in
         </Button>
 
+        <Link href="/recover" className="mt-4 text-center text-sm text-rose">Forgot your password?</Link>
+        <Link href="/privacy" className="mt-3 text-center text-xs text-text-muted underline">Privacy and product limitations</Link>
         {environmentReady && !androidApp && <>
         <Link
           href="/download"
@@ -128,7 +130,7 @@ export default function SignInPage() {
           Download Android APK
         </Link>
         <p className="mt-2 text-center text-xs leading-relaxed text-zinc-400">
-          Test build · Internet required · No offline chats or push notifications yet. To install over the 1.0.0 test build, uninstall it first; uninstalling erases its local app data.
+          Test build · Read cached chats offline; connect to send and receive. Browser push is available where supported. Closed-app Android push needs additional setup. Uninstalling erases local app data.
         </p>
         </>}
 

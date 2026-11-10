@@ -15,7 +15,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Dolemon — a private space for two",
-  description: "A private, invite-only space for 1:1 conversations. No groups. No noise.",
+  description: "A space for one-to-one conversations. No groups. No noise.",
   applicationName: "Dolemon",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Dolemon" },
   formatDetection: { telephone: false },
@@ -38,7 +38,6 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
 };
 

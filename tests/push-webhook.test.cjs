@@ -22,6 +22,7 @@ const db = { rpc(name, params) {
 } };
 const old = Module._load;
 Module._load = function(id, parent, main) {
+  if (id === '@/lib/http-body') return require('../lib/http-body.ts');
   if (id === '@/lib/push-endpoint') return require('../lib/push-endpoint.ts');
   if (id === '@supabase/supabase-js') return { createClient: () => db };
   if (id === 'web-push') return { setVapidDetails() {}, async sendNotification(sub, body) {
@@ -36,7 +37,7 @@ const { GET: status } = require('../app/api/push/status/route.ts');
 const { allowedPushEndpoint } = require('../lib/push-endpoint.ts');
 Module._load = old;
 Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL:'https://db.example', NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon', NEXT_PUBLIC_VAPID_PUBLIC_KEY:'public', VAPID_PRIVATE_KEY:'private', VAPID_SUBJECT:'mailto:hello@example.com' });
-const req = (secret = 'a'.repeat(45), body = { type:'INSERT', schema:'public', table:'messages', record:{ id:messageId, sender_id:'forged' } }) => ({ headers:new Headers({ 'x-dolemon-webhook-secret':secret }), json:async () => body });
+const req = (secret = 'a'.repeat(45), body = { type:'INSERT', schema:'public', table:'messages', record:{ id:messageId, sender_id:'forged' } }) => new Request('https://app.test/api/push/message', { method:'POST', headers:{'x-dolemon-webhook-secret':secret}, body:JSON.stringify(body) });
 
 test('the database, not the route, decides whether the webhook secret is valid', async () => {
   events.length = 0; sent.length = 0; duplicate = false; unauthorized = false; forget = [];

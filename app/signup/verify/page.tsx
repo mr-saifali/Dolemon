@@ -12,12 +12,16 @@ import { FieldError } from "@/components/ui/field-error";
 import { auth, authMode } from "@/lib/auth";
 import { AuthFailure } from "@/lib/auth/types";
 import { getDevCode, getSignupEmail, setDevCode } from "@/lib/signup-draft";
+import { getSupabase } from "@/lib/supabase";
+import { useSession } from "@/lib/session";
 import { OTP_LENGTH } from "@/lib/otp";
 
-const RESEND_SECONDS = 30;
+const RESEND_SECONDS = 60;
 
 export default function VerifyScreen() {
   const router = useRouter();
+  const { refresh } = useSession();
+  const inFlight = useRef(false);
   const [email] = useState<string | null>(() => getSignupEmail());
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,13 +32,25 @@ export default function VerifyScreen() {
   const submittedFor = useRef<string>("");
 
   useEffect(() => {
-    // Supabase runs this project with confirmation off — there is no code to type.
-    if (authMode === "supabase") {
-      router.replace("/signup/password");
-      return;
-    }
-    if (!email) router.replace("/signup/email");
+    if (!email && authMode !== "supabase") router.replace("/signup/email");
   }, [email, router]);
+
+  // The default Supabase email uses a link. Support it as well as numeric OTP,
+  // including when the link opens a different browser than the Android shell.
+  useEffect(() => {
+    if (authMode !== "supabase") return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      const account = await refresh();
+      if (alive && account && (!email || account.email.toLowerCase() === email.toLowerCase())) router.replace(account.profileComplete ? "/app" : "/signup/username");
+    };
+    const sub = getSupabase()?.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") timer = setTimeout(() => { void check(); }, 0);
+    });
+    void check();
+    return () => { alive = false; clearTimeout(timer); sub?.data.subscription.unsubscribe(); };
+  }, [email, refresh, router]);
 
   useEffect(() => {
     setDemoCode(getDevCode());
@@ -48,23 +64,30 @@ export default function VerifyScreen() {
 
   const verify = useCallback(
     async (value: string) => {
-      if (!email || value.length !== OTP_LENGTH || submitting) return;
+      if (!email || value.length !== OTP_LENGTH || inFlight.current) return;
+      inFlight.current = true;
       setSubmitting(true);
       setError(null);
       try {
         await auth.verifyOtp(email, value);
-        router.push("/signup/password");
+        if (authMode === "supabase") {
+          const account = await refresh();
+          if (!account) throw new Error("Profile not available");
+          router.replace(account.profileComplete ? "/app" : "/signup/username");
+        } else router.push("/signup/password");
       } catch (err) {
         const message = err instanceof AuthFailure ? err.message : "Something went wrong. Try again?";
         setError(message);
         setCode("");
         setSubmitting(false);
+        inFlight.current = false;
+        submittedFor.current = "";
       }
     },
-    [email, router, submitting]
+    [email, router, refresh]
   );
 
-  // Auto-submit once all six digits are in.
+  // Auto-submit once the configured number of digits is present.
   useEffect(() => {
     if (code.length === OTP_LENGTH && submittedFor.current !== code) {
       submittedFor.current = code;
@@ -93,15 +116,15 @@ export default function VerifyScreen() {
     }
   };
 
-  if (!email) return null;
+  if (!email) return <ScreenShell backHref="/signup/email"><ScreenTitle>Verify your email</ScreenTitle><ScreenSubtitle>Open the latest verification link in your email, or return to signup to request a new one.</ScreenSubtitle></ScreenShell>;
 
   return (
-    <ScreenShell backHref="/signup/email" footer={<StepDots current={2} />}>
+    <ScreenShell backHref={authMode === "supabase" ? "/signup/password" : "/signup/email"} footer={<StepDots current={authMode === "supabase" ? 3 : 2} />}>
       <div className="flex flex-1 flex-col justify-center pt-4">
         <Motif icon={<MailCheck className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>Check your inbox</ScreenTitle>
         <ScreenSubtitle>
-          We sent a {OTP_LENGTH}-digit code to{" "}
+          Check the verification email sent to{" "}
           <span className="font-medium text-text">{email}</span>.{" "}
           <button
             type="button"
@@ -112,6 +135,7 @@ export default function VerifyScreen() {
           </button>
         </ScreenSubtitle>
 
+        <p className="mt-4 text-sm text-text-muted">Enter the {OTP_LENGTH}-digit code if your email includes one, or open its verification link. Check spam too. Never share your code.</p>
         <div className="mt-9">
           <OtpInput
             length={OTP_LENGTH}

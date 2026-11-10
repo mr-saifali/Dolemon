@@ -1,5 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 const CHAT_MEDIA_BUCKET = "chat-media";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,13 @@ export const maxDuration = 60;
  * pure data hygiene — which is why the database policies let this run with the
  * anon key and no service-role secret.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const actual = Buffer.from(request?.headers.get("authorization") ?? "");
+    const expected = Buffer.from(`Bearer ${secret}`);
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
   const dbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!dbUrl || !anonKey) return NextResponse.json({ error: "NOT_CONFIGURED" }, { status: 503 });

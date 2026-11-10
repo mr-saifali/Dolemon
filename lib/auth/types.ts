@@ -46,7 +46,7 @@ export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   ACCOUNT_NOT_FOUND: "We couldn't find an account with that email.",
   WRONG_PASSWORD: "That password doesn't match. Try again.",
   EMAIL_CONFIRMATION:
-    "This project still asks for email confirmation. Use sign in, or ask the owner to turn it off.",
+    "Verify your email before continuing. Check your inbox, or request a new verification email.",
   USERNAME_TAKEN: "That one's taken. Try another.",
   USERNAME_RESERVED: "That handle is reserved. Pick another.",
   WEAK_PASSWORD: "Use at least 8 characters, with a letter and a number.",
@@ -67,10 +67,10 @@ export class AuthFailure extends Error {
 export interface AuthProvider {
   mode: "supabase" | "local";
   getAccount(): Promise<Account | null>;
-  /** Create an account straight from email + password (no inbox needed). */
+  /** Start signup; a verified email session is required before profile setup. */
   signUpWithPassword(email: string, password: string): Promise<void>;
-  sendOtp(email: string): Promise<SendOtpResult>;
-  verifyOtp(email: string, code: string): Promise<void>;
+  sendOtp(email: string, purpose?: "signup" | "recovery"): Promise<SendOtpResult>;
+  verifyOtp(email: string, code: string, purpose?: "signup" | "recovery"): Promise<void>;
   createPassword(password: string): Promise<void>;
   signInWithPassword(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;

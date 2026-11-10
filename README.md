@@ -11,7 +11,7 @@ Mobile-first (designed at 390px) and centred `max-w-md` on desktop.
 ## Live
 
 **[dolemon.vercel.app](https://dolemon.vercel.app)** — production deploy of `main`,
-running on Supabase: email + password accounts (no inbox needed) and real 1:1 threads
+running on Supabase: email-verified password accounts and real 1:1 threads
 synced over Realtime.
 
 Open the app → create an account → search your person by **@handle** → the room opens. Both
@@ -205,7 +205,7 @@ The local demo keeps the simulated call screen (no media) for click-through.
 
 ## Stack
 
-Next.js 14 App Router · TypeScript · Tailwind · shadcn-style components (Radix + cva) ·
+Next.js 15 App Router · TypeScript · Tailwind · shadcn-style components (Radix + cva) ·
 react-hook-form + zod · framer-motion · Supabase Auth (optional).
 
 ## Structure
@@ -245,3 +245,12 @@ Videos up to 50 MB use a separate private, temporary Supabase handoff and device
 ### Android test app
 
 The Android shell and debug APK build workflow are documented in [Android test app](docs/android-app.md). Version 1.4.1 loads the hosted website, so it inherits offline reading and looks like a native app (swipe-to-refresh, no zoom, no web loading spinner, one-time permissions); Android's WebView has no Push API, so notifications are turned on from Chrome and the app links there. It is a test build, not a signed production release, and its per-build debug key means a new APK cannot upgrade the previous one in place.
+
+## Trust and release readiness
+
+See [the current audit](docs/trust-audit.md) for verified fixes and unresolved
+release blockers. Signup requires email verification before profile setup. The
+8-digit OTP UI also accepts the default email confirmation-link flow; public
+delivery and visible OTP codes require owner-configured SMTP and templates.
+See [email verification setup](docs/email-verification.md). Do not describe the
+existing debug-signed APK as a production/Play Store release.

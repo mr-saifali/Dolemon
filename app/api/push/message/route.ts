@@ -1,3 +1,4 @@
+import { BodyReadError, readLimitedJson } from "@/lib/http-body";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import * as webpush from "web-push";
@@ -48,10 +49,11 @@ export async function POST(req: NextRequest) {
 
   let payload: { type?: string; schema?: string; table?: string; record?: { id?: string } };
   try {
-    payload = await req.json();
-  } catch {
-    return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
+    payload = await readLimitedJson(req, 32_000) as typeof payload;
+  } catch (error) {
+    return NextResponse.json({ error: "BAD_REQUEST" }, { status: error instanceof BodyReadError ? error.status : 400 });
   }
+  if (!payload || typeof payload !== "object") return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
 
   const id = payload.record?.id;
   if (payload.type !== "INSERT" || payload.schema !== "public" || payload.table !== "messages" || !id || !uuid.test(id)) {

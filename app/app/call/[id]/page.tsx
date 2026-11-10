@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Mic,
@@ -288,15 +288,15 @@ function RoundControl({
   );
 }
 
-export default function CallPage({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams: { kind?: string; direction?: string };
-}) {
-  const type = searchParams.kind === "video" ? "video" : "voice";
-  const direction = searchParams.direction === "incoming" ? "incoming" : "outgoing";
+export default function CallPage() {
+  return <Suspense fallback={<main className="min-h-dvh bg-ink" aria-busy="true" />}><CallRoute /></Suspense>;
+}
+
+function CallRoute() {
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const type = searchParams.get("kind") === "video" ? "video" : "voice";
+  const direction = searchParams.get("direction") === "incoming" ? "incoming" : "outgoing";
 
   // Live calls render in the global overlay; this route just kicks one off.
   if (authMode === "supabase") {

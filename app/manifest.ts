@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Dolemon — a private space for two",
     short_name: "Dolemon",
     description:
-      "A private, invite-only space for one-to-one conversations. No groups, no noise. Calls connect phone to phone, encrypted.",
+      "A space for one-to-one conversations. No groups, no noise. Offline reading and encrypted live calls.",
     start_url: "/app",
     scope: "/",
     display: "standalone",

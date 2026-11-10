@@ -35,6 +35,7 @@ export default function UsernameScreen() {
   // Debounced availability check — this is the live feedback the spec asks for.
   useEffect(() => {
     const value = username.trim().toLowerCase();
+    latestValue.current = value;
     if (!value) {
       setAvailability("idle");
       return;
@@ -94,7 +95,7 @@ export default function UsernameScreen() {
   };
 
   return (
-    <ScreenShell backHref="/signup/password" footer={<StepDots current={auth.mode === "supabase" ? 3 : 4} total={auth.mode === "supabase" ? 3 : 4} />}>
+    <ScreenShell backHref="/signup/password" footer={<StepDots current={4} total={4} />}>
       <form onSubmit={submit} className="flex flex-1 flex-col justify-center pt-4" noValidate>
         <Motif icon={<AtSign className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>Pick your name</ScreenTitle>

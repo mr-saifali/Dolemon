@@ -69,7 +69,7 @@ export function OtpInput({
   };
 
   return (
-    <div className="flex items-center justify-between gap-2" role="group" aria-label="6-digit verification code">
+    <div className="flex items-center justify-between gap-1.5" role="group" aria-label={`${length}-digit verification code`}>
       {Array.from({ length }).map((_, idx) => {
         const char = chars[idx] === " " ? "" : chars[idx];
         return (
@@ -85,9 +85,10 @@ export function OtpInput({
             inputMode="numeric"
             autoComplete={idx === 0 ? "one-time-code" : "off"}
             aria-label={`Digit ${idx + 1}`}
-            maxLength={1}
+            maxLength={length}
+            onPaste={(event) => { event.preventDefault(); handleChange(0, event.clipboardData.getData("text")); }}
             className={cn(
-              "h-16 w-full rounded-field border bg-ink-surface text-center text-[22px] font-semibold tabular-nums text-text transition-all duration-200",
+              "h-12 min-w-0 flex-1 sm:h-16 rounded-field border bg-ink-surface text-center text-[22px] font-semibold tabular-nums text-text transition-all duration-200",
               "border-ink-line hover:border-[#3A3A45]",
               focusedIdx === idx && "border-rose/70 ring-4 ring-rose/10",
               invalid && "border-danger/70 text-danger ring-danger/10",

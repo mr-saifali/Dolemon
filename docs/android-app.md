@@ -12,7 +12,7 @@ Install JDK 17, Android SDK platform 35 and Gradle 8.10.2. From `android/`, run 
 
 `public/downloads/dolemon-test-1.1.0.apk` is the debug-signed APK built by [GitHub Actions run 42372402860](https://github.com/mr-saifali/Dolemon/actions/runs/42372402860), from commit `1bd278e25ea675e3c3d36ab859453287910c34a4`. SHA-256: `44b761256629bafd7193d3b44777d93a1fbc03d0497ceebe737890763aebbea4`. It uses Android package `app.dolemon.mobile`, version code 2 and version name 1.1.0, and loads the production web service; the website determines the actual web features available. The app-identifying user-agent marker suppresses APK/install promotions inside the Android WebView. Older unmarked Android WebViews are also treated as embedded apps to avoid displaying install prompts there; this includes third-party Android WebViews.
 
-This remains a **test build**, not a signed official release or Play Store-ready APK. The 1.0.0 and 1.1.0 test APKs remain at their original URLs for older bookmarks; the website now links to 1.2.0. The CI debug key differs from the published 1.0.0 build, so installing 1.1.0 over 1.0.0 fails. Uninstalling 1.0.0 first erases its local app data. The 1.0.0 certificate SHA-256 is `b517f8a4d6d1d9cf86a039b675e7ca499bc5cc314baf65482a14fbe886231edd`; the 1.1.0 certificate SHA-256 is `96c3edcf700f0c2ebf5a0df05d7409284cfd7ecd9d08bd51624edd035e8d566d`. No physical-device verification has been performed. Offline reading, native device-lock access and WebView push notifications are not implemented. An owner-controlled release signing key, tested upgrade path, device verification and deployment setup are required for a true official release.
+This remains a **test build**, not a signed official release or Play Store-ready APK. The 1.0.0 and 1.1.0 test APKs remain at their original URLs for older bookmarks; the website currently links to 1.4.1. The CI debug key differs from the published 1.0.0 build, so installing 1.1.0 over 1.0.0 fails. Uninstalling 1.0.0 first erases its local app data. The 1.0.0 certificate SHA-256 is `b517f8a4d6d1d9cf86a039b675e7ca499bc5cc314baf65482a14fbe886231edd`; the 1.1.0 certificate SHA-256 is `96c3edcf700f0c2ebf5a0df05d7409284cfd7ecd9d08bd51624edd035e8d566d`. No physical-device verification has been performed. Later shells inherit web offline reading and add running-app notifications; native device-lock access and closed-app WebView push remain unavailable. An owner-controlled release signing key, tested upgrade path, device verification and deployment setup are required for a true official release.
 
 ## Older-version update notice
 
@@ -81,3 +81,10 @@ built from `ca218ef18b5eafb0912320b3ab2cfa9a488a1652`, published by commit
 `85b2e0b0f40f408d351d8f049dc6a9aab3ff208f56360631005f584e143c6c0a`.
 CI verified the signature and package version before publishing. Web-only changes
 following that build do not alter the APK; they arrive through the deployed site.
+
+## Trust audit web release
+
+The trust/verification changes are hosted web changes: the existing 1.4.1 shell
+loads them after deployment and reopening online. No replacement APK or signing
+key was generated. `lib/version.ts` reports web release 1.5.0, independently from
+the Android 1.4.1 binary version. See `trust-audit.md` for remaining release gates.

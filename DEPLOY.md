@@ -11,7 +11,7 @@
 | Vercel project | ✅ `dolemon` · `prj_1O9Q0xc3AYVTMEfY05q3rje2xhzv` · team `fairtok` |
 | Framework preset | ✅ `nextjs` (this is what the first builds were missing) |
 | Vercel domains | `dolemon.vercel.app` (verified), `dolemon-fairtok.vercel.app`, `dolemon-git-main-fairtok.vercel.app` |
-| Auth mode on Vercel | **supabase** — email + password, confirmation off (no inbox needed) |
+| Auth mode on Vercel | **supabase** — password signup followed by email verification |
 | Messaging | live: `conversations` / `messages` / `message_reactions` + Realtime |
 | Deployed commit | `a5f3bd1` on `main` |
 
@@ -49,21 +49,22 @@ changing them. Any browser can also flip itself back to demo mode with the
 
 ## How signup works now
 
-Email delivery on a free Supabase project is capped (2/hour) and the default template has no
-`{{ .Token }}`, so email OTP could never work reliably. Instead:
+Live signup is **email → password → verify email → handle**. Set
+`mailer_autoconfirm = false`. Password sign-in still works for existing verified
+accounts; unverified accounts cannot skip the email step. Signup never falls back
+to signing into an existing account. Recovery verifies the mailbox without creating
+a new user. See [email verification setup](docs/email-verification.md).
 
-- **Confirm email is switched off** on the project (`mailer_autoconfirm = true`).
-- Signup is **email → password → handle**. `signUp()` returns a session immediately, so no
-  inbox, no code, no rate limit.
-- Sign-in is email + password.
-
-If the project is ever put back on confirmation, password signup surfaces the
-`EMAIL_CONFIRMATION` error instead of hanging.
+The existing project has no custom SMTP configured and default link-only templates.
+**Public email delivery and numeric OTP messages are release blockers until the
+owner configures SMTP and adds `{{ .Token }}` to confirmation and magic-link
+messages.** The app supports the default verification link as a fallback.
 
 ## Deploying changes
 
-The Vercel project currently has `gitProviderOptions.createDeployments = "disabled"`,
-so **pushing to `main` does not auto-deploy**. Two options:
+Verify the Vercel deployment state after every merge rather than assuming a push
+has gone live. Recent merges have triggered Git deployments. If automation is
+unavailable, deploy the exact merged commit using the existing project. Options:
 
 - Turn on automatic deployments in Vercel → Project → Settings → Git, then every push to
   `main` ships; or

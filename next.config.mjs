@@ -8,14 +8,21 @@ const nextConfig = {
     return [{ source: "/", destination: "/app", permanent: false }];
   },
   async headers() {
-    return ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.4.1"].map((version) => ({
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Permissions-Policy", value: "geolocation=(), payment=(), usb=()" },
+      ],
+    }, ...["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.4.1"].map((version) => ({
       source: `/downloads/dolemon-test-${version}.apk`,
       headers: [
         { key: "Content-Type", value: "application/vnd.android.package-archive" },
         { key: "Content-Disposition", value: `attachment; filename="Dolemon-test-${version}.apk"` },
         { key: "X-Content-Type-Options", value: "nosniff" },
       ],
-    }));
+    }))];
   },
   experimental: { optimizePackageImports: ["lucide-react", "framer-motion"] },
 };

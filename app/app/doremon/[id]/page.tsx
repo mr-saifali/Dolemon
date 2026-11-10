@@ -6,7 +6,7 @@ import { displayDoremonText } from "@/lib/doremon/display";
 import { deleteRoomHistory, loadRoomHistory, saveRoomHistory } from "@/lib/doremon/room-history";
 import { localLookup } from "@/lib/doremon/local-search";
 import { confirmDoremonSharing } from "@/lib/doremon/consent";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
@@ -91,7 +91,8 @@ type Loaded = {
   alive: boolean;
 };
 
-export default function DoremonRoomPage({ params }: { params: { id: string } }) {
+export default function DoremonRoomPage() {
+  const params = useParams<{ id: string }>();
   return (
     <AppGuard>
       <Room conversationId={params.id} />

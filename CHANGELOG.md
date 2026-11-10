@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.0 — Trust and email-verification audit
+
+- Require verified email ownership before profile setup; default to the project's
+  8-digit OTP length, support full-code paste/autofill and confirmation-link fallback,
+  prevent duplicate OTP submission, and separate signup resends from recovery.
+- Add mailbox-verified account recovery, safe invitation landing pages, factual
+  privacy/limitations disclosure and recoverable error screens.
+- Fix actual IndexedDB deletion on cache clear; preserve accounts/preferences/videos
+  and report sign-out failures rather than pretending success.
+- Patch Next.js to 15.5.29, Zod to 4.6.7, compatible resolver/lint packages and
+  transitive PostCSS/minimatch; remove unused vulnerable Supabase SSR dependency.
+  Production and full npm audits report zero known advisories at audit time.
+- Bound streamed push/preview request bodies, honor cron authorization consistently,
+  add baseline security headers, correct stale feature copy and permit browser zoom.
+- Email confirmation is enabled as a deployment-time configuration change. Custom
+  SMTP, numeric-code email templates, stable APK signing, moderation/deletion
+  workflows, TURN, FCM and physical device acceptance remain owner release gates.
+
+
 ## Chat interaction and live calling fixes (2026-11-08)
 
 - Preserve composer focus during message long-press and reaction selection; add a

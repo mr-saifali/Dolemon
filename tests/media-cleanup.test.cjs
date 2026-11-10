@@ -46,3 +46,9 @@ test('nothing to clean is a cheap no-op', async () => {
   const result = await GET(); assert.equal(result.status, 200); assert.equal(result.body.deleted, 0);
   assert.equal(calls.length, 1);
 });
+test('media cleanup honors the configured cron secret before touching storage',async()=>{
+ calls=[];process.env.CRON_SECRET='test-only-cron';
+ try{assert.equal((await GET({headers:new Headers()})).status,401);assert.equal(calls.length,0);
+ assert.equal((await GET({headers:new Headers({authorization:'Bearer test-only-cron'})})).status,200);
+ }finally{delete process.env.CRON_SECRET;}
+});

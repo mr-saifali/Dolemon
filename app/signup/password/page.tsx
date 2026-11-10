@@ -14,10 +14,12 @@ import { auth } from "@/lib/auth";
 import { AuthFailure } from "@/lib/auth/types";
 import { getSignupEmail } from "@/lib/signup-draft";
 import { isPasswordValid, passwordRules, passwordStrength } from "@/lib/password";
+import { useSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export default function PasswordScreen() {
   const router = useRouter();
+  const { refresh } = useSession();
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,9 +50,12 @@ export default function PasswordScreen() {
     try {
       if (auth.mode === "supabase" && email) {
         await auth.signUpWithPassword(email, password);
+        router.push("/signup/verify");
+        return;
       } else {
         await auth.createPassword(password);
       }
+      await refresh();
       router.push("/signup/username");
     } catch (err) {
       const message = err instanceof AuthFailure ? err.message : "Something went wrong. Try again?";
@@ -66,7 +71,7 @@ export default function PasswordScreen() {
   return (
     <ScreenShell
       backHref={auth.mode === "supabase" ? "/signup/email" : "/signup/verify"}
-      footer={<StepDots current={auth.mode === "supabase" ? 2 : 3} total={auth.mode === "supabase" ? 3 : 4} />}
+      footer={<StepDots current={auth.mode === "supabase" ? 2 : 3} total={4} />}
     >
       <form onSubmit={submit} className="flex flex-1 flex-col justify-center pt-4" noValidate>
         <Motif icon={<KeyRound className="h-6 w-6" strokeWidth={1.75} />} />

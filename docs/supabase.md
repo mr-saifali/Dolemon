@@ -18,11 +18,16 @@ In **Authentication → Providers → Email**, enable **Email OTP**. Set the OTP
 renders exactly that many boxes and auto-submits at that length, so a mismatch silently
 blocks sign-in.
 
-Password signup is the primary path and needs *Confirm email* **off**
-(`mailer_autoconfirm = true` on this project), so `signUp()` returns a session immediately and
-no inbox is involved. If you turn *Confirm email* on for OTP sign-in, edit the confirmation
-template to include `{{ .Token }}` — the default template only renders
-`{{ .ConfirmationURL }}`, so the code never reaches the user.
+Password signup now requires *Confirm email* **on** (`mailer_autoconfirm = false`).
+The flow creates a password, verifies the email, then permits profile setup. Existing
+verified users continue to sign in by password. Resends use `resend(type: signup)`,
+not a second user-creation attempt. Recovery uses passwordless email with
+`shouldCreateUser: false` and never creates an account.
+
+The current default templates contain a link but no code. Add `{{ .Token }}` to the
+confirmation and magic-link templates and configure custom SMTP before public
+onboarding. The UI supports links as a fallback. Do not turn confirmation off to
+work around delivery limits. See [setup and rollout](email-verification.md).
 
 ## 2. Schema
 

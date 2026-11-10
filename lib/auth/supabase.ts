@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { isPasswordValid } from "@/lib/password";
 import { getPrefs } from "@/lib/prefs";
 import { clearChatMediaCache } from "@/lib/media-url";
 import {
@@ -17,7 +18,11 @@ import {
  * - Profile:    public.profiles (see docs/supabase.md for the schema + RLS)
  */
 
-const OTP_COOLDOWN_S = 30;
+const OTP_COOLDOWN_S = 60;
+
+function emailRedirect(path: string) {
+  return typeof window === "undefined" ? undefined : `${window.location.origin}${path}`;
+}
 
 type ProfileRow = {
   id: string;
@@ -37,10 +42,13 @@ function client() {
 
 function mapError(message: string): AuthFailure {
   const m = message.toLowerCase();
+  if (m.includes("email not confirmed")) return new AuthFailure("EMAIL_CONFIRMATION");
+  if (m.includes("credentials")) return new AuthFailure("WRONG_PASSWORD");
+  if (m.includes("weak") || m.includes("password should")) return new AuthFailure("WEAK_PASSWORD");
   if (m.includes("already registered") || m.includes("already exists")) return new AuthFailure("ACCOUNT_EXISTS");
   if (m.includes("expired")) return new AuthFailure("CODE_EXPIRED");
-  if (m.includes("invalid") || m.includes("token")) return new AuthFailure("INVALID_CODE");
   if (m.includes("rate") || m.includes("too many")) return new AuthFailure("RATE_LIMITED");
+  if (m.includes("invalid") || m.includes("token")) return new AuthFailure("INVALID_CODE");
   if (m.includes("credentials") || m.includes("password")) return new AuthFailure("WRONG_PASSWORD");
   if (m.includes("fetch") || m.includes("network")) return new AuthFailure("NETWORK");
   return new AuthFailure("UNKNOWN", "Something went wrong. Try again?");
@@ -106,7 +114,7 @@ export const supabaseProvider: AuthProvider = {
       if (error.status === 401 || error.status === 403 || error.name === "AuthSessionMissingError") return null;
       throw error;
     }
-    if (!data.user?.email) return null;
+    if (!data.user?.email || !data.user.email_confirmed_at) return null;
 
     // A valid session must never be thrown out by a one-off network hiccup —
     // retry once before giving up.
@@ -133,49 +141,44 @@ export const supabaseProvider: AuthProvider = {
     return account;
   },
 
-  /**
-   * Password signup. With "Confirm email" switched off on the project (which is how
-   * Dolemon is configured) this returns a session immediately, so no inbox is needed.
-   */
+  /** Password first, then email ownership. Never sign into an existing account here. */
   async signUpWithPassword(email, password) {
-    const clean = email.trim().toLowerCase();
-    const { data, error } = await client().auth.signUp({ email: clean, password });
-
-    if (error) {
-      if (error.message.toLowerCase().includes("already registered")) {
-        // They already have an account — let them in if the password matches.
-        const retry = await client().auth.signInWithPassword({ email: clean, password });
-        if (retry.error) throw new AuthFailure("ACCOUNT_EXISTS");
-        return;
-      }
-      throw mapError(error.message);
-    }
-
-    if (!data.session) {
-      const retry = await client().auth.signInWithPassword({ email: clean, password });
-      if (retry.error) throw new AuthFailure("EMAIL_CONFIRMATION");
+    if (!isPasswordValid(password)) throw new AuthFailure("WEAK_PASSWORD");
+    const { data, error } = await client().auth.signUp({
+      email: email.trim().toLowerCase(), password,
+      options: { emailRedirectTo: emailRedirect("/signup/verify") },
+    });
+    if (error) throw mapError(error.message);
+    if (data.user?.identities?.length === 0) throw new AuthFailure("ACCOUNT_EXISTS");
+    if (data.session) {
+      // Fail closed if somebody accidentally re-enables auto-confirm in production.
+      await client().auth.signOut({ scope: "local" });
+      throw new AuthFailure("EMAIL_CONFIRMATION", "Email verification is unavailable. Please contact support before continuing.");
     }
   },
 
-  async sendOtp(email): Promise<SendOtpResult> {
-    const { error } = await client().auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: true },
-    });
+  async sendOtp(email, purpose = "signup"): Promise<SendOtpResult> {
+    const clean = email.trim().toLowerCase();
+    const { error } = purpose === "recovery"
+      ? await client().auth.signInWithOtp({ email: clean, options: { shouldCreateUser: false, emailRedirectTo: emailRedirect("/recover/password") } })
+      : await client().auth.resend({ type: "signup", email: clean, options: { emailRedirectTo: emailRedirect("/signup/verify") } });
     if (error) throw mapError(error.message);
     return { cooldownSeconds: OTP_COOLDOWN_S };
   },
 
-  async verifyOtp(email, code) {
-    const { error } = await client().auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token: code.replace(/\D/g, ""),
-      type: "email",
+  async verifyOtp(email, code, purpose = "signup") {
+    const { data, error } = await client().auth.verifyOtp({
+      email: email.trim().toLowerCase(), token: code.replace(/\D/g, ""),
+      type: purpose === "recovery" ? "email" : "signup",
     });
     if (error) throw mapError(error.message);
+    if (!data.session || !data.user?.email_confirmed_at) throw new AuthFailure("EMAIL_CONFIRMATION");
   },
 
   async createPassword(password) {
+    if (!isPasswordValid(password)) throw new AuthFailure("WEAK_PASSWORD");
+    const verified = await client().auth.getUser();
+    if (verified.error || !verified.data.user?.email_confirmed_at) throw new AuthFailure("EMAIL_CONFIRMATION");
     const { error } = await client().auth.updateUser({ password });
     if (error) throw mapError(error.message);
 
@@ -196,7 +199,8 @@ export const supabaseProvider: AuthProvider = {
   },
 
   async signOut() {
-    await client().auth.signOut();
+    const { error } = await client().auth.signOut({ scope: "local" });
+    if (error) throw new AuthFailure("NETWORK", "Couldn't sign out safely. Reconnect and try again.");
     // never let the next account on this device reuse signed media URLs
     clearChatMediaCache();
     if (typeof window !== "undefined") window.sessionStorage.removeItem("dolemon:app-unlocked");

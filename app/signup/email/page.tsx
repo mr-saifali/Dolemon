@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -52,8 +53,7 @@ export default function EmailScreen() {
     const email = values.email.trim().toLowerCase();
     setSubmitting(true);
     try {
-      // Supabase is configured with confirmation off, so there is no code to send —
-      // the password becomes the proof instead of an inbox.
+      // Collect the password before starting a confirmed-email signup.
       if (auth.mode === "supabase") {
         setSignupEmail(email);
         router.push("/signup/password");
@@ -74,13 +74,13 @@ export default function EmailScreen() {
   };
 
   return (
-    <ScreenShell backHref="/signin" footer={<StepDots current={1} total={auth.mode === "supabase" ? 3 : 4} />}>
+    <ScreenShell backHref="/signin" footer={<StepDots current={1} total={4} />}>
       <div className="flex flex-1 flex-col justify-center pt-4">
         <Motif icon={<Mail className="h-6 w-6" strokeWidth={1.75} />} />
         <ScreenTitle>What&apos;s your email?</ScreenTitle>
         <ScreenSubtitle>
           {auth.mode === "supabase"
-            ? "No emails, no codes. Pick a password next and you're in."
+            ? "Choose a password next, then verify your email before setting up your profile."
             : `We'll send a ${OTP_LENGTH}-digit code to make sure it's really you. No spam, ever.`}
         </ScreenSubtitle>
 
@@ -108,6 +108,7 @@ export default function EmailScreen() {
           <p className="mt-4 text-center text-[12.5px] leading-relaxed text-text-muted/80">
             We only use this to keep your account safe and to help you get back in.
           </p>
+          <Link href="/privacy" className="mt-3 block text-center text-xs text-text-muted underline">Privacy and product limitations</Link>
         </form>
       </div>
     </ScreenShell>

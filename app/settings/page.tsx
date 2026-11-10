@@ -44,6 +44,7 @@ import { passwordStrength } from "@/lib/password";
 import { confirmDoremonAnalysis } from "@/lib/doremon/consent";
 import { useSession } from "@/lib/session";
 import { setPref, usePrefs, type Prefs } from "@/lib/prefs";
+import { clearOfflineData, purgePageCache, setOfflineScope } from "@/lib/offline/store";
 import { isKnownOffline } from "@/lib/offline/connectivity";
 import { isAndroidAppWebView } from "@/lib/android-app";
 import { cn } from "@/lib/utils";
@@ -694,9 +695,9 @@ function SettingsContent() {
             <div className="flex items-start gap-3">
               <Tile tone="rose"><Trash2 className="h-[15px] w-[15px]" /></Tile>
               <div>
-                <p className="text-[14.5px] text-zinc-200">Clear local cache</p>
+                <p className="text-[14.5px] text-zinc-200">Clear cached chats</p>
                 <p className="mt-0.5 text-[12.5px] text-zinc-500">
-                  Demo threads and preferences on this device. Nothing on the server.
+                  Recent offline chats on this device only. Keeps your account, preferences and saved videos. Nothing on the server.
                 </p>
               </div>
             </div>
@@ -709,15 +710,11 @@ function SettingsContent() {
                   return;
                 }
                 try {
-                  Object.keys(window.localStorage)
-                    .filter((key) => key.startsWith("dolemon:"))
-                    .forEach((key) => window.localStorage.removeItem(key));
-                  if ("caches" in window) {
-                    const keys = await caches.keys();
-                    await Promise.all(keys.map((key) => caches.delete(key)));
-                  }
+                  await clearOfflineData();
+                  setOfflineScope(account?.id ?? null);
+                  purgePageCache();
                   setClearArmed(false);
-                  toast.success("Local cache cleared");
+                  toast.success("Cached chats cleared");
                 } catch {
                   toast.error("Couldn't clear the cache");
                 }
@@ -732,6 +729,10 @@ function SettingsContent() {
           </div>
         </Section>
 
+        <div className="mt-7 flex flex-col gap-3 text-center text-sm">
+          <Link href="/privacy" className="text-rose">Privacy and product limitations</Link>
+          <Link href="/recover" className="text-rose">Recover account / change login password</Link>
+        </div>
         <div className="mt-9 flex flex-col items-center gap-1.5">
           <p className="wordmark flex items-center gap-1.5 text-[13px] font-medium text-zinc-300">
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} aria-hidden />
@@ -739,15 +740,17 @@ function SettingsContent() {
           </p>
           <p className="flex items-center gap-1.5 text-[11px] text-zinc-600">
             <Lock className="h-3 w-3" />
-            Two people per room. No groups, no discovery.
+            Two people per room. No groups. Find people by handle.
           </p>
         </div>
 
         <button
           type="button"
           onClick={async () => {
-            await signOut();
-            router.replace("/");
+            try {
+              await signOut();
+              router.replace("/signin");
+            } catch { toast.error("Couldn't sign out safely. Reconnect and try again."); }
           }}
           className="mt-6 block w-full py-3 text-center text-[13.5px] text-[#FF6B6B]/80 transition-colors hover:text-[#FF6B6B]"
         >
@@ -763,7 +766,7 @@ function SettingsContent() {
             <span className="text-[13.5px] text-zinc-200">Install the app</span>
           </span>
           <span className="flex items-center gap-1 text-[11.5px] text-zinc-500">
-            v{APP_VERSION}
+            Android test build
             <ChevronLeft className="h-3.5 w-3.5 rotate-180" />
           </span>
         </Link>}

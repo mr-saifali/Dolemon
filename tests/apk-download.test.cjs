@@ -77,7 +77,7 @@ test('website uses the current APK but app installation prompts are gated in the
   assert.match(download, /if \(androidApp\) return/);
   assert.match(download, /Chats you have opened stay readable offline/);
   assert.match(download, /Install browser app/);
-  assert.match(fs.readFileSync('app/signin/page.tsx', 'utf8'), /No offline chats or push notifications/);
+  assert.match(fs.readFileSync('app/signin/page.tsx', 'utf8'), /Read cached chats offline/);
 });
 
 test('Android app marker and legacy Android WebView are recognized without hiding in Chrome or iOS', () => {
